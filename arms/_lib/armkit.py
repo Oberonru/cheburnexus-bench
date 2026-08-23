@@ -1,0 +1,127 @@
+"""Shared plumbing for arms, so that three implementations cannot drift into three dialects.
+
+An arm's job is to answer one question — which calls does this tool believe exist — and nothing
+here decides that. What lives here is the boring part every arm would otherwise reimplement
+slightly differently: the CLI shape, the cell split, the row writer, and the `--describe` line.
+
+Nothing in this module may read the oracle, the override map, or any graded result. An arm that
+could see the answer key would be able to score against it instead of being measured by it.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Callable, Iterable, Iterator
+
+CELLS = ("with-tests", "without-tests")
+
+# Directory names that hold test code in every C# repository we have looked at. Kept as a shared
+# default so all arms split a repository the same way; a corpus entry may override it.
+TEST_DIR_MARKERS = ("test", "tests", "spec", "specs", "benchmark", "benchmarks", "samples")
+
+
+@dataclass(frozen=True)
+class Edge:
+    """One call the arm believes exists. Fields it cannot fill are left out, never guessed."""
+
+    caller: str
+    callee: str
+    caller_file: str | None = None
+    caller_line: int | None = None
+
+    def to_row(self) -> dict:
+        row: dict = {"caller": self.caller, "callee": self.callee}
+        if self.caller_file is not None:
+            row["caller_file"] = self.caller_file
+        if self.caller_line is not None:
+            row["caller_line"] = self.caller_line
+        return row
+
+
+def is_test_path(path: Path, repo_root: Path) -> bool:
+    """True when a file belongs to the repository's tests.
+
+    Judged on directory names rather than file names: `FooTests.cs` sitting in `src/` is production
+    code that happens to be named awkwardly, while everything under `test/` is not. The rule is
+    shared by every arm so that the two cells mean the same thing in all three columns.
+    """
+    try:
+        relative = path.relative_to(repo_root)
+    except ValueError:
+        return False
+    return any(part.lower() in TEST_DIR_MARKERS for part in relative.parts[:-1])
+
+
+def source_files(repo_root: Path, cell: str, suffix: str = ".cs") -> Iterator[Path]:
+    """Every source file this cell should see, in a stable order.
+
+    Sorted, because an arm that walks the filesystem in directory order produces different output
+    on different machines, and a diff between two runs must mean a real change.
+    """
+    if cell not in CELLS:
+        raise ValueError(f"unknown cell {cell!r}; expected one of {CELLS}")
+
+    for path in sorted(repo_root.rglob(f"*{suffix}")):
+        parts = {p.lower() for p in path.parts}
+        if "obj" in parts or "bin" in parts or ".git" in parts:
+            continue
+        if cell == "without-tests" and is_test_path(path, repo_root):
+            continue
+        yield path
+
+
+def write_edges(out_path: Path, edges: Iterable[Edge]) -> int:
+    """Write the contract rows, deduplicated and ordered. Returns how many were written.
+
+    Deduplicated because an arm reporting the same call twice is telling us one fact, not two, and
+    the grader compares sets. Ordered so two runs of the same arm on the same input produce
+    byte-identical files — which is what makes a published row set checkable.
+    """
+    unique = {(e.caller, e.callee, e.caller_file, e.caller_line) for e in edges}
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, "w", encoding="utf-8") as handle:
+        for caller, callee, file, line in sorted(
+            unique, key=lambda t: (t[0], t[1], t[2] or "", t[3] or 0)
+        ):
+            handle.write(json.dumps(Edge(caller, callee, file, line).to_row()) + "\n")
+    return len(unique)
+
+
+def main(
+    name: str,
+    version: Callable[[], str],
+    collect: Callable[[Path, str], Iterable[Edge]],
+    mode: str = "live",
+) -> int:
+    """The CLI every arm shares. `collect(repo_root, cell)` is the only part an arm writes itself."""
+    parser = argparse.ArgumentParser(description=f"{name} arm")
+    parser.add_argument("--repo", type=Path, help="checkout to read")
+    parser.add_argument("--cell", choices=CELLS)
+    parser.add_argument("--out", type=Path)
+    parser.add_argument("--describe", action="store_true",
+                        help="print this arm's identity as one JSON object and exit")
+    args = parser.parse_args()
+
+    if args.describe:
+        print(json.dumps({"name": name, "version": version(), "mode": mode}))
+        return 0
+
+    missing = [flag for flag, value in
+               (("--repo", args.repo), ("--cell", args.cell), ("--out", args.out)) if value is None]
+    if missing:
+        parser.error("missing required arguments: " + ", ".join(missing))
+
+    repo_root = args.repo.resolve()
+    if not repo_root.is_dir():
+        print(f"{name}: no such checkout: {repo_root}", file=sys.stderr)
+        return 2
+
+    written = write_edges(args.out, collect(repo_root, args.cell))
+    # An arm that finds nothing has answered the question — badly, but it has answered. Only an arm
+    # that could not run at all fails, or a zero would be indistinguishable from a crash.
+    print(f"{name}: {written} edges -> {args.out}", file=sys.stderr)
+    return 0
