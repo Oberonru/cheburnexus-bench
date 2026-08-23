@@ -98,12 +98,16 @@ internal static class Program
             return 2;
         }
 
-        using var output = outPath is null
-            ? Console.Out
+        // Only a file writer is owned here. Wrapping Console.Out in `using` would close the
+        // process's own stdout on the way out, which breaks piping the rows into another tool.
+        var fileOutput = outPath is null
+            ? null
             : new StreamWriter(File.Create(outPath), new UTF8Encoding(false));
+        var output = fileOutput ?? Console.Out;
 
         var jsonOptions = new JsonSerializerOptions { WriteIndented = false };
         long emitted = 0, withoutDebug = 0, compilerGenerated = 0;
+        var assembliesRead = 0;
         var skipped = new List<string>();
 
         foreach (var path in assemblies)
@@ -140,6 +144,8 @@ internal static class Program
                 skipped.Add($"{Path.GetFileName(path)}: {ex.GetType().Name}");
                 continue;
             }
+
+            assembliesRead++;
 
             using (assembly)
             {
@@ -188,12 +194,13 @@ internal static class Program
             }
         }
 
-        Console.Error.WriteLine($"assemblies read : {assemblies.Count - skipped.Count(s => s.Contains("Exception") || s.Contains("BadImage"))}");
+        Console.Error.WriteLine($"assemblies read : {assembliesRead} of {assemblies.Count}");
         Console.Error.WriteLine($"edges emitted   : {emitted}");
         Console.Error.WriteLine($"  no debug info : {withoutDebug} ({Percent(withoutDebug, emitted)})");
         Console.Error.WriteLine($"  caller cgen   : {compilerGenerated} ({Percent(compilerGenerated, emitted)})");
         foreach (var s in skipped) Console.Error.WriteLine($"note: {s}");
 
+        fileOutput?.Dispose();
         return 0;
     }
 

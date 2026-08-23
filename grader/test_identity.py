@@ -78,8 +78,57 @@ def write(path: Path, rows: list[dict]) -> None:
     path.write_text("".join(json.dumps(r) + "\n" for r in rows), encoding="utf-8")
 
 
+def check_key_agreement() -> list[str]:
+    """The same method, written the way IL spells it and the way an arm spells it, must key alike.
+
+    Grading the answer key against itself cannot catch a mistake in the key function: both sides
+    make the identical mistake and still agree perfectly. That is exactly how closed generic
+    arguments survived — `Guard::NotNull<Polly.Builder>` on one side, `Guard.NotNull` on the other,
+    a third of Polly's nodes unmatchable, and an identity score of 1.000 the whole time. So this
+    check compares the two *forms*, which is the thing identity structurally cannot test.
+    """
+    sys.path.insert(0, str(HERE))
+    from grade import enclosing_user_method, method_key
+
+    same = [
+        ("generic method instantiation",
+         "System.Void App.Guard::NotNull<App.Builder>(System.Object)", "App.Guard::NotNull"),
+        ("generic declaring type",
+         "System.Void App.Cache`1<System.String>::Get(System.Int32)", "App.Cache`1::Get"),
+        ("nested generic argument",
+         "T App.Guard::NotNull<App.Builder`1<System.String>>(T)", "App.Guard::NotNull"),
+        ("plain method",
+         "System.Void App.Service::Run()", "App.Service::Run"),
+    ]
+    differ = [
+        ("instance vs static constructor",
+         "System.Void App.Repo::.ctor()", "System.Void App.Repo::.cctor()"),
+    ]
+
+    failures = []
+    for label, il_form, arm_form in same:
+        left, right = method_key(il_form), method_key(arm_form)
+        if left != right:
+            failures.append(f"{label}: IL form keys as {left!r}, arm form as {right!r} — they must agree")
+
+    for label, first, second in differ:
+        if method_key(first) == method_key(second):
+            failures.append(f"{label}: both key as {method_key(first)!r} — they are different methods")
+
+    # A mangled name is not a generic instantiation and must survive intact for the caller remap.
+    lifted = method_key("System.Void App.Service/<>c__DisplayClass3_0::<Run>b__0()")
+    if lifted is None or "<Run>b__0" not in lifted:
+        failures.append(f"mangled caller name was mutilated: {lifted!r} — the remap reads that name")
+    else:
+        remapped, ok = enclosing_user_method(lifted)
+        if not ok or remapped != "App.Service::Run":
+            failures.append(f"lambda caller remapped to {remapped!r}, expected 'App.Service::Run'")
+
+    return failures
+
+
 def main() -> int:
-    failures: list[str] = []
+    failures: list[str] = check_key_agreement()
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)

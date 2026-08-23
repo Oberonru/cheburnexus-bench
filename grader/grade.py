@@ -35,16 +35,36 @@ ENUMERATOR_PROTOCOL = frozenset({"GetEnumerator", "MoveNext", "get_Current", "Di
 COMPARABLE_OPS = frozenset({"call", "callvirt", "newobj", "ldftn"})
 
 
+def strip_generic_arguments(segment: str) -> str:
+    """Drop the closed generic arguments a compiler writes but a source reader never sees the same way.
+
+    IL names an instantiation: `Guard::NotNull<Polly.ResiliencePipelineBuilder>`, and a different one
+    for every type it is called with. A tool reading source sees one method, `Guard.NotNull`, and
+    would match none of them. Left in, this alone would collapse recall for every arm — on Polly it
+    is 1179 of 3103 callee edges, and distinct nodes fall by 39% once the arguments come off.
+
+    Arity stays (`Cache`1`), because an open and a closed generic type are genuinely different types.
+    A segment that *starts* with `<` is a compiler-mangled name (`<Run>d__1`, `<>c`), not a generic
+    instantiation, and is left exactly as it is — the caller remap depends on reading it.
+    """
+    if segment.startswith("<"):
+        return segment
+    head, sep, _ = segment.partition("<")
+    return head if sep else segment
+
+
 def method_key(raw: str) -> str | None:
     """Canonical `Namespace.Type::Method`, or None when the string is not a method reference."""
     match = _CECIL_FULLNAME.match(raw.strip())
     if not match:
         return None
-    type_name = match.group("type").strip()
-    method = match.group("method").strip()
-    # Cecil spells constructors `.ctor`; source-level tools usually spell them as the type name.
-    if method in (".ctor", ".cctor"):
-        method = ".ctor"
+
+    # Nested types are `Outer/Inner`; each part decides for itself whether it is a mangled name.
+    type_name = "/".join(strip_generic_arguments(part) for part in match.group("type").strip().split("/"))
+    method = strip_generic_arguments(match.group("method").strip())
+
+    # `.ctor` and `.cctor` are NOT the same method. An instance constructor runs per object, a static
+    # one runs once for the type, and merging them would let an arm score a hit on the wrong one.
     return f"{type_name}::{method}"
 
 
@@ -120,15 +140,17 @@ class Cell:
                     break
 
         true_positive = len(matched)
-        precision = true_positive / len(arm) if arm else 0.0
-        recall = true_positive / len(self.oracle) if self.oracle else 0.0
+        # An empty cell has nothing to measure. Printing 0.000 there would read as a failed cell
+        # rather than an absent one, and a reader cannot tell the two apart from the number alone.
+        precision = true_positive / len(arm) if arm else None
+        recall = true_positive / len(self.oracle) if self.oracle else None
         return {
             "cell": self.name,
             "oracle_edges": len(self.oracle),
             "arm_edges_in_cell": len(arm),
             "matched": true_positive,
-            "precision": round(precision, 4),
-            "recall": round(recall, 4),
+            "precision": None if precision is None else round(precision, 4),
+            "recall": None if recall is None else round(recall, 4),
         }
 
 
@@ -148,7 +170,7 @@ def load_oracle(path: str, first_party: set[str] | None) -> tuple[dict[str, Cell
     # arm loader so both sides drop the same edges: the arm cannot see a CompilerGeneratedAttribute,
     # only a mangled name, so without this list the two sides disagree and the grader manufactures
     # false positives out of its own asymmetry.
-    unremappable: set[str] = set()
+
 
     with open(path, encoding="utf-8") as handle:
         for line in handle:
@@ -166,7 +188,6 @@ def load_oracle(path: str, first_party: set[str] | None) -> tuple[dict[str, Cell
             caller, attributable = normalize_caller(caller)
             if not attributable:
                 stats["unremappable_caller"] += 1
-                unremappable.add(caller)
                 continue
             if row.get("NoDebugInfo"):
                 stats["no_source_anchor"] += 1
@@ -190,10 +211,10 @@ def load_oracle(path: str, first_party: set[str] | None) -> tuple[dict[str, Cell
             else:
                 cells["primary"].oracle.add(edge)
 
-    return cells, overrides, stats, unremappable
+    return cells, overrides, stats
 
 
-def load_arm(path: str, unremappable: set[str]) -> tuple[set[tuple[str, str]], int]:
+def load_arm(path: str) -> tuple[set[tuple[str, str]], int]:
     """Load an arm's edges under exactly the caller discipline the answer key uses.
 
     The two sides must drop the same things. An edge whose caller is compiler-generated and cannot
@@ -233,14 +254,14 @@ def main() -> int:
     args = parser.parse_args()
 
     first_party = set(args.first_party) if args.first_party else None
-    cells, overrides, stats, unremappable = load_oracle(args.oracle, first_party)
+    cells, overrides, stats = load_oracle(args.oracle, first_party)
 
     if args.overrides:
         with open(args.overrides, encoding="utf-8") as handle:
             raw = json.load(handle)
         overrides = {key: set(value) for key, value in raw.items()}
 
-    arm, arm_dropped = load_arm(args.arm, unremappable)
+    arm, arm_dropped = load_arm(args.arm)
 
     # Which cell does each callee belong to? Built from the answer key itself: every method the
     # compiler ever records a call to is classified once, and an arm's edge is judged in that same
@@ -272,8 +293,9 @@ def main() -> int:
     width = max(len(r["cell"]) for r in results)
     print(f"{'cell':<{width}}  {'oracle':>7} {'arm':>7} {'match':>7} {'prec':>7} {'recall':>7}")
     for r in results:
+        fmt = lambda v: "    n/a" if v is None else f"{v:7.3f}"
         print(f"{r['cell']:<{width}}  {r['oracle_edges']:>7} {r['arm_edges_in_cell']:>7} "
-              f"{r['matched']:>7} {r['precision']:>7.3f} {r['recall']:>7.3f}")
+              f"{r['matched']:>7} {fmt(r['precision'])} {fmt(r['recall'])}")
 
     print(f"\noracle rows read      : {stats['rows']}")
     print(f"caller not remappable : {stats['unremappable_caller']}  (counted for nobody)")
