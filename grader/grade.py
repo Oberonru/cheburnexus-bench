@@ -73,6 +73,24 @@ def enclosing_user_method(key: str) -> tuple[str, bool]:
     return key, False
 
 
+def normalize_caller(key: str) -> tuple[str, bool]:
+    """The caller rule, in the only form both sides can apply: from the name alone.
+
+    An arm sees names and nothing else — no attributes, no metadata. So the answer key must decide
+    by name too, or the two sides drop different edges and the grader charges its own asymmetry to
+    the arm. Source-generator output proved this the hard way: `<RegexGenerator_g>…/Runner` carries
+    no CompilerGeneratedAttribute on the nested method, so a flag-based rule kept it while a
+    name-based rule dropped it — 186 edges of disagreement on one repository.
+
+    Returns (key, attributable). Not attributable means the call site cannot be traced to a method a
+    human wrote, and the edge counts for nobody on either side.
+    """
+    remapped, ok = enclosing_user_method(key)
+    if ok:
+        return remapped, "<" not in remapped
+    return key, "<" not in key
+
+
 @dataclass
 class Cell:
     """One published number plus the material behind it."""
@@ -145,12 +163,11 @@ def load_oracle(path: str, first_party: set[str] | None) -> tuple[dict[str, Cell
             if caller is None or callee is None:
                 continue
 
-            if row.get("CallerCompilerGenerated"):
-                caller, remapped = enclosing_user_method(caller)
-                if not remapped:
-                    stats["unremappable_caller"] += 1
-                    unremappable.add(caller)
-                    continue
+            caller, attributable = normalize_caller(caller)
+            if not attributable:
+                stats["unremappable_caller"] += 1
+                unremappable.add(caller)
+                continue
             if row.get("NoDebugInfo"):
                 stats["no_source_anchor"] += 1
 
@@ -196,10 +213,8 @@ def load_arm(path: str, unremappable: set[str]) -> tuple[set[tuple[str, str]], i
             callee = method_key(row.get("callee") or row.get("Callee") or "")
             if caller is None or callee is None:
                 continue
-            original = caller
-            mangled = "<" in caller
-            caller, remapped = enclosing_user_method(caller)
-            if original in unremappable or (mangled and not remapped):
+            caller, attributable = normalize_caller(caller)
+            if not attributable:
                 dropped += 1
                 continue
             edges.add((caller, callee))
