@@ -62,6 +62,7 @@ internal static class Program
     private static int Main(string[] args)
     {
         string? outPath = null;
+        string? overridesPath = null;
         string? sourceRoot = null;
         var inputs = new List<string>();
 
@@ -71,6 +72,9 @@ internal static class Program
             {
                 case "--out" when i + 1 < args.Length:
                     outPath = args[++i];
+                    break;
+                case "--overrides" when i + 1 < args.Length:
+                    overridesPath = args[++i];
                     break;
                 case "--source-root" when i + 1 < args.Length:
                     sourceRoot = Path.GetFullPath(args[++i]);
@@ -109,6 +113,10 @@ internal static class Program
         long emitted = 0, withoutDebug = 0, compilerGenerated = 0;
         var assembliesRead = 0;
         var skipped = new List<string>();
+        // override full name -> the declarations it answers for. Raw Cecil names: the grader owns
+        // canonicalisation, and duplicating that rule here would give the two sides two chances to
+        // disagree about what a method is called.
+        var overrides = new SortedDictionary<string, SortedSet<string>>(StringComparer.Ordinal);
 
         foreach (var path in assemblies)
         {
@@ -156,6 +164,17 @@ internal static class Program
                 foreach (var type in AllTypes(module))
                 foreach (var method in type.Methods)
                 {
+                    if (overridesPath is not null)
+                    {
+                        foreach (var declared in DeclarationsOf(method, type))
+                        {
+                            if (declared.FullName == method.FullName) continue;
+                            if (!overrides.TryGetValue(method.FullName, out var targets))
+                                overrides[method.FullName] = targets = new SortedSet<string>(StringComparer.Ordinal);
+                            targets.Add(declared.FullName);
+                        }
+                    }
+
                     if (!method.HasBody) continue;
 
                     var callerGenerated = IsCompilerGenerated(method) || IsCompilerGenerated(type);
@@ -200,8 +219,90 @@ internal static class Program
         Console.Error.WriteLine($"  caller cgen   : {compilerGenerated} ({Percent(compilerGenerated, emitted)})");
         foreach (var s in skipped) Console.Error.WriteLine($"note: {s}");
 
+        if (overridesPath is not null)
+        {
+            File.WriteAllText(
+                overridesPath,
+                JsonSerializer.Serialize(
+                    overrides.ToDictionary(kv => kv.Key, kv => kv.Value.ToArray()),
+                    new JsonSerializerOptions { WriteIndented = true }),
+                new UTF8Encoding(false));
+            Console.Error.WriteLine($"override map    : {overrides.Count} methods -> {overrides.Sum(kv => kv.Value.Count)} declarations");
+        }
+
         fileOutput?.Dispose();
         return 0;
+    }
+
+    /// <summary>
+    /// Everything <paramref name="method"/> overrides or implements: the base-class virtual it
+    /// replaces, and every interface method it satisfies, explicitly or implicitly.
+    ///
+    /// IL names the DECLARED method at a call site, while a tool reading source frequently names an
+    /// implementation instead. Neither is wrong, so the grader needs to know which implementations
+    /// answer for which declaration. Without this map every virtual call an arm resolves to a
+    /// concrete type is scored as a miss, and the penalty lands hardest on the arms that resolve
+    /// best — the opposite of what the measurement is for.
+    ///
+    /// Signature matching is by name and parameter count. The grader's method key already drops
+    /// parameter types (see EDGE_FORMAT.md), so a stricter match here would only invent
+    /// disagreements the comparison cannot express.
+    /// </summary>
+    private static IEnumerable<MethodReference> DeclarationsOf(MethodDefinition method, TypeDefinition type)
+    {
+        if (!method.IsVirtual) yield break;
+
+        // Explicit interface implementations name their target outright — no guessing needed.
+        foreach (var explicitTarget in method.Overrides)
+            yield return explicitTarget;
+
+        // A base-class virtual this method replaces. IsNewSlot means it introduces a new one instead.
+        if (!method.IsNewSlot)
+        {
+            for (var current = SafeResolve(type.BaseType); current is not null; current = SafeResolve(current.BaseType))
+            {
+                var match = current.Methods.FirstOrDefault(m =>
+                    m.IsVirtual && m.Name == method.Name && m.Parameters.Count == method.Parameters.Count);
+                if (match is not null)
+                {
+                    yield return match;
+                    break;
+                }
+            }
+        }
+
+        // Implicit interface implementations: the method simply has the right name and shape. Walk
+        // base types too — a type inherits its parents' interface obligations.
+        for (var current = type; current is not null; current = SafeResolve(current.BaseType))
+        {
+            foreach (var implemented in current.Interfaces)
+            {
+                var contract = SafeResolve(implemented.InterfaceType);
+                if (contract is null) continue;
+
+                var match = contract.Methods.FirstOrDefault(m =>
+                    m.Name == method.Name && m.Parameters.Count == method.Parameters.Count);
+                if (match is not null)
+                    yield return match;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Resolution reaches outside the assemblies we were handed and fails there routinely. A failure
+    /// means one fewer entry in the map, never a wrong entry, so it is absorbed rather than raised.
+    /// </summary>
+    private static TypeDefinition? SafeResolve(TypeReference? reference)
+    {
+        if (reference is null) return null;
+        try
+        {
+            return reference.Resolve();
+        }
+        catch (AssemblyResolutionException)
+        {
+            return null;
+        }
     }
 
     /// <summary>
@@ -219,6 +320,7 @@ internal static class Program
             oracle-csharp — extract the compiler's own call edges from built assemblies.
 
               oracle-csharp <dll-or-directory>... [--source-root <path>] [--out <file.jsonl>]
+                            [--overrides <file.json>]
 
             Reads IL via Mono.Cecil and anchors each call site to a source line via the PDB.
             Emits one JSON object per call edge; judgement calls ride as flags, never as filters.

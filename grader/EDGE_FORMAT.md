@@ -46,8 +46,28 @@ IL names the *declared* method at a `callvirt` site; the runtime target may be a
 source-level tool often names an implementation instead. Neither is wrong.
 
 The grader therefore accepts an arm's edge when its callee is the declared method **or any override
-of it**, using the override map the oracle emits alongside the edges. The reduction runs on the arm
-side only; the oracle's row is never rewritten.
+of it**, using the override map the oracle emits alongside the edges (`--overrides`). It covers
+base-class virtuals, explicit interface implementations, and implicit ones — matched by name and
+parameter count, since the key drops parameter types anyway. The reduction runs on the arm side
+only; the oracle's row is never rewritten.
+
+An arm's edge is also *classified* by the declaration it answers for, not by the implementation it
+names. Otherwise a first-party class implementing `IDisposable` would drag a standard-library call
+into the primary cell and lose precision there — punishing the arm for resolving correctly.
+
+**Size of the effect, measured on the corpus** with a synthetic arm that names implementations
+everywhere: precision 0.759 → 0.943 and recall 0.884 → 0.998 on Serilog, 0.720 → 0.875 and
+0.858 → 0.995 on FluentValidation. Published without the map, a perfectly correct arm would have
+scored around 0.72–0.76 — indistinguishable from the tree-sitter tools this benchmark exists to
+tell apart.
+
+### Explicit interface implementations
+
+IL names them `Namespace.IContract<T>.Method`, and the key keeps that qualification (minus the
+generic arguments): `App.Box::System.Collections.Generic.IEnumerable.GetEnumerator`. An arm that
+reports the member as plain `GetEnumerator` will not match. This is a known limitation rather than
+a decision we are confident in; it is rare, and it is recorded here so a reader can see it instead
+of discovering it in a number.
 
 ## Calls written inside lambdas, iterators and async methods
 

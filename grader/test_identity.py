@@ -99,6 +99,9 @@ def check_key_agreement() -> list[str]:
          "T App.Guard::NotNull<App.Builder`1<System.String>>(T)", "App.Guard::NotNull"),
         ("plain method",
          "System.Void App.Service::Run()", "App.Service::Run"),
+        ("explicit interface implementation keeps its method name",
+         "T App.Box::System.Collections.Generic.IEnumerable<T>.GetEnumerator()",
+         "App.Box::System.Collections.Generic.IEnumerable.GetEnumerator"),
     ]
     differ = [
         ("instance vs static constructor",
@@ -124,6 +127,50 @@ def check_key_agreement() -> list[str]:
         if not ok or remapped != "App.Service::Run":
             failures.append(f"lambda caller remapped to {remapped!r}, expected 'App.Service::Run'")
 
+    return failures
+
+
+def check_override_map(tmp: Path) -> list[str]:
+    """An arm that resolves a virtual call to the implementation must not be scored as wrong.
+
+    IL names the declaration; a source-level tool often names the override. Without the map the
+    grader calls that a miss, and the penalty falls hardest on the arm that resolves best — the
+    exact opposite of what is being measured. On the real corpus the map moves precision from 0.759
+    to 0.943 and recall from 0.884 to 0.998, so it is not a rounding detail.
+    """
+    failures = []
+    oracle_rows = [
+        dict(Caller="System.Void App.Service::Run()", Callee="System.Void App.ISink::Emit()",
+             Op="callvirt", CalleeAssembly="App", VirtualDispatch=True,
+             CallerCompilerGenerated=False, CalleeCompilerGenerated=False, NoDebugInfo=False),
+    ]
+    oracle = tmp / "ovr-oracle.jsonl"
+    write(oracle, oracle_rows)
+
+    # The arm names the concrete sink, which is what reading the source tends to give you.
+    arm = tmp / "ovr-arm.jsonl"
+    write(arm, [dict(caller="App.Service::Run", callee="App.FileSink::Emit")])
+
+    mapping = tmp / "ovr-map.json"
+    mapping.write_text(json.dumps({"System.Void App.FileSink::Emit()": ["System.Void App.ISink::Emit()"]}),
+                       encoding="utf-8")
+
+    def grade(extra: list[str], out: str) -> dict:
+        result = subprocess.run(
+            [sys.executable, str(HERE / "grade.py"), "--oracle", str(oracle), "--arm", str(arm),
+             "--first-party", "App", "--json", str(tmp / out)] + extra,
+            capture_output=True, text=True, check=True)
+        return json.loads((tmp / out).read_text())
+
+    without = cell(grade([], "without.json"), "primary")
+    with_map = cell(grade(["--overrides", str(mapping)], "with.json"), "primary")
+
+    if without["recall"] not in (0.0, None):
+        failures.append(
+            f"without the map the implementation should not match, got recall={without['recall']}")
+    if with_map["recall"] != 1.0:
+        failures.append(
+            f"with the map the implementation must match its declaration, got recall={with_map['recall']}")
     return failures
 
 
@@ -153,6 +200,8 @@ def main() -> int:
         if primary["oracle_edges"] != 3:
             failures.append(
                 f"expected 3 primary edges (call, ctor, lambda-remapped), got {primary['oracle_edges']}")
+
+        failures += check_override_map(tmp)
 
         # 2. the test must be able to fail: a missing edge has to cost recall
         write(arm, [r for r in FIXTURE if "Load" not in r["Callee"]])

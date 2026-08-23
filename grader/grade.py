@@ -49,8 +49,20 @@ def strip_generic_arguments(segment: str) -> str:
     """
     if segment.startswith("<"):
         return segment
-    head, sep, _ = segment.partition("<")
-    return head if sep else segment
+
+    # Balanced removal, not a cut at the first `<`. An explicit interface implementation is named
+    # `System.Collections.Generic.IEnumerable<T>.GetEnumerator`, and cutting at the first bracket
+    # threw away the method name itself, leaving the interface behind as if it were the method.
+    out: list[str] = []
+    depth = 0
+    for char in segment:
+        if char == "<":
+            depth += 1
+        elif char == ">":
+            depth = max(0, depth - 1)
+        elif depth == 0:
+            out.append(char)
+    return "".join(out)
 
 
 def method_key(raw: str) -> str | None:
@@ -259,7 +271,18 @@ def main() -> int:
     if args.overrides:
         with open(args.overrides, encoding="utf-8") as handle:
             raw = json.load(handle)
-        overrides = {key: set(value) for key, value in raw.items()}
+        # The map arrives in raw compiler spelling, exactly like the edges do, and goes through the
+        # same key function. Canonicalising it anywhere else would give the two sides a second
+        # chance to disagree about what a method is called — the bug this grader already paid for.
+        overrides = defaultdict(set)
+        for override, declarations in raw.items():
+            key = method_key(override)
+            if key is None:
+                continue
+            for declaration in declarations:
+                declared_key = method_key(declaration)
+                if declared_key is not None and declared_key != key:
+                    overrides[key].add(declared_key)
 
     arm, arm_dropped = load_arm(args.arm)
 
@@ -277,6 +300,14 @@ def main() -> int:
         known = callee_cell.get(callee)
         if known is not None:
             return known
+        # An arm that named an implementation must be judged in the cell of the DECLARATION it
+        # answers for. Classifying by the implementation moves edges between cells: a first-party
+        # class implementing IDisposable would drag a standard-library call into the primary cell
+        # and count against precision there, punishing the arm precisely for resolving correctly.
+        for declared in overrides.get(callee, ()):
+            declared_cell = callee_cell.get(declared)
+            if declared_cell is not None:
+                return declared_cell
         method = callee.rpartition("::")[2]
         if method.startswith(("get_", "set_")):
             return "accessor"
