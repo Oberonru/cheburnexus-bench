@@ -215,3 +215,58 @@ version was needed.
 
 Reported in the run summary; venv + one scratch checkout + SQLite index per corpus repo, well
 under the 2 GB budget for these small repositories.
+
+---
+
+## Settled 2026-08-24: the namespace bug is THEIRS, and it counts
+
+The open question was whether `namespace_map.py` sits in repowise's live C# indexing path. If it did
+not, its wrong answers would be an artifact *we* created by calling a module their pipeline never
+calls, and charging that to them would be manufacturing a competitor error.
+
+**Traced in their source, and it is live.** The chain runs unconditionally inside the graph build:
+
+    graph/builder.py:516            self._resolve_csharp_same_namespace(ctx, progress=progress)
+      -> graph/_resolvers.py:189    resolve_csharp_same_namespace_refs(...)
+        -> languages/csharp_same_namespace.py:134,157
+             from ..resolvers.dotnet.namespace_map import scan_type_declarations, declared_namespaces
+
+Those are the exact two functions this arm calls. Not behind a flag, not a C#-only opt-in: it sits
+in the ordinary build sequence beside the JVM and Swift passes.
+
+**Reproduced independently**, calling their function on a corpus file rather than trusting a report:
+
+    corpus/serilog/src/Serilog/Guard.cs
+      1  using JetBrains.Annotations;
+      3  namespace JetBrains.Annotations {   ... }      <- block namespace, CLOSES on line 9
+     11  static class Guard                              <- global namespace
+
+    scan_type_declarations(text) -> [('NoEnumerationAttribute', 'JetBrains.Annotations'),
+                                     ('Guard',                  'JetBrains.Annotations')]
+
+`Guard` is in the global namespace. Their scanner does not track that the block namespace ended, so
+every type after a closed block inherits it. Their own docstring calls the pass a "conservative
+text-level scan", which is exactly what this is: a technique limit, not a slip.
+
+**Therefore: category (a). The error is theirs, it reaches their users, and it flows into the
+numbers uncorrected.** We do not fix it on their behalf, and we do not hide it either — it is
+recorded here so a reader can see which part of their column is their tool.
+
+What we *do* still correct for them, and must keep disclosing: the key format. Their stored
+`qualified_name` is derived from the file path, so a namespace-qualified key had to be rebuilt at
+all. Scoring them on a spelling they never claimed to produce would be a strawman.
+
+## What we could not key at all, per repository
+
+Edges dropped for want of a usable key — reported here as its own number, never folded into recall,
+because "we could not address 16% of their graph" is a finding about path-anchored node identity,
+while the same loss buried inside recall reads as "their tool misses calls". Different claims.
+
+| repository | their edges | keyed | dropped | share |
+|---|---:|---:|---:|---:|
+| FluentValidation | 1293 | 1087 | 206 | **15.9%** |
+| serilog | 1231 | 1101 | 130 | **10.6%** |
+| Polly | 5072 | 4759 | 313 | **6.2%** |
+
+Every drop is `dropped_no_class_segment`: their `node_id` carried no enclosing-type segment at all,
+so there is nothing to qualify. None were lost to a missing node or an unreadable file.
