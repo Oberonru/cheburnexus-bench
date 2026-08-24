@@ -9,3 +9,7 @@ __pycache__/
 *.pyc
 results/
 !results/published/
+.venv/
+.index/
+.work/
+.DS_Store
