@@ -104,6 +104,12 @@ internal static class Program
 
         // Only a file writer is owned here. Wrapping Console.Out in `using` would close the
         // process's own stdout on the way out, which breaks piping the rows into another tool.
+        // Create the directory rather than requiring a caller to have made it. The runner happened
+        // to create it first, which hid this until a test called the tool directly — a tool that
+        // only works when driven by one particular caller is not one an outsider can rerun.
+        EnsureDirectoryFor(outPath);
+        EnsureDirectoryFor(overridesPath);
+
         var fileOutput = outPath is null
             ? null
             : new StreamWriter(File.Create(outPath), new UTF8Encoding(false));
@@ -313,6 +319,13 @@ internal static class Program
         ex is SymbolsNotMatchingException
         or SymbolsNotFoundException
         || ex.GetType().Name.Contains("Symbol", StringComparison.Ordinal);
+
+    private static void EnsureDirectoryFor(string? path)
+    {
+        if (path is null) return;
+        var directory = Path.GetDirectoryName(Path.GetFullPath(path));
+        if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+    }
 
     private static void Usage()
     {

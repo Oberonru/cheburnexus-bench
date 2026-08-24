@@ -14,4 +14,12 @@
     <PackageReference Include="Mono.Cecil" Version="0.11.5" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The test fixture is a project of its own. Without this the SDK's default glob compiles it —
+         and its generated obj/ attributes — into the oracle, which fails the build outright. -->
+    <Compile Remove="testdata/**" />
+    <None Remove="testdata/**" />
+    <EmbeddedResource Remove="testdata/**" />
+  </ItemGroup>
+
 </Project>

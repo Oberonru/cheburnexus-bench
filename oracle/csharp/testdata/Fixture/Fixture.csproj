@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>OracleFixture</AssemblyName>
+    <RootNamespace>OracleFixture</RootNamespace>
+    <!-- A sibling .pdb is what the oracle anchors rows to; an embedded one would leave every row
+         without a source line and quietly turn this fixture into a test of nothing. -->
+    <DebugType>portable</DebugType>
+    <!-- Deterministic CI builds rewrite source paths to /_/, which breaks repo-relative anchoring. -->
+    <ContinuousIntegrationBuild>false</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+</Project>

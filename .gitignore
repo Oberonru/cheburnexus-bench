@@ -13,3 +13,5 @@ results/
 .index/
 .work/
 .DS_Store
+oracle/csharp/testdata/*/bin/
+oracle/csharp/testdata/*/obj/
