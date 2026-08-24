@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run every suite in the polygon, and say plainly which parts are covered.
 
-Five suites live in five directories next to the code they check. Without one entry point they get
+Six suites live in six directories next to the code they check. Without one entry point they get
 run one at a time and drift apart, which is how a harness ends up green in the places someone
 happened to look.
 """
@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parent
 
 SUITES = [
     ("oracle", "oracle/csharp/test_oracle.py", "the answer key: anchors, virtual dispatch, generated callers, no shrinkage"),
+    ("armkit", "arms/_lib/test_armkit.py", "shared with-tests/without-tests cell split, dotted test-suffix directories"),
     ("grader", "grader/test_identity.py", "neutrality, key agreement between forms, the override map"),
     ("harness", "runner/test_runner.py", "assembly selection, cell split, determinism, blocked, refused cells"),
     ("arm:grep", "arms/grep/test_grep.py", "caller attribution, cell exclusion, constructors, candidate fan-out"),

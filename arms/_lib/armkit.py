@@ -42,18 +42,35 @@ class Edge:
         return row
 
 
+def _is_test_dir_name(part: str) -> bool:
+    """True when one lowercased path segment names a test directory.
+
+    Two shapes count, both directory-naming conventions rather than anything file-specific:
+    the whole segment (`test/`, `spec/`), or its final dot-delimited component (a project folder
+    named `FluentValidation.Tests` or `FluentValidation.Tests.Benchmarks`, where the marker is a
+    dotted suffix on the project name rather than the whole directory name). A plain substring
+    check would also catch `Contest/` or `Latest/`, which are not test directories at all — this
+    only matches at a `.`-boundary or the start of the segment, never mid-word.
+    """
+    return part in TEST_DIR_MARKERS or part.rsplit(".", 1)[-1] in TEST_DIR_MARKERS
+
+
 def is_test_path(path: Path, repo_root: Path) -> bool:
     """True when a file belongs to the repository's tests.
 
     Judged on directory names rather than file names: `FooTests.cs` sitting in `src/` is production
     code that happens to be named awkwardly, while everything under `test/` is not. The rule is
     shared by every arm so that the two cells mean the same thing in all three columns.
+
+    2026-08-24: extended to also catch a dot-suffixed project directory name (`X.Tests`,
+    `X.Tests.Benchmarks`) alongside the original whole-segment match (`test/`) — see the
+    "Deviations" entry dated 2026-08-24 in `PREREGISTRATION-e1-csharp-edge-precision.md` for why.
     """
     try:
         relative = path.relative_to(repo_root)
     except ValueError:
         return False
-    return any(part.lower() in TEST_DIR_MARKERS for part in relative.parts[:-1])
+    return any(_is_test_dir_name(part.lower()) for part in relative.parts[:-1])
 
 
 def source_files(repo_root: Path, cell: str, suffix: str = ".cs") -> Iterator[Path]:
