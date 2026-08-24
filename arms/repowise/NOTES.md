@@ -270,3 +270,20 @@ while the same loss buried inside recall reads as "their tool misses calls". Dif
 
 Every drop is `dropped_no_class_segment`: their `node_id` carried no enclosing-type segment at all,
 so there is nothing to qualify. None were lost to a missing node or an unreadable file.
+
+### ⚠ Correction: this number is NOT all "their loss"
+
+Inspecting the nodes behind it (serilog, 634 `.cs` nodes with no type segment) shows three different
+things wired together, and only one of them is a gap in their graph:
+
+| what it is | count | whose problem |
+|---|---:|---|
+| `__module__` — the file itself as a node | 204 | nobody's. Not a method, so an edge touching it is not a method-to-method call and *should* be dropped |
+| a namespace as a node (`Serilog.Core`, `JetBrains.Annotations`) | many of the rest | nobody's, same reason |
+| a real method with no enclosing type recorded (`Write`, `ForContext` in `ILogger.cs`) | the remainder | **theirs** — the method exists, the type was not attached |
+
+So "we could not address 16% of their graph" overstates it: part of that share is edges that were
+never method calls to begin with. The honest claim is narrower — *some* of their symbol nodes lose
+the enclosing type, and until the counter is split by node kind we cannot say how many. Splitting
+`dropped_no_class_segment` into "endpoint was not a method" and "method without a type" is the fix,
+and it must land before any of these numbers is published.
