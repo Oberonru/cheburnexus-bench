@@ -91,3 +91,29 @@ Fixed in the pre-registration before any run. The primary metric counts an oracl
 Everything excluded is still counted and published as its own cell. On a calibration run these
 categories were ~90% of all IL edges, which is exactly why the boundary is written down in advance:
 moving it moves the denominator by roughly ten times.
+
+## What an arm could not resolve
+
+Precision and recall cannot separate two very different behaviours. A tool that **saw a call site
+and could not resolve the target**, and a tool that **never noticed the site**, lose the same recall
+point — but only one of them told the truth about its own limits.
+
+So an arm may write a sidecar next to its edges, `<edges>.jsonl.coverage.json`:
+
+```json
+{"is_exact": false, "reason": "unresolved_call_sites", "unresolved_call_sites": 412}
+```
+
+The runner prints it as its own **`declared`** column and never folds it into recall. A blank cell
+means the arm made no statement — which is not the same as having nothing unresolved.
+
+This exists because our engine already draws the distinction internally
+(`ArchitectureAnalyzer.Core/Model/CallGraphCoverage.cs`: `is_exact`, `reason`,
+`unresolved_call_sites`, `budget_exhausted`) and hands it to the model it serves, so that the model
+can decide what to do with a gap. The edge contract was discarding exactly that, which would have
+rendered a deliberately honest lower bound as an ordinary hole.
+
+⚠ **It is not a scoring adjustment.** A declared unresolved site earns no credit: an unmatched edge
+stays unmatched, and recall is computed exactly as before. All the column does is let a reader see
+whether a gap was admitted or concealed. It was added while our own column was still blank, so it
+cannot be a category invented to rescue a number — and any arm may fill it, including theirs.

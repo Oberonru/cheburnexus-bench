@@ -91,6 +91,49 @@ def write_edges(out_path: Path, edges: Iterable[Edge]) -> int:
     return len(unique)
 
 
+@dataclass(frozen=True)
+class Coverage:
+    """What the arm knows about the limits of its own answer.
+
+    Precision and recall alone cannot tell two very different behaviours apart. A tool that saw a
+    call site and could not resolve the target, and a tool that never noticed the site at all, both
+    score the same missing edge — yet only one of them told the truth about its own ignorance.
+
+    Our engine already draws this distinction internally (`CallGraphCoverage.cs`: `is_exact`,
+    `reason`, `unresolved_call_sites`, `budget_exhausted`), and the edge contract was throwing it
+    away. Reported as its own column, never folded into recall: a low recall that comes with a
+    declared unresolved count is a different claim from a low recall that comes with silence.
+
+    Declared here BEFORE our own arm has produced a single number, so that it cannot be mistaken
+    for a category invented to rescue a score.
+    """
+
+    is_exact: bool | None = None
+    reason: str = ""
+    unresolved_call_sites: int | None = None
+    budget_exhausted_sites: int | None = None
+    note: str = ""
+
+    def to_row(self) -> dict:
+        row: dict = {}
+        for key, value in (("is_exact", self.is_exact), ("reason", self.reason),
+                           ("unresolved_call_sites", self.unresolved_call_sites),
+                           ("budget_exhausted_sites", self.budget_exhausted_sites),
+                           ("note", self.note)):
+            if value not in (None, ""):
+                row[key] = value
+        return row
+
+
+def coverage_path(out_path: Path) -> Path:
+    """Where an arm's coverage sidecar lives: beside its edges, same stem."""
+    return out_path.with_suffix(out_path.suffix + ".coverage.json")
+
+
+def write_coverage(out_path: Path, coverage: Coverage) -> None:
+    coverage_path(out_path).write_text(json.dumps(coverage.to_row(), indent=2), encoding="utf-8")
+
+
 class Blocked(Exception):
     """The tool ran but refused to produce the data — a licence wall, a disabled feature.
 
@@ -134,7 +177,15 @@ def main(
         return 2
 
     try:
-        written = write_edges(args.out, collect(repo_root, args.cell))
+        produced = collect(repo_root, args.cell)
+        # An arm may hand back edges alone, or edges plus what it knows about its own blind spots.
+        if isinstance(produced, tuple):
+            edges, coverage = produced
+        else:
+            edges, coverage = produced, None
+        written = write_edges(args.out, edges)
+        if coverage is not None:
+            write_coverage(args.out, coverage)
     except Blocked as blocked:
         print(f"{name}: BLOCKED — {blocked}", file=sys.stderr)
         return EXIT_BLOCKED

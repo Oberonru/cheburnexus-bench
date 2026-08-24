@@ -39,6 +39,7 @@ class ArmRun:
     describe: dict = field(default_factory=dict)
     seconds: float | None = None
     note: str = ""
+    coverage: dict = field(default_factory=dict)
 
 
 def run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
@@ -160,7 +161,8 @@ def run_arm(name: str, checkout: Path, cell: str, out_dir: Path, repo_key: str) 
         (out_dir / "arm.stderr.txt").write_text(result.stderr, encoding="utf-8")
 
         if result.returncode == 0 and edges.is_file():
-            return ArmRun(name, describe.get("mode", "live"), edges, describe, seconds)
+            return ArmRun(name, describe.get("mode", "live"), edges, describe, seconds,
+                          coverage=read_coverage(edges))
 
         if result.returncode == BLOCKED_EXIT:
             # The tool ran and was refused. Reported as a gap, never as a zero: a published 0.000
@@ -185,6 +187,22 @@ def run_arm(name: str, checkout: Path, cell: str, out_dir: Path, repo_key: str) 
         return ArmRun(name, "replay", copied, {"name": name}, None, "replayed published rows")
 
     return ArmRun(name, "unavailable", None, {"name": name}, None, "no runner and no published rows")
+
+
+def read_coverage(edges: Path) -> dict:
+    """What the arm declared about its own blind spots, if anything.
+
+    An arm that says "I saw 400 call sites I could not resolve" and an arm that says nothing both
+    lose the same recall points. Only one of them is being honest about it, and a table that cannot
+    show the difference invites the reader to assume the worse of the two.
+    """
+    sidecar = Path(str(edges) + ".coverage.json")
+    if not sidecar.is_file():
+        return {}
+    try:
+        return json.loads(sidecar.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
 
 
 def grade(oracle: Path, overrides: Path, arm: ArmRun, first_party: list[str], out_dir: Path) -> dict | None:
@@ -244,7 +262,7 @@ def main() -> int:
             for cell in args.cells:
                 for arm_name in args.arms:
                     rows.append((repo_key, cell, arm_name, "no-checkout", None,
-                                 f"no checkout at {checkout} — clone it from corpus.json"))
+                                 f"no checkout at {checkout} — clone it from corpus.json", {}))
             continue
 
         for cell in args.cells:
@@ -253,7 +271,7 @@ def main() -> int:
                 built = build_oracle(entry, checkout, cell, cell_dir / "_oracle")
             except CellNotMeasurable as why:
                 for arm_name in args.arms:
-                    rows.append((repo_key, cell, arm_name, "not-measurable", None, str(why)))
+                    rows.append((repo_key, cell, arm_name, "not-measurable", None, str(why), {}))
                 continue
             if built is None:
                 # Never a quiet `continue`. A cell with no answer key must appear in the table as a
@@ -261,7 +279,7 @@ def main() -> int:
                 # one failure mode the whole polygon is built to avoid.
                 for arm_name in args.arms:
                     rows.append((repo_key, cell, arm_name, "no-oracle", None,
-                                 "no built assemblies matched target_framework_probed"))
+                                 "no built assemblies matched target_framework_probed", {}))
                 continue
             oracle, overrides, first_party = built
 
@@ -279,6 +297,7 @@ def main() -> int:
                     "mode": arm.mode,
                     "note": arm.note,
                     "seconds": arm.seconds,
+                    "coverage_declared_by_arm": arm.coverage,
                     "first_party": first_party,
                     "oracle_assemblies": [str(a.relative_to(checkout))
                                           for a in assemblies_for(entry, checkout, cell)],
@@ -287,16 +306,23 @@ def main() -> int:
                     "utc": stamp,
                 }, indent=2), encoding="utf-8")
 
-                rows.append((repo_key, cell, arm_name, arm.mode, primary(report), arm.note))
+                rows.append((repo_key, cell, arm_name, arm.mode, primary(report), arm.note,
+                             arm.coverage))
 
-    print(f"\n{'repo':<18}{'cell':<15}{'arm':<14}{'mode':<12}{'prec':>8}{'recall':>8}   note")
-    for repo_key, cell, arm_name, mode, cellrow, note in rows:
+    print(f"\n{'repo':<18}{'cell':<15}{'arm':<14}{'mode':<12}{'prec':>8}{'recall':>8}"
+          f"{'declared':>10}   note")
+    for repo_key, cell, arm_name, mode, cellrow, note, coverage in rows:
+        # "declared" is what the arm itself admitted it could not resolve. Blank means the arm made
+        # no such statement — which is not the same as having nothing unresolved.
+        unresolved = coverage.get("unresolved_call_sites")
+        declared = "—" if unresolved is None else str(unresolved)
         if cellrow is None:
-            print(f"{repo_key:<18}{cell:<15}{arm_name:<14}{mode:<12}{'—':>8}{'—':>8}   {note}")
+            print(f"{repo_key:<18}{cell:<15}{arm_name:<14}{mode:<12}{'—':>8}{'—':>8}"
+                  f"{declared:>10}   {note}")
             continue
         fmt = lambda v: "  n/a" if v is None else f"{v:8.3f}"
         print(f"{repo_key:<18}{cell:<15}{arm_name:<14}{mode:<12}"
-              f"{fmt(cellrow['precision'])}{fmt(cellrow['recall'])}   {note}")
+              f"{fmt(cellrow['precision'])}{fmt(cellrow['recall'])}{declared:>10}   {note}")
 
     print(f"\nresults: {out_root}")
     print("A `replay` row was NOT executed here — it regrades published rows. See arms/ARCHITECTURE.md.")
