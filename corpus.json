@@ -1,143 +1,169 @@
 [
-  {
-    "name": "serilog/serilog",
-    "url": "https://github.com/serilog/serilog.git",
-    "pinned_ref": "tag v2234 (not tip-of-main; see note)",
-    "note": "Tip of main (commit 49b5339, 2026-07-31) requires the unreleased .NET 10 SDK: global.json pins sdk.version=10.0.100 and src/Serilog/Serilog.csproj multi-targets net10.0, and LogContext.cs uses the C# 13 'params collections' preview feature, which errors under our installed SDK 8.0.421 even after stripping net10.0/net9.0 from TargetFrameworks. Fell back to the latest published release tag, v2234, which targets net8.0;net6.0;netstandard2.0 and needs no source/config changes.",
-    "sha": "4c9a312bc72e335897553472d0a2e91819bc51b1",
-    "commit_date": "2024-09-29T07:21:01+10:00",
-    "clone_date_utc": "2026-08-23T15:22:10Z",
-    "license": "Apache-2.0",
-    "license_file": "LICENSE",
-    "build_command": "dotnet build src/Serilog/Serilog.csproj -c Release",
-    "build_modifications": "none (global.json in this tag already pins sdk 8.0.100 with rollForward=latestFeature)",
-    "target_frameworks_produced": ["net8.0", "net6.0", "netstandard2.0"],
-    "target_framework_probed": "net8.0",
-    "product_assemblies": [
-      "src/Serilog/bin/Release/net8.0/Serilog.dll",
-      "src/Serilog/bin/Release/net6.0/Serilog.dll",
-      "src/Serilog/bin/Release/netstandard2.0/Serilog.dll"
-    ],
-    "product_projects": ["src/Serilog/Serilog.csproj"],
-    "test_assemblies": [
-      "test/Serilog.Tests/Serilog.Tests.csproj",
-      "test/Serilog.ApprovalTests/Serilog.ApprovalTests.csproj",
-      "test/Serilog.PerformanceTests/Serilog.PerformanceTests.csproj",
-      "test/TestDummies/TestDummies.csproj (test helper, not itself a suite)",
-      "test/AotTestApp/AotTestApp.csproj (AOT smoke-test app, not itself a suite)"
-    ],
-    "test_detection_rule": "projects living under top-level test/ directory; the actual assertion suites (Serilog.Tests, Serilog.ApprovalTests, Serilog.PerformanceTests) reference Microsoft.NET.Test.Sdk/xunit; product code lives only under src/Serilog",
-    "sizes": {
-      "checkout_disk": "5.9M",
-      "build_output_disk_net8.0_project": "1.7M",
-      "cs_file_count_src_only": 204,
-      "loc_src_only": 23639
-    },
-    "oracle_probe": {
-      "dll": "src/Serilog/bin/Release/net8.0/Serilog.dll",
-      "edges": 3138,
-      "no_debug_pct": 6.1,
-      "caller_cgen_pct": 16.3,
-      "spot_check_rows_verified": 3,
-      "spot_check_notes": "Guard.cs:20 and ILogger.cs:53 both verified to contain the exact call sites reported"
-    }
+ {
+  "name": "serilog/serilog",
+  "url": "https://github.com/serilog/serilog.git",
+  "pinned_ref": "tag v2234 (not tip-of-main; see note)",
+  "note": "Tip of main (commit 49b5339, 2026-07-31) requires the unreleased .NET 10 SDK: global.json pins sdk.version=10.0.100 and src/Serilog/Serilog.csproj multi-targets net10.0, and LogContext.cs uses the C# 13 'params collections' preview feature, which errors under our installed SDK 8.0.421 even after stripping net10.0/net9.0 from TargetFrameworks. Fell back to the latest published release tag, v2234, which targets net8.0;net6.0;netstandard2.0 and needs no source/config changes.",
+  "sha": "4c9a312bc72e335897553472d0a2e91819bc51b1",
+  "commit_date": "2024-09-29T07:21:01+10:00",
+  "clone_date_utc": "2026-08-23T15:22:10Z",
+  "license": "Apache-2.0",
+  "license_file": "LICENSE",
+  "build_command": "dotnet build src/Serilog/Serilog.csproj -c Release",
+  "build_modifications": "none (global.json in this tag already pins sdk 8.0.100 with rollForward=latestFeature)",
+  "target_frameworks_produced": [
+   "net8.0",
+   "net6.0",
+   "netstandard2.0"
+  ],
+  "target_framework_probed": "net8.0",
+  "product_assemblies": [
+   "src/Serilog/bin/Release/net8.0/Serilog.dll",
+   "src/Serilog/bin/Release/net6.0/Serilog.dll",
+   "src/Serilog/bin/Release/netstandard2.0/Serilog.dll"
+  ],
+  "product_projects": [
+   "src/Serilog/Serilog.csproj"
+  ],
+  "test_assemblies": [
+   "test/Serilog.ApprovalTests/bin/Release/net8.0/Serilog.ApprovalTests.dll",
+   "test/Serilog.Tests/bin/Release/net8.0/Serilog.Tests.dll"
+  ],
+  "test_detection_rule": "projects living under top-level test/ directory; the actual assertion suites (Serilog.Tests, Serilog.ApprovalTests, Serilog.PerformanceTests) reference Microsoft.NET.Test.Sdk/xunit; product code lives only under src/Serilog",
+  "sizes": {
+   "checkout_disk": "5.9M",
+   "build_output_disk_net8.0_project": "1.7M",
+   "cs_file_count_src_only": 204,
+   "loc_src_only": 23639
   },
-  {
-    "name": "App-vNext/Polly",
-    "url": "https://github.com/App-vNext/Polly.git",
-    "pinned_ref": "main HEAD at clone time",
-    "sha": "173d6d1d2e28a4697f1ac1d22da68f77ff19a0c9",
-    "commit_date": "2026-08-21T17:09:52Z",
-    "clone_date_utc": "2026-08-23T15:24:00Z",
-    "license": "BSD-3-Clause",
-    "license_file": "LICENSE",
-    "build_command": "dotnet build src/Polly.Core/Polly.Core.csproj -c Release",
-    "build_modifications": "global.json sdk.version changed from 10.0.400 (unavailable) to 8.0.100 with rollForward=latestFeature added, so the local SDK 8.0.421 is selected. No csproj/source changes.",
-    "build_caveat": "The legacy src/Polly/Polly.csproj (the older, pre-Polly.Core API surface) does NOT build under our SDK: Context.Dictionary.cs uses the C# 13 'field' keyword (auto-property backing field access), which requires the .NET 10 SDK/compiler. This project was excluded from the corpus; Polly.Core (the actively developed, modern API) and its satellite packages (Polly.Extensions, Polly.RateLimiting, Polly.Testing) all build cleanly and were probed/verified.",
-    "target_frameworks_produced": ["net8.0", "net6.0", "netstandard2.0", "net472", "net462"],
-    "target_framework_probed": "net8.0",
-    "product_assemblies": [
-      "artifacts/bin/Polly.Core/release_net8.0/Polly.Core.dll",
-      "artifacts/bin/Polly.Extensions/release_net8.0/Polly.Extensions.dll",
-      "artifacts/bin/Polly.RateLimiting/release_net8.0/Polly.RateLimiting.dll",
-      "artifacts/bin/Polly.Testing/release_net8.0/Polly.Testing.dll"
-    ],
-    "product_assemblies_excluded": [
-      "artifacts/bin/Polly/release_net6.0/Polly.dll (legacy API, does not build under SDK 8 — see build_caveat)"
-    ],
-    "product_projects": [
-      "src/Polly.Core/Polly.Core.csproj",
-      "src/Polly.Extensions/Polly.Extensions.csproj",
-      "src/Polly.RateLimiting/Polly.RateLimiting.csproj",
-      "src/Polly.Testing/Polly.Testing.csproj"
-    ],
-    "test_assemblies": [
-      "test/Polly.Core.Tests/Polly.Core.Tests.csproj",
-      "test/Polly.Extensions.Tests/Polly.Extensions.Tests.csproj",
-      "test/Polly.RateLimiting.Tests/Polly.RateLimiting.Tests.csproj",
-      "test/Polly.Specs/Polly.Specs.csproj",
-      "test/Polly.Testing.Tests/Polly.Testing.Tests.csproj",
-      "test/Polly.TestUtils/Polly.TestUtils.csproj (test helper, not itself a suite)",
-      "test/Polly.AotTest/Polly.AotTest.csproj (AOT smoke-test app)"
-    ],
-    "test_detection_rule": "projects living under top-level test/ directory, and each test csproj sets <ProjectType>Test</ProjectType>; naming suffix .Tests/.Specs; product code lives only under src/",
-    "sizes": {
-      "checkout_disk": "33M",
-      "build_output_disk_all_projects": "12M",
-      "cs_file_count_src_all_projects": 416,
-      "loc_src_all_projects": 39008,
-      "cs_file_count_polly_core_only": 174,
-      "loc_polly_core_only": 9742
-    },
-    "oracle_probe": {
-      "dll": "artifacts/bin/Polly.Core/release_net8.0/Polly.Core.dll",
-      "edges": 3611,
-      "no_debug_pct": 21.1,
-      "caller_cgen_pct": 52.3,
-      "spot_check_rows_verified": 3,
-      "spot_check_notes": "CircuitBreakerResiliencePipelineBuilderExtensions.cs:68, PredicateBuilder.Operators.cs:42, ResiliencePipeline.Async.cs:101 all verified"
-    }
+  "oracle_probe": {
+   "dll": "src/Serilog/bin/Release/net8.0/Serilog.dll",
+   "edges": 3138,
+   "no_debug_pct": 6.1,
+   "caller_cgen_pct": 16.3,
+   "spot_check_rows_verified": 3,
+   "spot_check_notes": "Guard.cs:20 and ILogger.cs:53 both verified to contain the exact call sites reported"
   },
-  {
-    "name": "FluentValidation/FluentValidation",
-    "url": "https://github.com/FluentValidation/FluentValidation.git",
-    "pinned_ref": "main HEAD at clone time",
-    "sha": "daa00b795450881c233253488e3ddeb362f59f56",
-    "commit_date": "2026-08-12T13:15:34+01:00",
-    "clone_date_utc": "2026-08-23T15:27:00Z",
-    "license": "Apache-2.0",
-    "license_file": "License.txt",
-    "build_command": "dotnet build src/FluentValidation/FluentValidation.csproj -c Release -p:DebugType=portable -p:ContinuousIntegrationBuild=false",
-    "build_modifications": "global.json sdk.version changed from 10.0.0 (unavailable) to 8.0.100 (rollForward=latestFeature already present). Two MSBuild property overrides were required at build time, NOT source edits: (1) -p:DebugType=portable — Directory.Build.props sets <DebugType>embedded</DebugType>, which embeds the PDB inside the DLL with no sibling .pdb file at all, so the oracle tool (which reads a separate .pdb) saw 100% no-debug-info until this was overridden; (2) -p:ContinuousIntegrationBuild=false — the csproj sets ContinuousIntegrationBuild=true for Release config, which triggers deterministic source-path remapping so the PDB's CallerFile values are prefixed '/_/' instead of being the real repo-relative path; overriding this makes CallerFile values resolve directly against the repo root.",
-    "build_caveat": "About 5.3% of edges with a non-null CallerFile point into src/FluentValidation/obj/.../System.Text.RegularExpressions.Generator/RegexGenerator.g.cs — a Regex source-generator's virtual output file. The PDB records this path but the generator does not persist it to disk (EmitCompilerGeneratedFiles is off), so those specific rows will not resolve to a real file even though NoDebugInfo=false for them. This is a legitimate generated-code category, not a broken build; spot-checks were done on genuine first-party rows instead.",
-    "target_frameworks_produced": ["net8.0"],
-    "target_framework_probed": "net8.0",
-    "product_assemblies": [
-      "src/FluentValidation/bin/Release/net8.0/FluentValidation.dll",
-      "src/FluentValidation.DependencyInjectionExtensions/bin/Release/net8.0/FluentValidation.DependencyInjectionExtensions.dll"
-    ],
-    "product_projects": [
-      "src/FluentValidation/FluentValidation.csproj",
-      "src/FluentValidation.DependencyInjectionExtensions/FluentValidation.DependencyInjectionExtensions.csproj"
-    ],
-    "test_assemblies": [
-      "src/FluentValidation.Tests/FluentValidation.Tests.csproj",
-      "src/FluentValidation.Tests.Benchmarks/FluentValidation.Tests.Benchmarks.csproj"
-    ],
-    "test_detection_rule": "naming suffix .Tests / .Tests.Benchmarks; FluentValidation.Tests.csproj references Microsoft.NET.Test.Sdk + xunit; all product and test projects live side by side under src/, distinguished by name only (no separate test/ directory)",
-    "sizes": {
-      "checkout_disk": "5.4M",
-      "build_output_disk_both_product_projects": "1.6M",
-      "cs_file_count_FluentValidation_only": 141,
-      "loc_FluentValidation_only": 13328
-    },
-    "oracle_probe": {
-      "dll": "src/FluentValidation/bin/Release/net8.0/FluentValidation.dll",
-      "edges": 6262,
-      "no_debug_pct": 8.0,
-      "caller_cgen_pct": 17.7,
-      "spot_check_rows_verified": 3,
-      "spot_check_notes": "AbstractValidator.cs:80, AbstractValidator.cs:226, AssemblyScanner.cs:72 all verified"
-    }
-  }
+  "test_assemblies_projects": [
+   "test/Serilog.Tests/Serilog.Tests.csproj",
+   "test/Serilog.ApprovalTests/Serilog.ApprovalTests.csproj",
+   "test/Serilog.PerformanceTests/Serilog.PerformanceTests.csproj",
+   "test/TestDummies/TestDummies.csproj (test helper, not itself a suite)",
+   "test/AotTestApp/AotTestApp.csproj (AOT smoke-test app, not itself a suite)"
+  ],
+  "test_assemblies_note": "Built assemblies, not project files. The pin originally listed .csproj paths here, which the runner could never treat as an answer-key input — the with-tests cell was refused for all three repositories until this was corrected on 2026-08-24.",
+  "with_tests_cell": "available: test assemblies built with the pinned SDK"
+ },
+ {
+  "name": "App-vNext/Polly",
+  "url": "https://github.com/App-vNext/Polly.git",
+  "pinned_ref": "main HEAD at clone time",
+  "sha": "173d6d1d2e28a4697f1ac1d22da68f77ff19a0c9",
+  "commit_date": "2026-08-21T17:09:52Z",
+  "clone_date_utc": "2026-08-23T15:24:00Z",
+  "license": "BSD-3-Clause",
+  "license_file": "LICENSE",
+  "build_command": "dotnet build src/Polly.Core/Polly.Core.csproj -c Release",
+  "build_modifications": "global.json sdk.version changed from 10.0.400 (unavailable) to 8.0.100 with rollForward=latestFeature added, so the local SDK 8.0.421 is selected. No csproj/source changes.",
+  "build_caveat": "The legacy src/Polly/Polly.csproj (the older, pre-Polly.Core API surface) does NOT build under our SDK: Context.Dictionary.cs uses the C# 13 'field' keyword (auto-property backing field access), which requires the .NET 10 SDK/compiler. This project was excluded from the corpus; Polly.Core (the actively developed, modern API) and its satellite packages (Polly.Extensions, Polly.RateLimiting, Polly.Testing) all build cleanly and were probed/verified.",
+  "target_frameworks_produced": [
+   "net8.0",
+   "net6.0",
+   "netstandard2.0",
+   "net472",
+   "net462"
+  ],
+  "target_framework_probed": "net8.0",
+  "product_assemblies": [
+   "artifacts/bin/Polly.Core/release_net8.0/Polly.Core.dll",
+   "artifacts/bin/Polly.Extensions/release_net8.0/Polly.Extensions.dll",
+   "artifacts/bin/Polly.RateLimiting/release_net8.0/Polly.RateLimiting.dll",
+   "artifacts/bin/Polly.Testing/release_net8.0/Polly.Testing.dll"
+  ],
+  "product_assemblies_excluded": [
+   "artifacts/bin/Polly/release_net6.0/Polly.dll (legacy API, does not build under SDK 8 — see build_caveat)"
+  ],
+  "product_projects": [
+   "src/Polly.Core/Polly.Core.csproj",
+   "src/Polly.Extensions/Polly.Extensions.csproj",
+   "src/Polly.RateLimiting/Polly.RateLimiting.csproj",
+   "src/Polly.Testing/Polly.Testing.csproj"
+  ],
+  "test_assemblies": [],
+  "test_detection_rule": "projects living under top-level test/ directory, and each test csproj sets <ProjectType>Test</ProjectType>; naming suffix .Tests/.Specs; product code lives only under src/",
+  "sizes": {
+   "checkout_disk": "33M",
+   "build_output_disk_all_projects": "12M",
+   "cs_file_count_src_all_projects": 416,
+   "loc_src_all_projects": 39008,
+   "cs_file_count_polly_core_only": 174,
+   "loc_polly_core_only": 9742
+  },
+  "oracle_probe": {
+   "dll": "artifacts/bin/Polly.Core/release_net8.0/Polly.Core.dll",
+   "edges": 3611,
+   "no_debug_pct": 21.1,
+   "caller_cgen_pct": 52.3,
+   "spot_check_rows_verified": 3,
+   "spot_check_notes": "CircuitBreakerResiliencePipelineBuilderExtensions.cs:68, PredicateBuilder.Operators.cs:42, ResiliencePipeline.Async.cs:101 all verified"
+  },
+  "test_assemblies_projects": [
+   "test/Polly.Core.Tests/Polly.Core.Tests.csproj",
+   "test/Polly.Extensions.Tests/Polly.Extensions.Tests.csproj",
+   "test/Polly.RateLimiting.Tests/Polly.RateLimiting.Tests.csproj",
+   "test/Polly.Specs/Polly.Specs.csproj",
+   "test/Polly.Testing.Tests/Polly.Testing.Tests.csproj",
+   "test/Polly.TestUtils/Polly.TestUtils.csproj (test helper, not itself a suite)",
+   "test/Polly.AotTest/Polly.AotTest.csproj (AOT smoke-test app)"
+  ],
+  "test_assemblies_note": "Built assemblies, not project files. The pin originally listed .csproj paths here, which the runner could never treat as an answer-key input — the with-tests cell was refused for all three repositories until this was corrected on 2026-08-24.",
+  "with_tests_cell": "unavailable: the test projects target net10.0 and do not build on the pinned SDK 8.0.421 (NETSDK1045). Recorded rather than silently skipped — the cell is missing, not zero."
+ },
+ {
+  "name": "FluentValidation/FluentValidation",
+  "url": "https://github.com/FluentValidation/FluentValidation.git",
+  "pinned_ref": "main HEAD at clone time",
+  "sha": "daa00b795450881c233253488e3ddeb362f59f56",
+  "commit_date": "2026-08-12T13:15:34+01:00",
+  "clone_date_utc": "2026-08-23T15:27:00Z",
+  "license": "Apache-2.0",
+  "license_file": "License.txt",
+  "build_command": "dotnet build src/FluentValidation/FluentValidation.csproj -c Release -p:DebugType=portable -p:ContinuousIntegrationBuild=false",
+  "build_modifications": "global.json sdk.version changed from 10.0.0 (unavailable) to 8.0.100 (rollForward=latestFeature already present). Two MSBuild property overrides were required at build time, NOT source edits: (1) -p:DebugType=portable — Directory.Build.props sets <DebugType>embedded</DebugType>, which embeds the PDB inside the DLL with no sibling .pdb file at all, so the oracle tool (which reads a separate .pdb) saw 100% no-debug-info until this was overridden; (2) -p:ContinuousIntegrationBuild=false — the csproj sets ContinuousIntegrationBuild=true for Release config, which triggers deterministic source-path remapping so the PDB's CallerFile values are prefixed '/_/' instead of being the real repo-relative path; overriding this makes CallerFile values resolve directly against the repo root.",
+  "build_caveat": "About 5.3% of edges with a non-null CallerFile point into src/FluentValidation/obj/.../System.Text.RegularExpressions.Generator/RegexGenerator.g.cs — a Regex source-generator's virtual output file. The PDB records this path but the generator does not persist it to disk (EmitCompilerGeneratedFiles is off), so those specific rows will not resolve to a real file even though NoDebugInfo=false for them. This is a legitimate generated-code category, not a broken build; spot-checks were done on genuine first-party rows instead.",
+  "target_frameworks_produced": [
+   "net8.0"
+  ],
+  "target_framework_probed": "net8.0",
+  "product_assemblies": [
+   "src/FluentValidation/bin/Release/net8.0/FluentValidation.dll",
+   "src/FluentValidation.DependencyInjectionExtensions/bin/Release/net8.0/FluentValidation.DependencyInjectionExtensions.dll"
+  ],
+  "product_projects": [
+   "src/FluentValidation/FluentValidation.csproj",
+   "src/FluentValidation.DependencyInjectionExtensions/FluentValidation.DependencyInjectionExtensions.csproj"
+  ],
+  "test_assemblies": [],
+  "test_detection_rule": "naming suffix .Tests / .Tests.Benchmarks; FluentValidation.Tests.csproj references Microsoft.NET.Test.Sdk + xunit; all product and test projects live side by side under src/, distinguished by name only (no separate test/ directory)",
+  "sizes": {
+   "checkout_disk": "5.4M",
+   "build_output_disk_both_product_projects": "1.6M",
+   "cs_file_count_FluentValidation_only": 141,
+   "loc_FluentValidation_only": 13328
+  },
+  "oracle_probe": {
+   "dll": "src/FluentValidation/bin/Release/net8.0/FluentValidation.dll",
+   "edges": 6262,
+   "no_debug_pct": 8.0,
+   "caller_cgen_pct": 17.7,
+   "spot_check_rows_verified": 3,
+   "spot_check_notes": "AbstractValidator.cs:80, AbstractValidator.cs:226, AssemblyScanner.cs:72 all verified"
+  },
+  "test_assemblies_projects": [
+   "src/FluentValidation.Tests/FluentValidation.Tests.csproj",
+   "src/FluentValidation.Tests.Benchmarks/FluentValidation.Tests.Benchmarks.csproj"
+  ],
+  "test_assemblies_note": "Built assemblies, not project files. The pin originally listed .csproj paths here, which the runner could never treat as an answer-key input — the with-tests cell was refused for all three repositories until this was corrected on 2026-08-24.",
+  "with_tests_cell": "unavailable: the test projects target net10.0 and do not build on the pinned SDK 8.0.421 (NETSDK1045). Recorded rather than silently skipped — the cell is missing, not zero."
+ }
 ]
