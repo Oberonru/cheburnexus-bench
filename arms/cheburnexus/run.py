@@ -27,8 +27,10 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Iterable, Iterator
 
@@ -226,34 +228,88 @@ def _discover_csproj(repo_root: Path) -> tuple[list[Path], list[Path]]:
 
 _NO_SOURCES_MARKER = "No in-scope C# sources found"
 
+# Filesystem mtime resolution/clock-skew slack for the freshness check below. Generous on purpose —
+# this check exists as a belt-and-braces backstop to _reset_work_dir(), not as the primary defence,
+# so a false "stale" verdict caused by a coarse filesystem clock would be worse than a slightly loose
+# window.
+_MTIME_SLOP_SECONDS = 2.0
+
+
+def _reset_work_dir(out_dir: Path) -> None:
+    """Destroy and recreate exactly this per-(repo, cell, project) scratch directory before the
+    engine writes into it, so a previous run's artifacts can never be mistaken for this run's own.
+
+    Defect #9 (2026-08-24): this directory was never cleaned between runs. A three-day-old
+    architecture.calls.json from a prior run sat here, and when the engine refused this run (exit
+    2, wrote nothing) the arm read that stale file and reported it as today's result.
+
+    Scoped to the literal path the caller is about to write into — never WORK_ROOT itself, never
+    anything above it — checked here rather than trusted, so a future refactor that passes a wrong
+    (too broad) path fails loudly instead of deleting more than one project's scratch space.
+    """
+    resolved = out_dir.resolve()
+    work_root = WORK_ROOT.resolve()
+    if resolved == work_root or work_root not in resolved.parents:
+        raise RuntimeError(f"refusing to clean {resolved} — not a path strictly inside {work_root}")
+    if resolved.is_dir():
+        shutil.rmtree(resolved)
+    resolved.mkdir(parents=True, exist_ok=True)
+
 
 def _invoke(engine: Path, args: list[str], out_dir: Path, tag: str) -> dict:
     """Run one engine invocation, capture its streams under out_dir/<tag>.*, and report what
-    happened — never what it means; the caller decides."""
+    happened — never what it means; the caller decides.
+
+    "Happened" means three things, all defect #9 fixes: the exit code (a non-zero exit is never
+    "ok", regardless of what files happen to be sitting in out_dir), and — belt-and-braces, in case
+    _reset_work_dir() was skipped, defeated by a partial write, or a future refactor drops it — the
+    mtime of anything read back, which must be no older than the moment THIS invocation started.
+    """
     arch = out_dir / "architecture.json"
+    invoked_at = time.time()
     try:
         proc = subprocess.run(
             [str(engine), *args, "--output", str(arch)],
             capture_output=True, text=True, timeout=600,
         )
     except subprocess.TimeoutExpired:
-        return {"ok": False, "reason": "engine timed out after 600s"}
+        return {"ok": False, "reason": "engine timed out after 600s", "returncode": None, "stderr": ""}
 
     (out_dir / f"{tag}.stdout.txt").write_text(proc.stdout, encoding="utf-8")
     (out_dir / f"{tag}.stderr.txt").write_text(proc.stderr, encoding="utf-8")
 
-    if not arch.is_file():
+    def _fresh(path: Path) -> bool:
+        try:
+            return path.is_file() and path.stat().st_mtime >= invoked_at - _MTIME_SLOP_SECONDS
+        except OSError:
+            return False
+
+    def _tail_reason() -> str:
         tail = [line for line in (proc.stdout + "\n" + proc.stderr).splitlines() if line.strip()]
-        reason = tail[-1] if tail else f"exit {proc.returncode}, no output and no message"
-        return {"ok": False, "reason": reason}
+        return tail[-1] if tail else f"exit {proc.returncode}, no output and no message"
+
+    if proc.returncode != 0:
+        return {"ok": False, "reason": f"exit {proc.returncode}: {_tail_reason()}",
+                "returncode": proc.returncode, "stderr": proc.stderr}
+
+    if not _fresh(arch):
+        if arch.is_file():
+            reason = (f"exit 0, but {arch.name} predates this invocation by more than "
+                      f"{_MTIME_SLOP_SECONDS}s — a stale artifact from a previous run, not this "
+                      f"run's output; treating it as absent")
+        else:
+            reason = f"exit 0: {_tail_reason()}"
+        return {"ok": False, "reason": reason, "returncode": proc.returncode, "stderr": proc.stderr}
 
     calls = out_dir / "architecture.calls.json"
     counts = out_dir / "architecture.calls-counts.json"
     return {
         "ok": True,
         "arch": arch,
-        "calls": calls if calls.is_file() else None,
-        "counts": counts if counts.is_file() else None,
+        "calls": calls if _fresh(calls) else None,
+        "counts": counts if _fresh(counts) else None,
+        "returncode": proc.returncode,
+        "stderr": proc.stderr,
     }
 
 
@@ -274,7 +330,7 @@ def _run_engine(engine: Path, csproj: Path, out_dir: Path) -> dict:
     correctness guardrail ("without restore the call graph would be silently incomplete"), and
     silently downgrading to syntactic mode there would defeat it, not work around a discovery bug.
     """
-    out_dir.mkdir(parents=True, exist_ok=True)
+    _reset_work_dir(out_dir)  # defect #9: must happen once, before ANY invocation writes here
     result = _invoke(engine, ["--solution", str(csproj)], out_dir, "solution")
     if result["ok"] or _NO_SOURCES_MARKER not in result.get("reason", ""):
         result["mode_used"] = "solution"
@@ -303,18 +359,24 @@ def collect(repo_root: Path, cell: str) -> Iterable[armkit.Edge]:
 
     scratch = WORK_ROOT / repo_root.name / cell
     edges: list[armkit.Edge] = []
-    successes = 0
-    wall_hit = False
+    # Defect #9 (masking): a project that ran but produced no call graph, and a project that
+    # produced real edges, must not be allowed to average out into a plausible-looking partial
+    # number. Every candidate lands in exactly one of these two lists.
+    productive: list[str] = []
+    unproductive: list[tuple[str, str]] = []  # (relative csproj path, why it produced no call graph)
 
     for csproj in sorted(candidates):
         out_dir = scratch / csproj.stem
         result = _run_engine(engine, csproj, out_dir)
-        rel = csproj.relative_to(repo_root)
+        rel = str(csproj.relative_to(repo_root))
 
         if not result["ok"]:
+            # The reason is whatever the engine itself said (see _invoke: last non-blank line of
+            # its own stdout/stderr, or the freshness verdict) — never a guessed label. Defect #9
+            # mislabelled exactly this kind of refusal as "the entitlement wall".
             print(f"cheburnexus: skip {rel}: {result['reason']}", file=sys.stderr)
+            unproductive.append((rel, result["reason"]))
             continue
-        successes += 1
         if result["mode_used"] != "solution":
             print(f"cheburnexus: {rel} analyzed via {result['mode_used']}", file=sys.stderr)
 
@@ -324,34 +386,47 @@ def collect(repo_root: Path, cell: str) -> Iterable[armkit.Edge]:
             for file_obj in arch_model.get("Files", []):
                 index.add_file(file_obj)
             edges.extend(_edges_from_calls(result["calls"], index, repo_root))
+            productive.append(rel)
         elif result["counts"] is not None:
-            wall_hit = True
-            print(
-                f"cheburnexus: {rel} analyzed but the call graph was withheld — "
-                f"architecture.calls-counts.json only (aggregate counts, no caller identity), "
-                f"no architecture.calls.json. This is the entitlement wall (analyzer.semantic is a "
-                f"Pro feature), not a failure — see NOTES.md.",
-                file=sys.stderr,
+            # A fresh, successful (exit 0) run that emitted only the aggregate counts sidecar and no
+            # per-edge one. The engine itself prints no message confirming why — this reading comes
+            # from having read ModelProjectionService.cs (see NOTES.md), not from anything on
+            # stderr, so it is stated as our own inference, not attributed to the engine.
+            reason = (
+                "the engine analyzed this project (exit 0) but emitted only "
+                "architecture.calls-counts.json (aggregate counts, no caller identity) — no "
+                "architecture.calls.json. Consistent with the documented entitlement wall "
+                "(analyzer.semantic is a Pro feature and no valid passport is present on this "
+                "machine — see NOTES.md); the engine's own output does not state a reason."
             )
+            print(f"cheburnexus: {rel} analyzed but the call graph was withheld — {reason}",
+                  file=sys.stderr)
+            unproductive.append((rel, reason))
         else:
-            print(f"cheburnexus: {rel} produced neither calls.json nor calls-counts.json "
-                  f"(unexpected — treating as zero edges from this project)", file=sys.stderr)
+            reason = "produced neither calls.json nor calls-counts.json (unexpected)"
+            print(f"cheburnexus: {rel} {reason}", file=sys.stderr)
+            unproductive.append((rel, reason))
 
-    if successes == 0:
-        raise RuntimeError(
-            f"could not analyze any of {len(candidates)} candidate project(s) under {repo_root} "
-            f"for cell {cell!r} — see {scratch} for per-project engine logs"
+    if not productive:
+        # Nothing at all produced a call graph — refused, not empty. Returning zero edges here
+        # would be graded as recall 0.000 and printed beside our own engine as though it had looked
+        # and found nothing. The runner turns Blocked into a gap carrying the reason instead.
+        detail = "; ".join(f"{rel}: {why}" for rel, why in unproductive)
+        raise armkit.Blocked(
+            f"none of {len(candidates)} candidate project(s) produced a call graph for cell "
+            f"{cell!r} — {detail}. Per-project engine logs: {scratch}"
         )
 
-    if wall_hit and not edges:
-        # Refused, not empty. Returning zero edges here would be graded as recall 0.000 and printed
-        # beside our own engine as though it had looked and found nothing — a false statement about
-        # the product. The runner turns this into a gap carrying the reason.
+    if unproductive:
+        # Defect #9 (masking): some projects DID produce real edges, but not all of them did.
+        # Grading the cell on the projects that happened to work — as if the others were never
+        # candidates at all — is exactly the "378 edges" false-complete result this fix exists to
+        # stop. Fail the whole cell loudly instead.
+        detail = "; ".join(f"{rel}: {why}" for rel, why in unproductive)
         raise armkit.Blocked(
-            f"the engine analyzed {successes} project(s) but withheld the call graph: "
-            f"analyzer.semantic is a Pro feature and no valid passport is present on this machine. "
-            f"Only aggregate counts (architecture.calls-counts.json) were emitted, with no caller "
-            f"identity. Per-project engine logs: {scratch}"
+            f"{len(unproductive)} of {len(candidates)} project(s) produced no call graph for cell "
+            f"{cell!r} even though {len(productive)} did ({', '.join(productive)}) — refusing to "
+            f"grade a partial result as complete. {detail}. Per-project engine logs: {scratch}"
         )
 
     if cell == "without-tests":
