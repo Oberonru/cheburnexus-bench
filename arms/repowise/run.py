@@ -244,6 +244,20 @@ class _KeyBuilder:
 
 # ── Orchestration ────────────────────────────────────────────────────────────────────────────
 
+# Bump when the extraction below changes shape, so cached rows from an older rule are not reused.
+_EXTRACTOR_VERSION = "1"
+
+
+def _checkout_head(repo_root: Path) -> str:
+    """The checkout's commit, so a cache cannot outlive the code it describes. Unknown is honest."""
+    try:
+        proc = subprocess.run(["git", "-C", str(repo_root), "rev-parse", "HEAD"],
+                              capture_output=True, text=True, timeout=30)
+        return proc.stdout.strip() if proc.returncode == 0 else "unknown"
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+
+
 def _collect_raw(repo_root: Path) -> list[dict]:
     """Index (if needed) and return the cached raw edge rows for this repository, unfiltered by
     cell. Cached to ``.index/<repo>/raw_edges.json`` so ``with-tests`` and ``without-tests`` share
@@ -252,8 +266,25 @@ def _collect_raw(repo_root: Path) -> list[dict]:
     """
     index_dir = _index_dir_for(repo_root)
     cache_path = index_dir / "raw_edges.json"
-    if cache_path.is_file():
-        return json.loads(cache_path.read_text(encoding="utf-8"))
+    stamp_path = index_dir / "raw_edges.stamp.json"
+
+    # A cache that never expires is a reproducibility hazard, not a speed-up: edit the extraction
+    # here, or install a different repowise, and a stale file keeps answering with rows nobody can
+    # trace to the code that supposedly produced them. The stamp ties the cache to the three things
+    # that can change its contents; any drift and it is rebuilt.
+    stamp = {
+        "extractor": _EXTRACTOR_VERSION,
+        "repowise": version(),
+        "head": _checkout_head(repo_root),
+    }
+    if cache_path.is_file() and stamp_path.is_file():
+        try:
+            if json.loads(stamp_path.read_text(encoding="utf-8")) == stamp:
+                return json.loads(cache_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            pass  # unreadable stamp means re-extract, never means trust the cache
+        print("repowise: cached rows do not match the current extractor/tool/checkout — re-extracting",
+              file=sys.stderr)
 
     checkout_copy = _ensure_scratch_copy(repo_root, index_dir)
     db_path = checkout_copy / ".repowise" / "wiki.db"
@@ -334,6 +365,7 @@ def _collect_raw(repo_root: Path) -> list[dict]:
     }
     (index_dir / "extract_stats.json").write_text(json.dumps(stats, indent=2), encoding="utf-8")
     cache_path.write_text(json.dumps(raw), encoding="utf-8")
+    stamp_path.write_text(json.dumps(stamp), encoding="utf-8")
     return raw
 
 

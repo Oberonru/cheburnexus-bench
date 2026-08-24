@@ -27,6 +27,7 @@ ROOT = Path(__file__).resolve().parent.parent
 ORACLE_PROJECT = ROOT / "oracle" / "csharp"
 GRADER = ROOT / "grader" / "grade.py"
 PUBLISHED = ROOT / "results" / "published"
+BLOCKED_EXIT = 3  # armkit.EXIT_BLOCKED — the arm ran but was refused the data
 CELLS = ("without-tests", "with-tests")
 
 
@@ -53,6 +54,20 @@ def repo_dir_name(entry: dict) -> str:
     return entry["name"].split("/")[-1]
 
 
+def targets_framework(relative: str, wanted: str) -> bool:
+    """Does this output path belong to the target framework we probed?
+
+    Not a substring test on `/net8.0/`: repositories using the Arcade layout put their output in
+    `artifacts/bin/<project>/release_net8.0/`, and a naive match dropped every assembly Polly
+    builds — a third of the corpus vanishing from the table with one line on stderr. A path segment
+    counts when it IS the framework or ends with it after a separator.
+    """
+    for segment in relative.replace("\\", "/").split("/"):
+        if segment == wanted or segment.endswith(f"_{wanted}") or segment.endswith(f".{wanted}"):
+            return True
+    return False
+
+
 def assemblies_for(entry: dict, checkout: Path, cell: str) -> list[Path]:
     """The assemblies the answer key is built from, for this cell.
 
@@ -69,7 +84,7 @@ def assemblies_for(entry: dict, checkout: Path, cell: str) -> list[Path]:
 
     for group in groups:
         for relative in group:
-            if wanted and f"/{wanted}/" not in relative.replace("\\", "/"):
+            if wanted and not targets_framework(relative, wanted):
                 continue
             candidate = checkout / relative
             if candidate.is_file():
@@ -126,6 +141,12 @@ def run_arm(name: str, checkout: Path, cell: str, out_dir: Path, repo_key: str) 
 
         if result.returncode == 0 and edges.is_file():
             return ArmRun(name, describe.get("mode", "live"), edges, describe, seconds)
+
+        if result.returncode == BLOCKED_EXIT:
+            # The tool ran and was refused. Reported as a gap, never as a zero: a published 0.000
+            # beside a tool that never got to look would be a false claim about that tool.
+            reason = (result.stderr.strip().splitlines() or ["blocked with no message"])[-1]
+            return ArmRun(name, "blocked", None, describe, seconds, reason)
 
         # The arm exists but could not run here — a licensed engine on an unlicensed machine, a
         # missing dependency. Published rows are the documented fallback; say which one was used.
@@ -200,16 +221,22 @@ def main() -> int:
         repo_key = repo_dir_name(entry)
         checkout = args.checkouts / repo_key
         if not checkout.is_dir():
-            print(f"skip {entry['name']}: no checkout at {checkout} — clone it from corpus.json",
-                  file=sys.stderr)
+            for cell in args.cells:
+                for arm_name in args.arms:
+                    rows.append((repo_key, cell, arm_name, "no-checkout", None,
+                                 f"no checkout at {checkout} — clone it from corpus.json"))
             continue
 
         for cell in args.cells:
             cell_dir = out_root / repo_key / cell
             built = build_oracle(entry, checkout, cell, cell_dir / "_oracle")
             if built is None:
-                print(f"skip {entry['name']} / {cell}: no built assemblies for this cell",
-                      file=sys.stderr)
+                # Never a quiet `continue`. A cell with no answer key must appear in the table as a
+                # gap, or the published result silently shrinks to whatever happened to build — the
+                # one failure mode the whole polygon is built to avoid.
+                for arm_name in args.arms:
+                    rows.append((repo_key, cell, arm_name, "no-oracle", None,
+                                 "no built assemblies matched target_framework_probed"))
                 continue
             oracle, overrides, first_party = built
 

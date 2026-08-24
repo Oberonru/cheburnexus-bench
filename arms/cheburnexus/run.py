@@ -344,10 +344,14 @@ def collect(repo_root: Path, cell: str) -> Iterable[armkit.Edge]:
         )
 
     if wall_hit and not edges:
-        print(
-            "cheburnexus: 0 edges is the correct result of this run, not a bug — the licence wall "
-            "withheld the call graph on every project that otherwise analyzed cleanly. See NOTES.md.",
-            file=sys.stderr,
+        # Refused, not empty. Returning zero edges here would be graded as recall 0.000 and printed
+        # beside our own engine as though it had looked and found nothing — a false statement about
+        # the product. The runner turns this into a gap carrying the reason.
+        raise armkit.Blocked(
+            f"the engine analyzed {successes} project(s) but withheld the call graph: "
+            f"analyzer.semantic is a Pro feature and no valid passport is present on this machine. "
+            f"Only aggregate counts (architecture.calls-counts.json) were emitted, with no caller "
+            f"identity. Per-project engine logs: {scratch}"
         )
 
     if cell == "without-tests":

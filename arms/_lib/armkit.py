@@ -91,6 +91,19 @@ def write_edges(out_path: Path, edges: Iterable[Edge]) -> int:
     return len(unique)
 
 
+class Blocked(Exception):
+    """The tool ran but refused to produce the data — a licence wall, a disabled feature.
+
+    This is NOT "found nothing". An arm that was refused and an arm that searched and came back
+    empty are different facts, and collapsing them publishes a false statement about the tool: a
+    recall of 0.000 next to our own engine would say it looked and failed, when it never looked.
+    Raise this and the runner records a gap with the reason instead of a zero.
+    """
+
+
+EXIT_BLOCKED = 3
+
+
 def main(
     name: str,
     version: Callable[[], str],
@@ -120,7 +133,12 @@ def main(
         print(f"{name}: no such checkout: {repo_root}", file=sys.stderr)
         return 2
 
-    written = write_edges(args.out, collect(repo_root, args.cell))
+    try:
+        written = write_edges(args.out, collect(repo_root, args.cell))
+    except Blocked as blocked:
+        print(f"{name}: BLOCKED — {blocked}", file=sys.stderr)
+        return EXIT_BLOCKED
+
     # An arm that finds nothing has answered the question — badly, but it has answered. Only an arm
     # that could not run at all fails, or a zero would be indistinguishable from a crash.
     print(f"{name}: {written} edges -> {args.out}", file=sys.stderr)

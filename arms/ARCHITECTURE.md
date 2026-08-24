@@ -23,7 +23,14 @@ python3 arms/<name>/run.py --repo <checkout> --cell with-tests|without-tests --o
 
 - writes the edge format from `grader/EDGE_FORMAT.md`, one JSON object per line;
 - writes nothing else to stdout — diagnostics go to stderr;
-- exits non-zero only when it could not run at all. Producing *no* edges is a result, not a failure;
+- exits `0` having produced *no* edges when the tool genuinely searched and found nothing — that is
+  a result, not a failure;
+- exits `3` (`armkit.EXIT_BLOCKED`, raised as `armkit.Blocked`) when the tool ran but was **refused
+  the data** — a licence wall, a disabled feature. Refused and empty are different facts: a
+  published recall of 0.000 next to a tool that never got to look is a false statement about that
+  tool. The runner turns exit 3 into a `blocked` row carrying the reason, with the numbers left as
+  gaps;
+- exits `2` when it could not run at all;
 - **never reads** `oracle/`, `*-oracle.jsonl`, `overrides.json`, or `corpus.json`. The runner passes
   a checkout path and a cell name; that is the whole input.
 
@@ -49,6 +56,11 @@ A replayed column is never presented as if it had been executed on the reader's 
 
 An arm that is neither runnable nor published is reported as `unavailable`, and the cell is empty
 rather than zero. A missing measurement and a measurement of zero are different facts.
+
+The same rule covers `blocked`. Our own engine is the live example: it analyses a corpus repository
+cleanly and then withholds the call graph, because the dependency graph is the paid feature and no
+passport is present. That is not our engine scoring zero — it is our engine never being asked. It
+prints as `blocked` with the reason, and it is exactly why the replay path exists.
 
 ## Cells
 
