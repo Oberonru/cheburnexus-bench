@@ -92,11 +92,31 @@ def assemblies_for(entry: dict, checkout: Path, cell: str) -> list[Path]:
     return chosen
 
 
+class CellNotMeasurable(Exception):
+    """This repository and cell cannot be measured, and must be reported rather than approximated."""
+
+
 def build_oracle(entry: dict, checkout: Path, cell: str, out_dir: Path) -> tuple[Path, Path, list[str]] | None:
     """Extract the answer key for one repository and cell. Returns (edges, overrides, first_party)."""
     assemblies = assemblies_for(entry, checkout, cell)
     if not assemblies:
         return None
+
+    # A `with-tests` cell whose answer key contains no test assembly is not a with-tests cell. The
+    # arms still read the test SOURCES, so their output grows while the answer key stays put, and
+    # every extra edge is scored as junk against a key that was never asked about it. That produces
+    # a number — serilog's grep precision fell 0.259 -> 0.044 this way — and the number means
+    # nothing. Refuse it instead of publishing it.
+    if cell == "with-tests":
+        product = {p.resolve() for p in assemblies_for(entry, checkout, "without-tests")}
+        if not [a for a in assemblies if a.resolve() not in product]:
+            listed = len(entry.get("test_assemblies", []))
+            raise CellNotMeasurable(
+                f"no test assembly was found on disk ({listed} listed in corpus.json). The build "
+                f"command only builds the product projects, so the answer key would be identical to "
+                f"without-tests while the arms read the test sources — build the test projects, or "
+                f"drop this cell for this repository."
+            )
 
     edges = out_dir / "oracle.jsonl"
     overrides = out_dir / "overrides.json"
@@ -229,7 +249,12 @@ def main() -> int:
 
         for cell in args.cells:
             cell_dir = out_root / repo_key / cell
-            built = build_oracle(entry, checkout, cell, cell_dir / "_oracle")
+            try:
+                built = build_oracle(entry, checkout, cell, cell_dir / "_oracle")
+            except CellNotMeasurable as why:
+                for arm_name in args.arms:
+                    rows.append((repo_key, cell, arm_name, "not-measurable", None, str(why)))
+                continue
             if built is None:
                 # Never a quiet `continue`. A cell with no answer key must appear in the table as a
                 # gap, or the published result silently shrinks to whatever happened to build — the
