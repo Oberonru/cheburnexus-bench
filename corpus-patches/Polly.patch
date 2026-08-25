@@ -13,3 +13,16 @@ index 1df2050..ff95110 100644
    },
    "msbuild-sdks": {
      "Cake.Sdk": "6.2.0"
+diff --git a/src/Snippets/Snippets.csproj b/src/Snippets/Snippets.csproj
+index 5d77ad5..f3c59b2 100644
+--- a/src/Snippets/Snippets.csproj
++++ b/src/Snippets/Snippets.csproj
+@@ -15,7 +15,7 @@
+     <ProjectType>Library</ProjectType>
+     <RootNamespace>Snippets</RootNamespace>
+     <SignAssembly>false</SignAssembly>
+-    <TargetFramework>net10.0</TargetFramework>
++    <TargetFramework>net8.0</TargetFramework>
+   </PropertyGroup>
+ 
+   <ItemGroup>

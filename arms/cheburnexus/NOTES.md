@@ -39,11 +39,18 @@ only when `--solution` reports zero in-scope sources, never when it refuses over
 (that refusal is the product's own correctness guardrail; working around it would silently trade a
 complete answer for an incomplete one, which is exactly what the guardrail exists to prevent).
 
-Project discovery never reads `corpus.json` (hard rule). It globs the checkout for `*.csproj`
-(skipping `bin/`, `obj/`, `.git/`), classifies each by `armkit.is_test_path` (the same
-directory-marker rule every arm shares), and for `without-tests` runs only the non-test set; for
-`with-tests` it adds the test set. Edges are unioned across however many product projects a repo
-ships (FluentValidation has 2, Polly has 5 that actually analyze).
+Project discovery globs the checkout for `*.csproj` (skipping `bin/`, `obj/`, `.git/`), classifies
+each by `armkit.is_test_path` (the same directory-marker rule every arm shares), and for
+`without-tests` runs only the non-test set; for `with-tests` it adds the test set. Edges are unioned
+across however many product projects a repo ships (FluentValidation has 2, Polly has 4).
+
+2026-08-25 (defect #10): the candidate list is then additionally filtered through
+`armkit.in_scope`, which reads corpus.json's `product_projects`/`test_assemblies_projects` — the
+one documented exception to "never reads corpus.json" (see `arms/ARCHITECTURE.md`). Before this
+fix, Polly's legacy `src/Polly/` (excluded from the corpus, a different assembly, same `Polly`
+namespace as `Polly.Core`) glob-matched as a product candidate — it is not a test directory by
+name — and the engine happily analyzed it, feeding 369 false-positive edges into the graded cell.
+`_discover_csproj` itself is unchanged; `collect()` narrows its output before running the engine.
 
 ## Which output field carries the edges
 

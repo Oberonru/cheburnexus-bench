@@ -214,8 +214,16 @@ def _edges_from_calls(calls_path: Path, index: ClassIndex, repo_root: Path) -> I
 
 # ── project discovery ───────────────────────────────────────────────────────────────────────────
 def _discover_csproj(repo_root: Path) -> tuple[list[Path], list[Path]]:
-    """Product vs test .csproj files, classified purely by path — the same TEST_DIR_MARKERS rule
-    every arm shares (armkit.is_test_path), never corpus.json (off limits by the hard rule)."""
+    """Product vs test .csproj files under the checkout, classified purely by path — the same
+    TEST_DIR_MARKERS rule every arm shares (armkit.is_test_path).
+
+    Defect #10 (2026-08-24): this used to be the whole story, and every .csproj that merely failed
+    to look like a test directory was treated as a product candidate — including Polly's legacy
+    `src/Polly/`, a different, excluded assembly that happens to share the `Polly` namespace with
+    `Polly.Core`. `collect()` below now additionally scopes these candidates to corpus.json's own
+    `product_projects`/`test_assemblies_projects` (via `armkit.in_scope`) before running the engine
+    on any of them — see armkit.py's "first-party scope" section for why that is not the same thing
+    as reading the oracle."""
     product: list[Path] = []
     test: list[Path] = []
     for path in sorted(repo_root.rglob("*.csproj")):
@@ -354,6 +362,12 @@ def collect(repo_root: Path, cell: str) -> Iterable[armkit.Edge]:
 
     product, test = _discover_csproj(repo_root)
     candidates = list(product) + (test if cell == "with-tests" else [])
+    # Defect #10: a sibling, non-first-party project (same repo, different assembly, e.g. Polly's
+    # legacy src/Polly/) is not a test directory, so it survived _discover_csproj unfiltered. Scope
+    # it out here against corpus.json's own product_projects/test_assemblies_projects — the same
+    # check armkit.source_files applies to raw source files for grep, and armkit.in_scope applies
+    # per-edge for repowise.
+    candidates = [c for c in candidates if armkit.in_scope(c, repo_root, cell)]
     if not candidates:
         raise RuntimeError(f"no .csproj found under {repo_root}")
 

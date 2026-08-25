@@ -373,9 +373,16 @@ def collect(repo_root: Path, cell: str) -> Iterator[armkit.Edge]:
     raw = _collect_raw(repo_root)
     for row in raw:
         caller_file = row["caller_file"]
-        if cell == "without-tests" and caller_file:
+        if caller_file:
             abs_path = repo_root / caller_file
-            if armkit.is_test_path(abs_path, repo_root):
+            # Defect #10: repowise indexes the whole scratch copy (see module docstring, step 1),
+            # not just the repository's declared product/test projects — a sibling, non-first-party
+            # project (Polly's legacy `src/Polly/`) got indexed and scored right alongside
+            # `Polly.Core`. Scope first, cell split (test vs. product) second — same order as
+            # `armkit.source_files` uses for every other arm.
+            if not armkit.in_scope(abs_path, repo_root, cell):
+                continue
+            if cell == "without-tests" and armkit.is_test_path(abs_path, repo_root):
                 continue
         yield armkit.Edge(
             caller=row["caller"],

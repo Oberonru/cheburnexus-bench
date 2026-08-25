@@ -31,8 +31,16 @@ python3 arms/<name>/run.py --repo <checkout> --cell with-tests|without-tests --o
   tool. The runner turns exit 3 into a `blocked` row carrying the reason, with the numbers left as
   gaps;
 - exits `2` when it could not run at all;
-- **never reads** `oracle/`, `*-oracle.jsonl`, `overrides.json`, or `corpus.json`. The runner passes
-  a checkout path and a cell name; that is the whole input.
+- **never reads** `oracle/`, `*-oracle.jsonl`, or `overrides.json` — the answer key, in any form.
+  The runner passes a checkout path and a cell name; that is the arm-specific input.
+  2026-08-25 (defect #10): the one documented exception is `corpus.json`'s `product_projects` /
+  `test_assemblies_projects` fields, read through `armkit.in_scope`/`armkit.source_files` to keep
+  every arm's search to the repository's own declared product and test projects — never the
+  oracle, never a graded result, and the same two fields for all three arms. Without it, every arm
+  scanned the whole checkout, including sibling non-first-party projects (Polly's legacy
+  `src/Polly/`), and Polly's precision collapsed for all three tools identically. See
+  `arms/_lib/armkit.py`'s "first-party scope" section and the 2026-08-25 entry in
+  `PREREGISTRATION-e1-csharp-edge-precision.md`.
 
 Every arm additionally answers `--describe`, printing one JSON object with its `name`, `version`
 (the tool's own version, not ours), and `mode` (`live` or `replay`). That line is copied verbatim
