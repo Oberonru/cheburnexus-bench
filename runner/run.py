@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import platform
 import shutil
 import subprocess
@@ -209,13 +210,17 @@ def grade(oracle: Path, overrides: Path, arm: ArmRun, first_party: list[str], ou
     if arm.edges_path is None:
         return None
     report = out_dir / "result.json"
+    # grade.py's cell_of() is deterministic on the data now (fixed-precedence tie-break, see
+    # PREREGISTRATION deviations, G3), but PYTHONHASHSEED is pinned here too as a second,
+    # independent guard — belt and braces — so a published number never again depends on which
+    # hash seed a Python process happened to start with.
     result = run([
         sys.executable, str(GRADER),
         "--oracle", str(oracle), "--arm", str(arm.edges_path),
         "--overrides", str(overrides),
         "--first-party", *first_party,
         "--json", str(report),
-    ])
+    ], env={**os.environ, "PYTHONHASHSEED": "0"})
     (out_dir / "grade.stdout.txt").write_text(result.stdout, encoding="utf-8")
     if result.returncode != 0:
         print(result.stderr[-2000:], file=sys.stderr)

@@ -24,12 +24,22 @@ from dataclasses import dataclass, field
 # collapse to the same key: type + method name, no return type, no parameter types. EDGE_FORMAT.md
 # explains what that costs and why it is still the right trade for the question being asked.
 
-_CECIL_FULLNAME = re.compile(r"^(?:[\w.<>`\[\],&*+ ]+\s+)?(?P<type>[^\s]+)::(?P<method>[^(]+)")
+#   /   nested-type separator (Outer/Inner)             — e.g. Pipeline/ReloadFailedArguments
+#   !   IL generic placeholder inside a modreq/method sig — e.g. !0, !!0
+#   ()  a modreq(...)/modopt(...) clause on the return type
+# all appear in real Cecil return-type prefixes and were previously missing from this class,
+# so method_key() silently returned None for those rows. See PREREGISTRATION deviations, 2026-08-25.
+_CECIL_FULLNAME = re.compile(r"^(?:[\w./!()<>`\[\],&*+ ]+\s+)?(?P<type>[^\s]+)::(?P<method>[^(]+)")
 
 # Roslyn's mangled names for code it moved out of the method a human wrote:
 #   <Write>b__4_0   lambda        <Emit>d__7    async / iterator state machine
 #   <>c__DisplayClass9_0          closure holder
-_MANGLED_ENCLOSING = re.compile(r"<([^>]+)>[bdgf]__")
+# Marks the closing `>` immediately before the b__/d__/g__/f__ tag. The enclosing name is found by
+# scanning backwards from this marker and balancing brackets to the matching `<` (see
+# `_extract_enclosing` below) rather than by a flat `<([^>]+)>` capture, which breaks the moment the
+# enclosed name has angle brackets of its own — a generic parameter inside an explicit-interface
+# qualifier, or a lambda nested inside another closure. See PREREGISTRATION deviations, 2026-08-25.
+_MANGLED_MARKER = re.compile(r">[bdgf]__")
 
 ENUMERATOR_PROTOCOL = frozenset({"GetEnumerator", "MoveNext", "get_Current", "Dispose"})
 COMPARABLE_OPS = frozenset({"call", "callvirt", "newobj", "ldftn"})
@@ -80,6 +90,44 @@ def method_key(raw: str) -> str | None:
     return f"{type_name}::{method}"
 
 
+def _extract_enclosing(text: str) -> str | None:
+    """Find a `>[bdgf]__` marker in `text` and return the name enclosed by its matching `<`.
+
+    A flat `<([^>]+)>[bdgf]__` regex captures up to the FIRST `>` it meets, which is wrong the
+    moment the true enclosing name contains its own angle brackets:
+      - `<<ExecuteAsync>b__0>d` (an async lambda: the flat regex captures `<ExecuteAsync`, a
+        truncated key with a stray leading `<`);
+      - `<FluentValidation-IValidationRuleInternal<T>-ValidateAsync>d__14` (an explicit interface
+        implementation's state machine: the embedded `<T>` gives the flat regex no position where
+        `<...>` is immediately followed by `[bdgf]__`, so it never matches at all).
+    Scanning backwards from the marker and balancing `<`/`>` finds the correct opening bracket in
+    both shapes, because it stops at the first `<` whose nesting depth returns to zero rather than
+    at the first literal `>`.
+
+    Returns None — not a confident match — both when the brackets never balance AND when they
+    balance onto an EMPTY name. `<>f__AnonymousType0` matches the marker (`>f__`) with its `<` and
+    `>` adjacent, so the naive span is `""`. An empty string is not None, so a caller that only
+    checked `is not None` would build the garbage key `Outer::` and mark it a *confident* remap —
+    exactly what EDGE_FORMAT.md says an unremappable caller must not get.
+    """
+    match = _MANGLED_MARKER.search(text)
+    if not match:
+        return None
+    close = match.start()  # index of the '>' that immediately precedes b__/d__/g__/f__
+    depth = 1
+    i = close - 1
+    while i >= 0:
+        if text[i] == ">":
+            depth += 1
+        elif text[i] == "<":
+            depth -= 1
+            if depth == 0:
+                content = text[i + 1:close]
+                return content if content else None
+        i -= 1
+    return None  # unbalanced brackets — not a confident match
+
+
 def enclosing_user_method(key: str) -> tuple[str, bool]:
     """Remap a compiler-generated caller onto the user method it was lifted out of.
 
@@ -88,17 +136,23 @@ def enclosing_user_method(key: str) -> tuple[str, bool]:
     """
     type_name, _, method = key.partition("::")
 
-    hit = _MANGLED_ENCLOSING.search(method)
-    if hit:
-        outer_type = type_name.split("/")[0]
-        return f"{outer_type}::{hit.group(1)}", True
+    for candidate in (method, type_name):
+        name = _extract_enclosing(candidate)
+        if name is not None:
+            outer_type = type_name.split("/")[0]
+            # Roslyn dash-encodes the qualifier of an explicit interface implementation inside a
+            # mangled name, because a type-name segment cannot contain a literal '.':
+            # `FluentValidation-IValidationRuleInternal<T>-ValidateAsync` stands for
+            # `FluentValidation.IValidationRuleInternal<T>.ValidateAsync`. Undo that, then strip
+            # generic arguments exactly as an ordinary method name would be stripped, so the
+            # recovered key lands on the same spelling EDGE_FORMAT.md fixes for that case
+            # ("Explicit interface implementations": `Namespace.IContract.Method`) — and the same
+            # spelling the oracle's own non-mangled row for that method already uses.
+            name = strip_generic_arguments(name.replace("-", "."))
+            return f"{outer_type}::{name}", True
 
-    hit = _MANGLED_ENCLOSING.search(type_name)
-    if hit:
-        outer_type = type_name.split("/")[0]
-        return f"{outer_type}::{hit.group(1)}", True
-
-    # A generated type whose name reveals no enclosing method (`<>c`, `<>f__AnonymousType0`).
+    # A generated type whose name reveals no enclosing method (`<>c`, `<>f__AnonymousType0`), or
+    # one where the marker was found but the brackets around it never balance.
     if "<" in type_name or "<" in method:
         return key, False
 
@@ -145,8 +199,13 @@ class Cell:
                 continue
             # Accept an override of the declared target: IL names the declaration, a source-level
             # tool may name an implementation. Reduction happens on the arm side only.
+            # `overrides.get(callee, ())` is a `set` — iterated `sorted()` so which declaration
+            # gets recorded in `matched` never depends on Python's per-process hash order. This
+            # loop's own COUNT can't change with iteration order (only the FIRST hit is kept, and
+            # a break stops it), but it is sorted anyway so nothing here is left unproven. See
+            # `cell_of` below for the case where hash order previously did change a number.
             caller, callee = edge
-            for declared in overrides.get(callee, ()):
+            for declared in sorted(overrides.get(callee, ())):
                 if (caller, declared) in self.oracle:
                     matched.add((caller, declared))
                     break
@@ -177,7 +236,7 @@ def load_oracle(path: str, first_party: set[str] | None) -> tuple[dict[str, Cell
         "op_excluded": Cell("excluded — indirect call op (calli / ldvirtftn)"),
     }
     overrides: dict[str, set[str]] = defaultdict(set)
-    stats = {"rows": 0, "unremappable_caller": 0, "no_source_anchor": 0}
+    stats = {"rows": 0, "unremappable_caller": 0, "no_source_anchor": 0, "unparsed_row": 0}
     # Callers the answer key itself could not trace back to a human-written method. Handed to the
     # arm loader so both sides drop the same edges: the arm cannot see a CompilerGeneratedAttribute,
     # only a mangled name, so without this list the two sides disagree and the grader manufactures
@@ -195,6 +254,11 @@ def load_oracle(path: str, first_party: set[str] | None) -> tuple[dict[str, Cell
             caller = method_key(row["Caller"])
             callee = method_key(row["Callee"])
             if caller is None or callee is None:
+                # A row _CECIL_FULLNAME cannot even parse — never dropped silently: a callee the
+                # answer key silently forgot would resurface as an arm's false positive, exactly
+                # like the op_excluded branch below already guards against, on the path that used
+                # to have no guard at all. See PREREGISTRATION deviations, 2026-08-25 (G1).
+                stats["unparsed_row"] += 1
                 continue
 
             caller, attributable = normalize_caller(caller)
@@ -296,6 +360,22 @@ def main() -> int:
         for _, callee in cell.oracle:
             callee_cell.setdefault(callee, name)
 
+    # A callee can carry MORE THAN ONE declared override target — a base-class virtual AND an
+    # explicit interface implementation, say — and they do not always land in the same oracle
+    # cell. Polly's DisposeAsync overrides are the concrete case: one declared target is the
+    # first-party base's own declaration (primary), the other is `System.IAsyncDisposable`'s
+    # (external). `cell_of` used to iterate `overrides.get(callee, ())` — a `set` — and return
+    # whichever declared_cell it met first, which depends on Python's per-process string-hash
+    # order, not on the data: five otherwise-identical runs of the SAME inputs gave grep/Polly
+    # precision 0.233 on some and 0.239 on others. Found 2026-08-25 verifying the G1/G2 reference
+    # numbers; see PREREGISTRATION deviations (G3).
+    # EDGE_FORMAT.md already settles the tie, so this is not a new rule: "An arm's edge is also
+    # classified by the declaration it answers for, not by the implementation it names. Otherwise
+    # a first-party class implementing IDisposable would drag a standard-library call into the
+    # primary cell and lose precision there — punishing the arm for resolving correctly." Primary
+    # therefore loses to every other cell, deterministically, regardless of set order.
+    CELL_PRECEDENCE = ("external", "accessor", "enumerator", "generated", "op_excluded", "primary")
+
     def cell_of(callee: str) -> str:
         known = callee_cell.get(callee)
         if known is not None:
@@ -304,10 +384,10 @@ def main() -> int:
         # answers for. Classifying by the implementation moves edges between cells: a first-party
         # class implementing IDisposable would drag a standard-library call into the primary cell
         # and count against precision there, punishing the arm precisely for resolving correctly.
-        for declared in overrides.get(callee, ()):
-            declared_cell = callee_cell.get(declared)
-            if declared_cell is not None:
-                return declared_cell
+        found = {callee_cell[d] for d in overrides.get(callee, ()) if d in callee_cell}
+        for name in CELL_PRECEDENCE:
+            if name in found:
+                return name
         method = callee.rpartition("::")[2]
         if method.startswith(("get_", "set_")):
             return "accessor"
@@ -329,6 +409,8 @@ def main() -> int:
               f"{r['matched']:>7} {fmt(r['precision'])} {fmt(r['recall'])}")
 
     print(f"\noracle rows read      : {stats['rows']}")
+    print(f"oracle rows unparsed   : {stats['unparsed_row']}  (Caller/Callee did not match "
+          f"_CECIL_FULLNAME at all — dropped, counted for nobody)")
     print(f"caller not remappable : {stats['unremappable_caller']}  (counted for nobody)")
     print(f"no source anchor      : {stats['no_source_anchor']}")
     print(f"arm rows dropped      : {arm_dropped}  (same caller rule as the answer key)")

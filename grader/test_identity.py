@@ -127,6 +127,54 @@ def check_key_agreement() -> list[str]:
         if not ok or remapped != "App.Service::Run":
             failures.append(f"lambda caller remapped to {remapped!r}, expected 'App.Service::Run'")
 
+    # Two shapes a flat `<([^>]+)>[bdgf]__` regex cannot reach, found live on the corpus 2026-08-25
+    # (PREREGISTRATION deviations, G2). Real callers, kept verbatim for traceability:
+    #   Polly.ResiliencePipeline/<>c__DisplayClass0_0/<<ExecuteAsync>b__0>d::MoveNext
+    #   FluentValidation.Internal.CollectionPropertyRule`2/
+    #     <FluentValidation-IValidationRuleInternal<T>-ValidateAsync>d__14::MoveNext
+    nested_lambda = method_key(
+        "System.Void Polly.ResiliencePipeline/<>c__DisplayClass0_0/<<ExecuteAsync>b__0>d::MoveNext()")
+    remapped, ok = enclosing_user_method(nested_lambda)
+    if not ok or remapped != "Polly.ResiliencePipeline::ExecuteAsync":
+        failures.append(
+            f"async lambda nested inside a closure remapped to {remapped!r}, "
+            f"expected 'Polly.ResiliencePipeline::ExecuteAsync' (ok={ok})")
+
+    explicit_iface_async = method_key(
+        "System.Void FluentValidation.Internal.CollectionPropertyRule`2/"
+        "<FluentValidation-IValidationRuleInternal<T>-ValidateAsync>d__14::MoveNext()")
+    # The non-mangled oracle row for the SAME method, to prove the remap lands on the spelling the
+    # oracle already uses elsewhere (EDGE_FORMAT.md, "Explicit interface implementations").
+    explicit_iface_direct = method_key(
+        "System.Threading.Tasks.ValueTask FluentValidation.Internal.CollectionPropertyRule`2::"
+        "FluentValidation.IValidationRuleInternal<T>.ValidateAsync"
+        "(FluentValidation.ValidationContext`1<T>,System.Threading.CancellationToken)")
+    remapped, ok = enclosing_user_method(explicit_iface_async)
+    if not ok or remapped != explicit_iface_direct:
+        failures.append(
+            f"explicit-interface async state machine remapped to {remapped!r}, expected it to match "
+            f"the direct caller's own key {explicit_iface_direct!r} (ok={ok})")
+
+    # Regression: `<>f__AnonymousType0` matches the `>f__` marker with its `<` and `>` adjacent, so
+    # a naive balanced-scan returns "" (empty), not None. `"" is not None` reads as a CONFIDENT
+    # remap to the garbage key "Outer::" unless empty content is treated the same as no match.
+    # Two more shapes that must likewise stay unattributable: a closure holder with no call of its
+    # own (`<>c`), and a display class named only by number (`<>c__DisplayClass9_0`, no marker at
+    # all). Found by review 2026-08-25 alongside G2, before it ever reached a published number.
+    unattributable = [
+        ("anonymous-type accessor", "System.Object Outer/<>f__AnonymousType0`1::get_Item()"),
+        ("closure holder cctor", "System.Void App.Service/<>c::.cctor()"),
+        ("display class ctor", "System.Void App.Service/<>c__DisplayClass9_0::.ctor()"),
+    ]
+    for label, raw in unattributable:
+        key = method_key(raw)
+        remapped, ok = enclosing_user_method(key)
+        if ok:
+            failures.append(
+                f"{label}: {raw!r} remapped to {remapped!r} with ok=True — should be unattributable")
+        elif remapped.endswith("::"):
+            failures.append(f"{label}: remap produced an empty method name {remapped!r}")
+
     return failures
 
 
