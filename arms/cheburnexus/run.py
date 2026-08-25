@@ -125,6 +125,24 @@ def backtick_arity(segment: str) -> str:
 #    grader/test_identity.py, which asserts .ctor/.cctor must NOT collapse into one key). We cannot
 #    tell an explicit static constructor apart from a same-signature instance one this way — both
 #    key as ".ctor" — a rare, documented limitation (see NOTES.md).
+# 3. (2026-08-25, follow-up to the namespace-leak engine fix) A file may declare several top-level
+#    types across several actual namespaces — a namespace block followed by more code at GLOBAL
+#    scope is the witness case, Serilog's src/Serilog/Guard.cs. FileModel.Namespace reports only the
+#    FIRST such type's namespace (see the product repo's RoslynFileParser.cs), so keying every type
+#    in the file off it, as adaptation #1 above does, silently mis-keys every OTHER top-level type.
+#    The engine now flags exactly this with FqnNotReconstructible and serializes that type's real
+#    fully-qualified name as "fqn" (ClassModel.cs) — we prefer it here when present. A type with no
+#    namespace at all (GLOBAL scope, like Guard itself) additionally keys under a SYNTHETIC join key
+#    the engine invents purely to keep same-named global types in different folders from colliding:
+#    "~global.<parentdir>.<filename>" (GlobalNamespaceKey.cs). That prefix is the engine's OWN
+#    internal bookkeeping, not a claim about the C# language — the compiler, and therefore the
+#    oracle (which reads Cecil's IL), knows no such namespace and names the type by its bare simple
+#    name (oracle: "Guard::AgainstNull", never "~global.Serilog.Guard.Guard::AgainstNull"). We strip
+#    the synthetic prefix at the contract boundary in contract_key() below so this arm's keys land
+#    in the cell the oracle actually recorded, instead of trading one mis-spelling for another.
+GLOBAL_NAMESPACE_PREFIX = "~global."
+
+
 class ClassIndex:
     def __init__(self) -> None:
         self.by_full: dict[str, tuple[str, str, frozenset[str]]] = {}
@@ -135,12 +153,23 @@ class ClassIndex:
             name = cls.get("Name", "")
             if not name:
                 continue
-            full_key = f"{namespace}.{name}" if namespace else name
+            # Adaptation #3: prefer the type's OWN fqn (set exactly when it would otherwise be
+            # mis-keyed under the file's first-type namespace — see the comment block above).
+            # Falls back to file Namespace + "." + name, unchanged from before this fix, for the
+            # overwhelming majority of files where fqn is omitted because the reconstruction is
+            # already correct.
+            fqn = cls.get("fqn")
+            if fqn:
+                full_key = fqn
+                type_namespace = fqn.rsplit(".", 1)[0] if "." in fqn else ""
+            else:
+                full_key = f"{namespace}.{name}" if namespace else name
+                type_namespace = namespace
             type_path = backtick_arity(name)
             ctor_names = frozenset(
                 m.get("Name", "") for m in cls.get("Methods", []) if m.get("IsConstructor")
             )
-            self.by_full[full_key] = (namespace, type_path, ctor_names)
+            self.by_full[full_key] = (type_namespace, type_path, ctor_names)
 
     def contract_key(self, dotted_type: str, method_name: str) -> str:
         entry = self.by_full.get(dotted_type)
@@ -154,7 +183,15 @@ class ClassIndex:
             namespace, type_path, ctor_names = entry
             if method_name in ctor_names:
                 method_name = ".ctor"
-        type_full = f"{namespace}.{type_path}" if namespace else type_path
+        # Adaptation #3 (see the class-level comment above): the namespace we already resolved —
+        # never a fresh count of dot-segments off the front of the string, which would also catch a
+        # REAL namespace that merely started with the literal text "~global." — is what tells us
+        # this type lives at global scope by the engine's synthetic join-key convention. Render it
+        # by its bare type name, matching the compiler/oracle's own naming for global-scope types.
+        if namespace.startswith(GLOBAL_NAMESPACE_PREFIX):
+            type_full = type_path
+        else:
+            type_full = f"{namespace}.{type_path}" if namespace else type_path
         return f"{type_full}::{method_name}"
 
 
