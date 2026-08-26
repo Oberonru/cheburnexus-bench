@@ -1,34 +1,46 @@
 #!/usr/bin/env python3
-"""Ceiling of an ideal output filter on grep's edges, measured in bytes.
+"""Junk-per-answer: how many of an arm's BYTES are junk, measured the same way for two arms.
 
-QUESTION: if a perfect oracle filtered grep's output before an agent ever read it, how many
-BYTES would disappear? This is the CEILING an output filter could reach — an ideal filter, not
-our engine — and it exists to decide whether building a real one is worth anything at all.
+QUESTION: for the same repo and the same cell, how many BYTES of what an agent would actually
+read are junk (contradicted / excluded-cell / unremappable-caller / malformed), and how does that
+fraction compare between `grep` and `cheburnexus`? This is a COMPARATIVE measurement across two
+arms, not a ceiling on one arm alone — it exists to show whether the engine's answer is smaller
+and cleaner than grep's on the same ground, not just what an ideal filter could someday remove
+from grep's output.
+
+Both arms are rendered into the SAME canonical line form before anything is counted:
+`{caller_file}:{caller_line}: {callee}\\n`. Same-form rendering is the fair choice — it isolates
+what actually differs between the two arms (how many edges they emit, and how many times each one
+repeats) from cosmetic formatting differences an agent would never actually see two arms present
+identically anyway. Without a shared render, a byte comparison would just be measuring whose
+line format happens to be more verbose, which answers a font question, not a junk question.
 
 This script does NOT reimplement the matching rule. It imports grader/grade.py and reuses its
-identity function (`method_key` + `normalize_caller`), its oracle-cell split (`load_oracle`),
-its match test (the body of `Cell.score`'s inner loop, lifted verbatim into `edge_confirmed`),
-and — since 2026-08-26 — its callee→cell classifier (`grade.cell_of` / `grade.build_callee_cell`)
-directly, imported rather than copied. A hand-copy of `cell_of` lived here before: it was written
-when the function was still a closure inside grade.py's `main()` and therefore not importable,
-and it rotted the moment `main()`'s `cell_of` was fixed for G3 (deterministic `CELL_PRECEDENCE`
-tie-break) without the copy being touched — this script kept the old first-hit-wins-over-a-set
-behaviour and silently reproduced the exact hash-order nondeterminism G3 fixed everywhere else
-(measured: analyze_repo('Polly') flipped between 89.61% and 89.15% across process restarts on
-identical inputs). `cell_of` is now a module-level function in grade.py for exactly this reason —
-importable, so this script and grade.py's own `main()` cannot drift apart again.
+identity function (`method_key` + `normalize_caller`), its oracle-cell split (`load_oracle`), its
+callee->cell classifier (`build_callee_cell` + `cell_of`), and its match test (the body of
+`Cell.score`'s inner loop, lifted into `edge_confirmed`). `cell_of` used to live inline inside
+grade.py's `main()` and was copied here byte-for-byte — until a grader fix (G3, 2026-08-25) rewrote
+it and the copy silently drifted out of sync. It is now a module-level function in grade.py that
+this script imports, so the two can no longer disagree on what counts as which cell.
 
-Scope: `without-tests` cells only, `serilog` and `Polly` only. FluentValidation is EXCLUDED —
-a recorded defect (2026-08-24) means its two cells scanned identical files including test code,
-so its rows are contaminated and would not be comparable to the other two repos' numbers.
+Scope: `without-tests` cells only, `serilog` and `Polly` only. FluentValidation is EXCLUDED — the
+contamination defect recorded 2026-08-24 (identical files scanned in both cells) was FIXED by
+commits f6dcbd8/44ae8ab, but re-inclusion here is pending verification on a fresh full-matrix run.
+We have not re-run the matrix, so we cannot confirm the fix actually produced clean, comparable
+rows for this repo — leaving it excluded is the honest default until that verification exists.
 
-The published grader operates on grep's edges after they collapse into a SET of distinct
+The published grader operates on an arm's edges after they collapse into a SET of distinct
 (caller, callee) pairs (see grade.load_arm). This script does not use that set directly: an
-agent reads raw emitted LINES, and grep frequently repeats one (caller, callee) pair across many
-lines (Polly: 8234 raw rows collapse to 5447 distinct pairs). So classification (confirmed /
-contradicted / excluded / unremappable) is computed once per distinct normalised edge, using the
+agent reads raw emitted LINES, and an arm frequently repeats one (caller, callee) pair across many
+lines (grep on Polly: 8234 raw rows collapse to 5447 distinct pairs). So classification (confirmed
+/ contradicted / excluded / unremappable) is computed once per distinct normalised edge, using the
 grader's own rule, and then applied to every raw row that edge appears in — bytes are summed at
 the ROW level, because that is what actually reaches an agent's context window.
+
+`cell_of` is deterministic on the data now (fixed `CELL_PRECEDENCE`, not hash-order-dependent
+first-hit-wins), but this script is invoked directly (`python3 grader/ceiling_grep_filter.py`),
+never through runner/run.py's subprocess — so nothing else pins `PYTHONHASHSEED` for it. It pins
+its own, as a second, independent guard: belt and braces, matching runner/run.py's own reasoning.
 
 Usage:
     python3 grader/ceiling_grep_filter.py
@@ -39,12 +51,8 @@ from __future__ import annotations
 import os
 import sys
 
-# Belt and braces, matching runner/run.py's own reasoning (see grade.py, CELL_PRECEDENCE comment):
-# cell_of() is deterministic on the data now regardless of hash seed, but this script is invoked
-# directly (`python3 grader/ceiling_grep_filter.py`), never through runner/run.py's subprocess, so
-# nothing else pins PYTHONHASHSEED for it. Re-exec once, before any other import runs, so a
-# published ceiling figure never again depends on which hash seed the interpreter happened to
-# start with — a second, independent guard on top of the code being correct.
+# Re-exec once, before any other import runs, so a published figure never again depends on which
+# hash seed the interpreter happened to start with — see module docstring.
 if os.environ.get("PYTHONHASHSEED") != "0":
     os.execve(sys.executable, [sys.executable, *sys.argv], {**os.environ, "PYTHONHASHSEED": "0"})
 
@@ -60,10 +68,13 @@ import grade  # noqa: E402  (reuse identity + oracle-cell logic; see module docs
 RESULTS_ROOT = ROOT / "results" / "full-matrix-2026-08-24"
 CELL = "without-tests"
 REPOS = ["serilog", "Polly"]  # FluentValidation excluded — see module docstring
+ARMS = ["grep", "cheburnexus"]
 EXCLUDED_REPO_NOTE = (
-    "FluentValidation is excluded from this measurement: a defect recorded 2026-08-24 means its "
+    "FluentValidation is excluded from this measurement: a defect recorded 2026-08-24 meant its "
     "with-tests and without-tests cells scanned identical files including test code, so its rows "
-    "are contaminated and not comparable to serilog/Polly here."
+    "were contaminated and not comparable to serilog/Polly here. That defect was FIXED by commits "
+    "f6dcbd8/44ae8ab, but re-inclusion is pending verification on a fresh full-matrix run — we have "
+    "not re-run the matrix, so FluentValidation stays excluded until there is fresh data to check."
 )
 
 
@@ -94,16 +105,25 @@ def load_overrides(path: Path) -> dict[str, set[str]]:
 
 
 def render_line(row: dict) -> str:
-    """The realistic agent-visible form of one grep edge: `caller_file:caller_line: <callee>`."""
+    """The realistic agent-visible form of one edge, SHARED by both arms: `caller_file:caller_line: <callee>`.
+
+    Both arms emit rows through the same shared writer (arms/_lib/armkit.py's `Edge.to_row`), so
+    the field names line up (`caller`, `callee`, `caller_file`, `caller_line`) without translation.
+    """
     return f"{row.get('caller_file')}:{row.get('caller_line')}: {row.get('callee', '')}\n"
 
 
-def analyze_repo(repo_dir_name: str) -> dict:
-    base = RESULTS_ROOT / repo_dir_name / CELL
-    edges_path = base / "grep" / "edges.jsonl"
+def analyze_arm(repo_dir_name: str, arm: str, results_root: Path = RESULTS_ROOT) -> dict:
+    """Classify and byte-count one arm's raw rows for one repo, in the `without-tests` cell.
+
+    `arm` is one of ARMS ("grep" or "cheburnexus"). The oracle is shared between both arms for a
+    given repo — only the arm's own edges.jsonl/manifest.json differ.
+    """
+    base = results_root / repo_dir_name / CELL
+    edges_path = base / arm / "edges.jsonl"
     oracle_path = base / "_oracle" / "oracle.jsonl"
     overrides_path = base / "_oracle" / "overrides.json"
-    manifest_path = base / "grep" / "manifest.json"
+    manifest_path = base / arm / "manifest.json"
 
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     first_party = set(manifest["first_party"])
@@ -171,6 +191,11 @@ def analyze_repo(repo_dir_name: str) -> dict:
         byte_sums[label] += rb
         loc_labels[loc_key].add(label)
 
+    # ── Distinct edges (from the cache, so only edges that reached full classification count) ──
+    distinct_edge_counts: dict[str, int] = defaultdict(int)
+    for label in edge_label_cache.values():
+        distinct_edge_counts[label] += 1
+
     # ── Ceilings ────────────────────────────────────────────────────────────────
     # Naive ceiling: drop everything the oracle does not affirmatively confirm in the primary
     # cell (contradicted + excluded-cell + unremappable-caller + malformed).
@@ -191,6 +216,7 @@ def analyze_repo(repo_dir_name: str) -> dict:
 
     return {
         "repo": repo_dir_name,
+        "arm": arm,
         "cell": CELL,
         "first_party": sorted(first_party),
         "total_edges_raw_rows": total_edges,
@@ -198,6 +224,7 @@ def analyze_repo(repo_dir_name: str) -> dict:
         "total_rendered_bytes": total_rendered_bytes,
         "counts": counts,
         "byte_sums": byte_sums,
+        "distinct_edge_counts": dict(distinct_edge_counts),
         "naive_ceiling": {
             "dropped_bytes": naive_dropped_bytes,
             "pct_of_rendered": round(100 * naive_dropped_bytes / total_rendered_bytes, 2),
@@ -228,53 +255,114 @@ def analyze_repo(repo_dir_name: str) -> dict:
     }
 
 
-def print_table(results: list[dict]) -> None:
+def comparative_summary(repo_dir_name: str, arm_results: dict[str, dict]) -> dict:
+    """The headline comparison the article wants: how much of each arm's bytes are junk, arm vs arm,
+    same repo, same cell, same rendered line form.
+
+    Two fractions, mirroring the two ceilings above so a reader cannot confuse "the oracle has no
+    opinion" with "the oracle says wrong":
+      * proven_wrong_byte_fraction — ONLY primary-cell edges the oracle CONTRADICTS. This is the
+        honest junk number; it is the one an ideal filter could remove without ever discarding a
+        real edge. Excluded-cell edges (calls into the standard library, property accessors, the
+        foreach protocol, compiler-generated, indirect ops), unremappable-caller and malformed rows
+        are NOT counted here — the grader never puts them in a position to be proven wrong, so
+        calling them junk would be an overclaim.
+      * unconfirmed_byte_fraction — everything the oracle does not affirmatively confirm in the
+        primary cell (the naive ceiling). Reported for context, NOT as junk: it lumps the
+        out-of-cell bytes in, and most of those are legitimate.
+    """
+    per_arm = {}
+    for arm, entry in arm_results.items():
+        total = entry["total_rendered_bytes"]
+        b = entry["byte_sums"]
+        proven_wrong_bytes = b["contradicted"]
+        unconfirmed_bytes = total - b["confirmed"]
+        confirmed_bytes = b["confirmed"]
+        confirmed_distinct = entry["distinct_edge_counts"].get("confirmed", 0)
+        per_arm[arm] = {
+            "total_rendered_bytes": total,
+            "proven_wrong_byte_fraction": round(proven_wrong_bytes / total, 4) if total else None,
+            "unconfirmed_byte_fraction": round(unconfirmed_bytes / total, 4) if total else None,
+            "confirmed_byte_fraction": round(confirmed_bytes / total, 4) if total else None,
+            "bytes_per_confirmed_distinct_edge": (
+                round(confirmed_bytes / confirmed_distinct, 2) if confirmed_distinct else None
+            ),
+        }
+    return {"repo": repo_dir_name, "cell": CELL, "arms": per_arm}
+
+
+def print_table(results: list[dict], comparisons: list[dict]) -> None:
     print(f"\n{EXCLUDED_REPO_NOTE}\n")
-    print(f"{'repo':<12}{'edges':>8}{'rendered B':>12}{'jsonl B':>10}"
+    print(f"{'repo':<12}{'arm':<12}{'edges':>8}{'rendered B':>12}{'jsonl B':>10}"
           f"{'confirmed':>10}{'contrad.':>10}{'excluded':>10}{'unremap':>9}")
     for r in results:
         c = r["counts"]
-        print(f"{r['repo']:<12}{r['total_edges_raw_rows']:>8}{r['total_rendered_bytes']:>12}"
+        print(f"{r['repo']:<12}{r['arm']:<12}{r['total_edges_raw_rows']:>8}{r['total_rendered_bytes']:>12}"
               f"{r['total_jsonl_bytes']:>10}{c['confirmed']:>10}{c['contradicted']:>10}"
               f"{c['excluded']:>10}{c['unremappable_caller']:>9}")
 
-    print(f"\n{'repo':<12}{'naive ceiling':>16}{'honest ceiling':>16}{'gap (pts)':>12}")
+    print(f"\n{'repo':<12}{'arm':<12}{'naive ceiling':>16}{'honest ceiling':>16}{'gap (pts)':>12}")
     for r in results:
         n = r["naive_ceiling"]["pct_of_rendered"]
         h = r["honest_ceiling"]["pct_of_rendered"]
         gap = r["gap_naive_minus_honest"]["pct_points_of_rendered"]
-        print(f"{r['repo']:<12}{n:>14.2f}%{h:>15.2f}%{gap:>11.2f}p")
+        print(f"{r['repo']:<12}{r['arm']:<12}{n:>14.2f}%{h:>15.2f}%{gap:>11.2f}p")
 
-    print(f"\n{'repo':<12}{'loc total':>10}{'loc conf.':>10}{'loc drop naive':>16}{'loc drop honest':>17}")
+    print(f"\n{'repo':<12}{'arm':<12}{'loc total':>10}{'loc conf.':>10}{'loc drop naive':>16}{'loc drop honest':>17}")
     for r in results:
         d = r["distinct_locations"]
-        print(f"{r['repo']:<12}{d['total']:>10}{d['confirmed_by_oracle']:>10}"
+        print(f"{r['repo']:<12}{r['arm']:<12}{d['total']:>10}{d['confirmed_by_oracle']:>10}"
               f"{d['dropped_naive']:>13} ({d['pct_dropped_naive']:.1f}%)"
               f"{d['dropped_honest']:>14} ({d['pct_dropped_honest']:.1f}%)")
+
+    print(f"\n{'repo':<12}{'arm':<12}{'total bytes':>12}{'proven-wrong':>14}{'unconfirmed':>13}"
+          f"{'confirmed frac':>15}{'B/confirmed edge':>17}")
+    for c in comparisons:
+        for arm, s in c["arms"].items():
+            pw = f"{s['proven_wrong_byte_fraction']:.4f}" if s["proven_wrong_byte_fraction"] is not None else "n/a"
+            uc = f"{s['unconfirmed_byte_fraction']:.4f}" if s["unconfirmed_byte_fraction"] is not None else "n/a"
+            cf = f"{s['confirmed_byte_fraction']:.4f}" if s["confirmed_byte_fraction"] is not None else "n/a"
+            bpe = f"{s['bytes_per_confirmed_distinct_edge']:.2f}" if s["bytes_per_confirmed_distinct_edge"] is not None else "n/a"
+            print(f"{c['repo']:<12}{arm:<12}{s['total_rendered_bytes']:>12}{pw:>14}{uc:>13}{cf:>15}{bpe:>17}")
     print()
 
 
 def main() -> int:
-    results = [analyze_repo(repo) for repo in REPOS]
-    print_table(results)
+    results: list[dict] = []
+    comparisons: list[dict] = []
+    for repo in REPOS:
+        arm_results = {arm: analyze_arm(repo, arm) for arm in ARMS}
+        results.extend(arm_results.values())
+        comparisons.append(comparative_summary(repo, arm_results))
+
+    print_table(results, comparisons)
 
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H%M%SZ")
-    out_path = ROOT / "results" / f"ceiling-grep-filter-{stamp}.json"
+    out_path = ROOT / "results" / f"junk-per-answer-{stamp}.json"
     payload = {
-        "question": "bytes removed if a perfect oracle filtered grep's output before an agent read it",
-        "scope": {"cells": [CELL], "repos": REPOS, "excluded_repo": "FluentValidation",
+        "question": "for the same repo/cell, how many bytes of grep's vs cheburnexus's rendered "
+                     "output does the oracle actively CONTRADICT (proven_wrong_byte_fraction — the "
+                     "honest junk number), and how does that compare between the two arms; excluded/"
+                     "unremappable/malformed bytes are reported but NOT called junk (see method)",
+        "scope": {"cells": [CELL], "repos": REPOS, "arms": ARMS, "excluded_repo": "FluentValidation",
                    "excluded_repo_reason": EXCLUDED_REPO_NOTE},
         "method": {
             "rendered_line_form": "{caller_file}:{caller_line}: {callee}\\n",
+            "same_form_rationale": "both arms are rendered into this one canonical form before any "
+                                    "byte is counted, so the comparison isolates edge-count and "
+                                    "repetition between arms from cosmetic formatting differences",
             "matching_rule_source": "grader/grade.py (method_key, normalize_caller, load_oracle, "
-                                     "Cell.score match test, build_callee_cell, cell_of) — imported "
-                                     "and reused, not reimplemented or copied",
+                                     "build_callee_cell, cell_of, Cell.score match test) — imported "
+                                     "and reused, not reimplemented",
+            "cell_of_source": "grade.cell_of — imported module-level function (shared with the "
+                               "published grader, so the two cannot drift)",
             "pythonhashseed_pinned": "0",
             "unit_of_classification": "distinct normalised (caller,callee) edge, cached and applied "
                                        "to every raw row sharing that edge",
             "unit_of_bytes": "raw row (one line an agent would actually read)",
         },
         "results": results,
+        "comparisons": comparisons,
     }
     out_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     print(f"written: {out_path}")

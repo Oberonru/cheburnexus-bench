@@ -44,28 +44,26 @@ _MANGLED_MARKER = re.compile(r">[bdgf]__")
 ENUMERATOR_PROTOCOL = frozenset({"GetEnumerator", "MoveNext", "get_Current", "Dispose"})
 COMPARABLE_OPS = frozenset({"call", "callvirt", "newobj", "ldftn"})
 
-# A callee can carry MORE THAN ONE declared override target — a base-class virtual AND an
-# explicit interface implementation, say — and they do not always land in the same oracle
-# cell. Polly's DisposeAsync overrides are the concrete case: one declared target is the
-# first-party base's own declaration (primary), the other is `System.IAsyncDisposable`'s
-# (external). `cell_of` used to iterate `overrides.get(callee, ())` — a `set` — and return
-# whichever declared_cell it met first, which depends on Python's per-process string-hash
-# order, not on the data: five otherwise-identical runs of the SAME inputs gave grep/Polly
-# precision 0.233 on some and 0.239 on others. Found 2026-08-25 verifying the G1/G2 reference
-# numbers; see PREREGISTRATION deviations (G3).
-# EDGE_FORMAT.md already settles the tie, so this is not a new rule: "An arm's edge is also
-# classified by the declaration it answers for, not by the implementation it names. Otherwise
-# a first-party class implementing IDisposable would drag a standard-library call into the
-# primary cell and lose precision there — punishing the arm for resolving correctly." Primary
-# therefore loses to every other cell, deterministically, regardless of set order.
+# A callee can carry MORE THAN ONE declared override target — a base-class virtual AND an explicit
+# interface implementation, say — and they do not always land in the same oracle cell. Polly's
+# DisposeAsync overrides are the concrete case: one declared target is the first-party base's own
+# declaration (primary), the other is `System.IAsyncDisposable`'s (external). Iterating the
+# `overrides` set and returning whichever cell was met first depended on Python's per-process
+# string-hash order, not on the data: five runs of the SAME inputs gave grep/Polly precision 0.233
+# on some and 0.239 on others (found 2026-08-25 verifying G1/G2; see PREREGISTRATION deviation G3).
+# EDGE_FORMAT.md already settles the tie — an arm's edge is classified by the DECLARATION it answers
+# for, not the implementation it names — so primary loses to every other cell, deterministically,
+# regardless of set order.
 CELL_PRECEDENCE = ("external", "accessor", "enumerator", "generated", "op_excluded", "primary")
 
 
-def build_callee_cell(cells: dict[str, "Cell"]) -> dict[str, str]:
-    """Which oracle cell first claims each callee.
+def build_callee_cell(cells: dict) -> dict[str, str]:
+    """Which oracle cell first claims each callee, built from the answer key itself.
 
-    Built from the answer key itself: every method the compiler ever records a call to is
-    classified once, and an arm's edge is judged in that same cell.
+    Every method the compiler records a call to is classified once, and an arm's edge is judged in
+    that same cell. A callee the compiler never records anywhere cannot be defended as "a different
+    cell" — it is an edge to something the built code does not call, so it lands in the primary cell
+    as junk, which is exactly the quantity this benchmark exists to measure.
     """
     callee_cell: dict[str, str] = {}
     for name, cell in cells.items():
@@ -75,19 +73,19 @@ def build_callee_cell(cells: dict[str, "Cell"]) -> dict[str, str]:
 
 
 def cell_of(callee: str, callee_cell: dict[str, str], overrides: dict[str, set[str]]) -> str:
-    """Which cell an arm's edge to `callee` is judged in.
+    """The cell an arm's edge to `callee` is judged in. Deterministic; see CELL_PRECEDENCE above.
 
-    A callee the compiler never records anywhere cannot be defended as "a different cell" — it
-    is an edge to something the built code does not call, so it lands in the primary cell as
-    junk, which is exactly the quantity this benchmark exists to measure.
+    Module-level (not a closure) so the byte-ceiling analysis in ceiling_grep_filter.py imports
+    THIS function instead of copying it — a copy silently drifts when the grader is fixed, which is
+    exactly what G3 was.
     """
     known = callee_cell.get(callee)
     if known is not None:
         return known
-    # An arm that named an implementation must be judged in the cell of the DECLARATION it
-    # answers for. Classifying by the implementation moves edges between cells: a first-party
-    # class implementing IDisposable would drag a standard-library call into the primary cell
-    # and count against precision there, punishing the arm precisely for resolving correctly.
+    # An arm that named an implementation must be judged in the cell of the DECLARATION it answers
+    # for. Classifying by the implementation moves edges between cells: a first-party class
+    # implementing IDisposable would drag a standard-library call into the primary cell and count
+    # against precision there, punishing the arm precisely for resolving correctly.
     found = {callee_cell[d] for d in overrides.get(callee, ()) if d in callee_cell}
     for name in CELL_PRECEDENCE:
         if name in found:
@@ -257,8 +255,8 @@ class Cell:
             # `overrides.get(callee, ())` is a `set` — iterated `sorted()` so which declaration
             # gets recorded in `matched` never depends on Python's per-process hash order. This
             # loop's own COUNT can't change with iteration order (only the FIRST hit is kept, and
-            # a break stops it), but it is sorted anyway so nothing here is left unproven. See
-            # `cell_of` below for the case where hash order previously did change a number.
+            # a break stops it), but it is sorted anyway so nothing here is left unproven. See the
+            # module-level `cell_of` for the case where hash order previously did change a number.
             caller, callee = edge
             for declared in sorted(overrides.get(callee, ())):
                 if (caller, declared) in self.oracle:
@@ -405,9 +403,14 @@ def main() -> int:
 
     arm, arm_dropped = load_arm(args.arm)
 
-    # Which cell does each callee belong to? See `build_callee_cell` / `cell_of` above — module
-    # level so `ceiling_grep_filter.py` can import the exact same function instead of hand-copying
-    # it (a hand-copy is what let this rule drift out of sync once before; see G3 above).
+    # Which cell does each callee belong to? Built from the answer key itself: every method the
+    # compiler ever records a call to is classified once, and an arm's edge is judged in that same
+    # cell. A callee the compiler never records anywhere cannot be defended as "a different cell" —
+    # it is an edge to something the built code does not call, so it lands in the primary cell as
+    # junk, which is exactly the quantity this benchmark exists to measure.
+    # Built from the answer key itself; classification and the tie-break rule now live at module
+    # scope (build_callee_cell / cell_of / CELL_PRECEDENCE) so the byte-ceiling analysis imports the
+    # exact same logic instead of copying it — see those definitions for the G3 reasoning.
     callee_cell = build_callee_cell(cells)
 
     arm_by_cell: dict[str, set[tuple[str, str]]] = defaultdict(set)

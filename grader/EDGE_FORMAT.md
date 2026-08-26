@@ -77,6 +77,29 @@ The compiler moves that code into generated types, so IL reports a generated cal
 name. An edge whose caller cannot be remapped confidently goes to a separate cell and counts for
 nobody.
 
+### A local function nested inside another local function or lambda remaps to the OUTERMOST one
+
+Roslyn nests the mangled names when scopes nest: a local function written inside another local
+function, or an async local function's own state machine, produces something like
+`<<TryConvertEnumerable>g__MapToDictionaryElements|15_0>d`, where `TryConvertEnumerable` is the
+user-written outer method and `MapToDictionaryElements` is the local function actually containing
+the call. The remap (`enclosing_user_method` / `_extract_enclosing` in `grade.py`) resolves this
+to `TryConvertEnumerable` — the OUTERMOST enclosing method — not `MapToDictionaryElements`, the
+nearest one.
+
+This is a consequence of how the marker scan works (leftmost `>[bdgf]__` in the string, which for
+nested mangling is always the outer scope's own marker, scanned first), not a separate rule
+written for this case. It was true under the flat regex this replaced too, so it is not a G2
+regression — it is simply undecided territory that `EDGE_FORMAT.md` never stated a rule for
+before now.
+
+**This is a stated decision, not an accident, and behaviour is unchanged**: when several nested
+enclosing methods are candidates, the OUTERMOST one wins. The alternative (mapping to the nearest
+enclosing method) is not obviously more correct — a source-level tool reading the call site is at
+least as likely to attribute it to the outer method it can see written in the file as to a nested
+local function — so this is recorded rather than "fixed" without evidence either choice serves the
+comparison better.
+
 ## The comparable set
 
 Fixed in the pre-registration before any run. The primary metric counts an oracle edge only when:
