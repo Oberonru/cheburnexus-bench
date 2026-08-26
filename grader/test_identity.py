@@ -17,6 +17,7 @@ precision must drop. A green test that cannot go red proves nothing.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -178,6 +179,43 @@ def check_key_agreement() -> list[str]:
     return failures
 
 
+def check_return_type_character_class() -> list[str]:
+    """A return-type prefix using `/`, `!` or `()` must still parse (G1).
+
+    Before the fix, `_CECIL_FULLNAME`'s return-type character class did not include a nested-type
+    separator, an IL generic placeholder, or a modreq/modopt clause — so a Cecil row whose return
+    type used any of them failed to match at all, and `method_key()` silently returned None. In
+    `load_oracle` that is not a no-op: the row is dropped from `stats['unparsed_row']` and the
+    edge disappears from the answer key entirely, so if an arm still reports it, the grader
+    charges it as a false positive nobody can defend — the answer key "forgot" an edge that was
+    really there. Reverting `_CECIL_FULLNAME`'s character class (dropping `/!()` from it) turns
+    every case below back into a None, which is exactly why this checks `method_key()` directly
+    rather than a full grade.py run: the failure is invisible to an identity run, because both
+    sides of an identity comparison make the identical mistake and still agree perfectly — the
+    same reason `check_key_agreement` above exists for the generic-arguments bug.
+    """
+    sys.path.insert(0, str(HERE))
+    from grade import method_key
+
+    cases = [
+        ("nested-type separator in the return type",
+         "App.Outer/Inner App.Service::Get()", "App.Service::Get"),
+        ("IL generic placeholder in the return type",
+         "!0 App.Generic`1::GetValue()", "App.Generic`1::GetValue"),
+        ("modreq(...) clause on the return type",
+         "System.Void modreq(System.Runtime.CompilerServices.IsExternalInit) App.Repo::Load()",
+         "App.Repo::Load"),
+    ]
+    failures = []
+    for label, raw, expected in cases:
+        key = method_key(raw)
+        if key != expected:
+            failures.append(
+                f"{label}: method_key({raw!r}) = {key!r}, expected {expected!r} — a real oracle "
+                f"row shaped like this would be dropped from the answer key, not scored")
+    return failures
+
+
 def check_override_map(tmp: Path) -> list[str]:
     """An arm that resolves a virtual call to the implementation must not be scored as wrong.
 
@@ -222,8 +260,83 @@ def check_override_map(tmp: Path) -> list[str]:
     return failures
 
 
+# Every seed the PREREGISTRATION deviations note (G3) used to reproduce the flap on the real
+# corpus (grep/Polly precision 0.233 vs 0.239): five of these landed on the wrong answer with the
+# pre-G3 code, three landed on the right one by luck. That spread is the point — a check that only
+# tries seed 0, or only compares two runs to each other, can pass on a lucky pairing even when the
+# underlying classification is order-dependent (both runs agreeing does not mean either is right).
+_HASH_SEEDS_TO_PROBE = ("0", "1", "2", "3", "4", "5", "42", "99")
+
+
+def check_cell_precedence(tmp: Path) -> list[str]:
+    """A callee with override candidates in two different cells must land in ONE cell, always (G3).
+
+    The real shape: Polly's `DisposeAsync` has two declared override targets — a first-party
+    base's own declaration (which oracle rows put in the primary cell) and
+    `System.IAsyncDisposable`'s (external, outside the corpus). EDGE_FORMAT.md settles which cell
+    an arm's edge to the concrete override is judged in: "classified by the declaration it
+    answers for... Otherwise a first-party class implementing IDisposable would drag a
+    standard-library call into the primary cell and lose precision there." So the concrete
+    override must classify as external, never primary — a fixed outcome, not a coin flip.
+
+    `cell_of()` used to iterate `overrides.get(callee, ())`, a `set`, and return whichever
+    declared cell it met first — dependent on Python's per-process string-hash order, not on the
+    data. This check runs the SAME fixture across a spread of `PYTHONHASHSEED` values and asserts
+    the one correct classification on every single run, not merely that the runs agree with each
+    other (two runs CAN agree and both be wrong — verified live against the pre-G3 grader: seeds
+    4, 5 and 42 all agreed with each other on the wrong cell, "primary", while seeds 0-3 and 99
+    agreed with each other on the right one, "external" — pairwise agreement alone would not have
+    caught this).
+    """
+    oracle_rows = [
+        # First-party base's own declaration — primary cell.
+        dict(Caller="System.Void App.Service::Run()",
+             Callee="System.Threading.Tasks.ValueTask App.DisposableBase::DisposeAsync()",
+             Op="callvirt", CalleeAssembly="App", VirtualDispatch=True,
+             CallerCompilerGenerated=False, CalleeCompilerGenerated=False, NoDebugInfo=False),
+        # System.IAsyncDisposable's declaration — external cell (outside the corpus).
+        dict(Caller="System.Void App.Service::Run()",
+             Callee="System.Threading.Tasks.ValueTask System.IAsyncDisposable::DisposeAsync()",
+             Op="callvirt", CalleeAssembly="System.Private.CoreLib", VirtualDispatch=True,
+             CallerCompilerGenerated=False, CalleeCompilerGenerated=False, NoDebugInfo=False),
+    ]
+    oracle = tmp / "prec-oracle.jsonl"
+    write(oracle, oracle_rows)
+
+    # The arm names the concrete override — never appears in the oracle rows above, so this
+    # checks classification (which cell the edge is judged in), not a match.
+    arm = tmp / "prec-arm.jsonl"
+    write(arm, [dict(caller="App.Other::Trigger", callee="App.FileDisposable::DisposeAsync")])
+
+    mapping = tmp / "prec-map.json"
+    mapping.write_text(json.dumps({
+        "System.Threading.Tasks.ValueTask App.FileDisposable::DisposeAsync()": [
+            "System.Threading.Tasks.ValueTask App.DisposableBase::DisposeAsync()",
+            "System.Threading.Tasks.ValueTask System.IAsyncDisposable::DisposeAsync()",
+        ]
+    }), encoding="utf-8")
+
+    failures = []
+    for seed in _HASH_SEEDS_TO_PROBE:
+        out = tmp / f"prec-out-{seed}.json"
+        result = subprocess.run(
+            [sys.executable, str(HERE / "grade.py"), "--oracle", str(oracle), "--arm", str(arm),
+             "--overrides", str(mapping), "--first-party", "App", "--json", str(out)],
+            capture_output=True, text=True, env={**os.environ, "PYTHONHASHSEED": seed}, check=True)
+        report = json.loads(out.read_text())
+        primary = cell(report, "primary")
+        external = cell(report, "excluded — callee outside")
+        if primary["arm_edges_in_cell"] != 0 or external["arm_edges_in_cell"] != 1:
+            failures.append(
+                f"PYTHONHASHSEED={seed}: the ambiguous override landed in primary "
+                f"({primary['arm_edges_in_cell']} edges) instead of external "
+                f"({external['arm_edges_in_cell']} edges) — classification depends on hash order")
+    return failures
+
+
 def main() -> int:
     failures: list[str] = check_key_agreement()
+    failures += check_return_type_character_class()
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
@@ -250,6 +363,7 @@ def main() -> int:
                 f"expected 3 primary edges (call, ctor, lambda-remapped), got {primary['oracle_edges']}")
 
         failures += check_override_map(tmp)
+        failures += check_cell_precedence(tmp)
 
         # 2. the test must be able to fail: a missing edge has to cost recall
         write(arm, [r for r in FIXTURE if "Load" not in r["Callee"]])
