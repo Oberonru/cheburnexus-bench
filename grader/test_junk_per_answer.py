@@ -108,11 +108,21 @@ def main() -> int:
         grep_s = summary["arms"]["grep"]
         cheb_s = summary["arms"]["cheburnexus"]
 
-        # (a) grep's junk fraction must exceed cheburnexus's
-        if not (grep_s["junk_byte_fraction"] > cheb_s["junk_byte_fraction"]):
+        # (a) grep's proven-wrong (honest junk) fraction must exceed cheburnexus's
+        if not (grep_s["proven_wrong_byte_fraction"] > cheb_s["proven_wrong_byte_fraction"]):
             failures.append(
-                f"(a) grep junk_byte_fraction={grep_s['junk_byte_fraction']} did not exceed "
-                f"cheburnexus's {cheb_s['junk_byte_fraction']}")
+                f"(a) grep proven_wrong_byte_fraction={grep_s['proven_wrong_byte_fraction']} did not "
+                f"exceed cheburnexus's {cheb_s['proven_wrong_byte_fraction']}")
+
+        # (a2) REGRESSION: proven-wrong counts ONLY contradicted bytes, never the excluded accessor.
+        # grep's proven-wrong bytes must equal exactly its contradicted byte_sum — if the excluded
+        # get_Name row leaked in, calling a legitimate out-of-cell edge "junk" would be an overclaim.
+        grep_total = grep_result["total_rendered_bytes"]
+        expected_pw = round(grep_result["byte_sums"]["contradicted"] / grep_total, 4)
+        if grep_s["proven_wrong_byte_fraction"] != expected_pw:
+            failures.append(
+                f"(a2) proven_wrong_byte_fraction={grep_s['proven_wrong_byte_fraction']} != "
+                f"contradicted-only {expected_pw} — excluded/unremappable bytes leaked into junk")
 
         # (b) grep's total rendered bytes must exceed cheburnexus's
         if not (grep_s["total_rendered_bytes"] > cheb_s["total_rendered_bytes"]):
@@ -144,9 +154,10 @@ def main() -> int:
             print(f"  - {line}")
         return 1
 
-    print("\nOK — junk-per-answer comparison runs on a synthetic fixture: grep's junk fraction and "
-          "total bytes both exceed cheburnexus's, and the duplicate raw row inflates grep's byte "
-          "count past what distinct-edge counting alone would give.")
+    print("\nOK — junk-per-answer comparison runs on a synthetic fixture: grep's proven-wrong "
+          "(contradicted-only, no excluded leak) fraction and total bytes both exceed cheburnexus's, "
+          "and the duplicate raw row inflates grep's byte count past what distinct-edge counting "
+          "alone would give.")
     return 0
 
 

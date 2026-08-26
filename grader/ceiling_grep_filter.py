@@ -245,18 +245,33 @@ def analyze_arm(repo_dir_name: str, arm: str, results_root: Path = RESULTS_ROOT)
 
 
 def comparative_summary(repo_dir_name: str, arm_results: dict[str, dict]) -> dict:
-    """The headline comparison the article wants: junk-byte-fraction and total bytes, arm vs arm,
-    same repo, same cell, same rendered line form."""
+    """The headline comparison the article wants: how much of each arm's bytes are junk, arm vs arm,
+    same repo, same cell, same rendered line form.
+
+    Two fractions, mirroring the two ceilings above so a reader cannot confuse "the oracle has no
+    opinion" with "the oracle says wrong":
+      * proven_wrong_byte_fraction — ONLY primary-cell edges the oracle CONTRADICTS. This is the
+        honest junk number; it is the one an ideal filter could remove without ever discarding a
+        real edge. Excluded-cell edges (calls into the standard library, property accessors, the
+        foreach protocol, compiler-generated, indirect ops), unremappable-caller and malformed rows
+        are NOT counted here — the grader never puts them in a position to be proven wrong, so
+        calling them junk would be an overclaim.
+      * unconfirmed_byte_fraction — everything the oracle does not affirmatively confirm in the
+        primary cell (the naive ceiling). Reported for context, NOT as junk: it lumps the
+        out-of-cell bytes in, and most of those are legitimate.
+    """
     per_arm = {}
     for arm, entry in arm_results.items():
         total = entry["total_rendered_bytes"]
         b = entry["byte_sums"]
-        junk_bytes = b["contradicted"] + b["excluded"] + b["unremappable_caller"] + b["malformed"]
+        proven_wrong_bytes = b["contradicted"]
+        unconfirmed_bytes = total - b["confirmed"]
         confirmed_bytes = b["confirmed"]
         confirmed_distinct = entry["distinct_edge_counts"].get("confirmed", 0)
         per_arm[arm] = {
             "total_rendered_bytes": total,
-            "junk_byte_fraction": round(junk_bytes / total, 4) if total else None,
+            "proven_wrong_byte_fraction": round(proven_wrong_bytes / total, 4) if total else None,
+            "unconfirmed_byte_fraction": round(unconfirmed_bytes / total, 4) if total else None,
             "confirmed_byte_fraction": round(confirmed_bytes / total, 4) if total else None,
             "bytes_per_confirmed_distinct_edge": (
                 round(confirmed_bytes / confirmed_distinct, 2) if confirmed_distinct else None
@@ -289,13 +304,15 @@ def print_table(results: list[dict], comparisons: list[dict]) -> None:
               f"{d['dropped_naive']:>13} ({d['pct_dropped_naive']:.1f}%)"
               f"{d['dropped_honest']:>14} ({d['pct_dropped_honest']:.1f}%)")
 
-    print(f"\n{'repo':<12}{'arm':<12}{'total bytes':>12}{'junk frac':>10}{'confirmed frac':>15}{'B/confirmed edge':>17}")
+    print(f"\n{'repo':<12}{'arm':<12}{'total bytes':>12}{'proven-wrong':>14}{'unconfirmed':>13}"
+          f"{'confirmed frac':>15}{'B/confirmed edge':>17}")
     for c in comparisons:
         for arm, s in c["arms"].items():
-            jf = f"{s['junk_byte_fraction']:.4f}" if s["junk_byte_fraction"] is not None else "n/a"
+            pw = f"{s['proven_wrong_byte_fraction']:.4f}" if s["proven_wrong_byte_fraction"] is not None else "n/a"
+            uc = f"{s['unconfirmed_byte_fraction']:.4f}" if s["unconfirmed_byte_fraction"] is not None else "n/a"
             cf = f"{s['confirmed_byte_fraction']:.4f}" if s["confirmed_byte_fraction"] is not None else "n/a"
             bpe = f"{s['bytes_per_confirmed_distinct_edge']:.2f}" if s["bytes_per_confirmed_distinct_edge"] is not None else "n/a"
-            print(f"{c['repo']:<12}{arm:<12}{s['total_rendered_bytes']:>12}{jf:>10}{cf:>15}{bpe:>17}")
+            print(f"{c['repo']:<12}{arm:<12}{s['total_rendered_bytes']:>12}{pw:>14}{uc:>13}{cf:>15}{bpe:>17}")
     print()
 
 
@@ -313,8 +330,9 @@ def main() -> int:
     out_path = ROOT / "results" / f"junk-per-answer-{stamp}.json"
     payload = {
         "question": "for the same repo/cell, how many bytes of grep's vs cheburnexus's rendered "
-                     "output are junk (contradicted/excluded/unremappable/malformed), and how does "
-                     "the junk-byte-fraction compare between the two arms",
+                     "output does the oracle actively CONTRADICT (proven_wrong_byte_fraction — the "
+                     "honest junk number), and how does that compare between the two arms; excluded/"
+                     "unremappable/malformed bytes are reported but NOT called junk (see method)",
         "scope": {"cells": [CELL], "repos": REPOS, "arms": ARMS, "excluded_repo": "FluentValidation",
                    "excluded_repo_reason": EXCLUDED_REPO_NOTE},
         "method": {

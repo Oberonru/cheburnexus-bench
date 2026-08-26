@@ -255,8 +255,8 @@ class Cell:
             # `overrides.get(callee, ())` is a `set` — iterated `sorted()` so which declaration
             # gets recorded in `matched` never depends on Python's per-process hash order. This
             # loop's own COUNT can't change with iteration order (only the FIRST hit is kept, and
-            # a break stops it), but it is sorted anyway so nothing here is left unproven. See
-            # `cell_of` below for the case where hash order previously did change a number.
+            # a break stops it), but it is sorted anyway so nothing here is left unproven. See the
+            # module-level `cell_of` for the case where hash order previously did change a number.
             caller, callee = edge
             for declared in sorted(overrides.get(callee, ())):
                 if (caller, declared) in self.oracle:
