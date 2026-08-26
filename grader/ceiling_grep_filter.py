@@ -7,11 +7,16 @@ our engine — and it exists to decide whether building a real one is worth anyt
 
 This script does NOT reimplement the matching rule. It imports grader/grade.py and reuses its
 identity function (`method_key` + `normalize_caller`), its oracle-cell split (`load_oracle`),
-and its match test (the body of `Cell.score`'s inner loop, lifted verbatim into
-`edge_confirmed`). The only piece not exposed as an importable function is the callee→cell
-classifier `cell_of()`, which lives inline inside grade.py's `main()`; it is reproduced here
-byte-for-byte (see `cell_of` below) rather than re-derived, so the two scripts cannot drift
-apart on what counts as which cell.
+its match test (the body of `Cell.score`'s inner loop, lifted verbatim into `edge_confirmed`),
+and — since 2026-08-26 — its callee→cell classifier (`grade.cell_of` / `grade.build_callee_cell`)
+directly, imported rather than copied. A hand-copy of `cell_of` lived here before: it was written
+when the function was still a closure inside grade.py's `main()` and therefore not importable,
+and it rotted the moment `main()`'s `cell_of` was fixed for G3 (deterministic `CELL_PRECEDENCE`
+tie-break) without the copy being touched — this script kept the old first-hit-wins-over-a-set
+behaviour and silently reproduced the exact hash-order nondeterminism G3 fixed everywhere else
+(measured: analyze_repo('Polly') flipped between 89.61% and 89.15% across process restarts on
+identical inputs). `cell_of` is now a module-level function in grade.py for exactly this reason —
+importable, so this script and grade.py's own `main()` cannot drift apart again.
 
 Scope: `without-tests` cells only, `serilog` and `Polly` only. FluentValidation is EXCLUDED —
 a recorded defect (2026-08-24) means its two cells scanned identical files including test code,
@@ -31,12 +36,22 @@ Usage:
 
 from __future__ import annotations
 
-import json
 import os
 import sys
-from collections import defaultdict
-from datetime import datetime, timezone
-from pathlib import Path
+
+# Belt and braces, matching runner/run.py's own reasoning (see grade.py, CELL_PRECEDENCE comment):
+# cell_of() is deterministic on the data now regardless of hash seed, but this script is invoked
+# directly (`python3 grader/ceiling_grep_filter.py`), never through runner/run.py's subprocess, so
+# nothing else pins PYTHONHASHSEED for it. Re-exec once, before any other import runs, so a
+# published ceiling figure never again depends on which hash seed the interpreter happened to
+# start with — a second, independent guard on top of the code being correct.
+if os.environ.get("PYTHONHASHSEED") != "0":
+    os.execve(sys.executable, [sys.executable, *sys.argv], {**os.environ, "PYTHONHASHSEED": "0"})
+
+import json  # noqa: E402
+from collections import defaultdict  # noqa: E402
+from datetime import datetime, timezone  # noqa: E402
+from pathlib import Path  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "grader"))
@@ -50,37 +65,6 @@ EXCLUDED_REPO_NOTE = (
     "with-tests and without-tests cells scanned identical files including test code, so its rows "
     "are contaminated and not comparable to serilog/Polly here."
 )
-
-
-def build_callee_cell(cells: dict) -> dict[str, str]:
-    """Which oracle cell first claims each callee. Mirrors grade.py main() lines ~294-297."""
-    callee_cell: dict[str, str] = {}
-    for name, cell in cells.items():
-        for _, callee in cell.oracle:
-            callee_cell.setdefault(callee, name)
-    return callee_cell
-
-
-def cell_of(callee: str, callee_cell: dict[str, str], overrides: dict[str, set[str]]) -> str:
-    """Verbatim reproduction of the `cell_of` closure inside grade.py's `main()`.
-
-    Not importable as-is (it is a closure over locals built inside main()), so it is copied here
-    exactly rather than re-derived, to keep this script's classification identical to the
-    published grader's. See grade.py for the reasoning comments this omits for brevity.
-    """
-    known = callee_cell.get(callee)
-    if known is not None:
-        return known
-    for declared in overrides.get(callee, ()):
-        declared_cell = callee_cell.get(declared)
-        if declared_cell is not None:
-            return declared_cell
-    method = callee.rpartition("::")[2]
-    if method.startswith(("get_", "set_")):
-        return "accessor"
-    if method in grade.ENUMERATOR_PROTOCOL:
-        return "enumerator"
-    return "primary"
 
 
 def edge_confirmed(edge: tuple[str, str], primary_oracle: set, overrides: dict[str, set[str]]) -> bool:
@@ -126,7 +110,7 @@ def analyze_repo(repo_dir_name: str) -> dict:
 
     cells, _oracle_overrides_unused, oracle_stats = grade.load_oracle(str(oracle_path), first_party)
     overrides = load_overrides(overrides_path)
-    callee_cell = build_callee_cell(cells)
+    callee_cell = grade.build_callee_cell(cells)
     primary_oracle = cells["primary"].oracle
 
     rows: list[dict] = []
@@ -174,7 +158,7 @@ def analyze_repo(repo_dir_name: str) -> dict:
                 if cached is not None:
                     label = cached
                 else:
-                    cell_name = cell_of(callee_key, callee_cell, overrides)
+                    cell_name = grade.cell_of(callee_key, callee_cell, overrides)
                     if cell_name != "primary":
                         label = "excluded"
                     elif edge_confirmed(edge, primary_oracle, overrides):
@@ -283,9 +267,9 @@ def main() -> int:
         "method": {
             "rendered_line_form": "{caller_file}:{caller_line}: {callee}\\n",
             "matching_rule_source": "grader/grade.py (method_key, normalize_caller, load_oracle, "
-                                     "Cell.score match test) — imported and reused, not reimplemented",
-            "cell_of_source": "verbatim copy of the cell_of() closure inside grade.py main() "
-                               "(not importable as a standalone function)",
+                                     "Cell.score match test, build_callee_cell, cell_of) — imported "
+                                     "and reused, not reimplemented or copied",
+            "pythonhashseed_pinned": "0",
             "unit_of_classification": "distinct normalised (caller,callee) edge, cached and applied "
                                        "to every raw row sharing that edge",
             "unit_of_bytes": "raw row (one line an agent would actually read)",
