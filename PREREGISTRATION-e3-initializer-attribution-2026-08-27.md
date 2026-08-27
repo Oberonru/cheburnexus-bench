@@ -53,3 +53,55 @@ score.
 
 Precision below 0.92 in this cell. The new edges are argued to be compiler facts; if they are not
 matching, the attribution rule is wrong and must be re-opened before any number here is published.
+
+---
+
+# RESULT — run of 2026-08-27, `results/2026-08-27-initfix` (gitignored, local only)
+
+| | before | predicted | after |
+|---|---|---|---|
+| arm edges in cell | 410 | 425–445 | **418** |
+| matched | 384 | 398–412 | **392** (+8) |
+| junk | 26 | 26–34 | **26** ✅ |
+| precision | 0.9370 | 0.930–0.950 | **0.9378** ✅ |
+| recall | 0.6154 | 0.638–0.660 | **0.6282** ❌ |
+
+**The prediction was CONTRADICTED on matched and recall, below the range — the second run in a row
+to miss in the same direction.** That pattern is itself the finding: the classifier used to size
+these forecasts reads source lines with a regular expression and keeps counting things that are not
+what it thinks they are.
+
+## The named risk did not materialise, and that is worth stating
+
+Every one of the 8 new edges is a MATCH; new junk is **zero**. The synthesized constructor works as
+a CALLER key — `ValidatorConfiguration::.ctor` and `ValidatorSelectorOptions::.cctor` are both
+constructors nobody wrote, and both matched the oracle. The failure signature named before the run
+(a junk jump concentrated on `.ctor` callers) did not appear.
+
+## Why it missed low — four DIFFERENT defects, none of them this one
+
+37 missed edges still have a constructor caller. Read one by one against the oracle's own
+CallerFile/CallerLine, they are not one thing:
+
+1. **Target-typed `new()`** — `internal TrackingCollection<…> Rules { get; } = new();`
+   (`AbstractValidator.cs:37`). The walk matches `ObjectCreationExpressionSyntax` and target-typed
+   `new()` is `ImplicitObjectCreationExpressionSyntax`. A silent loss of exactly the kind fixed
+   today, on a spelling that is ordinary modern C#.
+2. **Constructor-initializer ARGUMENTS** — `: base(BuildMessage(validatorType, wasInvokedByAspNet))`
+   (`AsyncValidatorInvokedSynchronouslyException.cs:33`). The initializer node is handed to the
+   resolver whole, so the `this`/`base` target resolves, but nothing walks INSIDE its argument list.
+3. **Method-group conversions** — `private Func<…> _errorCodeResolver = DefaultErrorCodeResolver;`
+   (`ValidatorOptions.cs:34,35,37`). IL emits `ldftn` plus a delegate constructor and the oracle
+   records it; the engine does not model a method-group reference as a call at all.
+4. **Implicit base-constructor calls** — a constructor with no written `: base()` still calls the
+   base constructor in IL (`LengthValidator.cs:32`, `PrecisionScaleValidator.cs:44`, and others,
+   whose oracle rows point at the constructor's DECLARATION line).
+
+(1) and (2) are the same class as everything fixed today — code that runs and that nothing walks.
+(3) and (4) are modelling decisions about what counts as a call, and each deserves its own
+pre-registration rather than being folded in here.
+
+## Not measured
+
+FluentValidation / without-tests only. Polly and serilog not re-run; repowise and grep not re-run,
+so the arm-invariance check is absent by construction (`--arms cheburnexus`).
