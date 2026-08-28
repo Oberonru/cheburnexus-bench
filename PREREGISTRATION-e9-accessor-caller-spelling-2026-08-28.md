@@ -113,3 +113,82 @@ matches the oracle's row or stays junk in the same place it already was.
 ⛔ Nothing about the translation, the grader or the corpus is touched after these numbers are seen.
 
 Run command: `PYTHONHASHSEED=0 python3 runner/run.py --checkouts corpus --out results/2026-08-28-accessor-caller`
+
+---
+
+# RESULT — run of 2026-08-28, `results/2026-08-28-accessor-caller`
+
+| cell | arm edges | matched | junk | precision | recall |
+|---|---|---|---|---|---|
+| Polly / without | 475 → **475** | 459 → **465** | 16 → **10** | 0.9663 → **0.9789** | 0.6529 → **0.6615** |
+| FluentValidation / without | 451 → **451** | 422 → **429** | 29 → **22** | 0.9357 → **0.9512** | 0.6763 → **0.6875** |
+| serilog / without | 451 → **451** | 443 → **449** | 8 → **2** | 0.9823 → **0.9956** | 0.8250 → **0.8361** |
+| serilog / with | 920 → **920** | 910 → **916** | 10 → **4** | 0.9891 → **0.9957** | 0.3902 → **0.3928** |
+
+**Every one of the sixteen predicted numbers landed on the point estimate.** Junk fell by exactly
+6 / 7 / 6 / 6 — the re-spelled pair counts — so **all 25 re-spelled pairs became matches and none
+became differently-junk**, which was kill condition 5 read one by one.
+
+Neither named risk materialised: no re-spelled pair collided with an existing one (arm counts
+unchanged), and none was junk for a second reason. `Outcome::Void`, the one struct accessor, matched
+like the rest.
+
+## The checks, run rather than inferred
+
+**Kill 1 — the untouched arms.** grep and repowise are BYTE-IDENTICAL to e8 in all eight files.
+**Kill 2 — recall.** Rose in all four cells.
+**Kill 3 — precision.** Rose in all four cells.
+**Kill 4 — raw edge counts.** 678 / 605 / 695 / 1273, unchanged; and against e8 the diff is exactly
+6 / 7 / 6 / 6 lines changed in each direction — re-spellings only, nothing added, nothing dropped.
+
+⚠ As pre-registered: this run raises only our arm, by construction, and that fact carries no weight.
+The case for the change is in `DECISION-accessor-caller-spelling-2026-08-28.md`.
+⚠ `init`, `add`, `remove` and indexers were not exercised by any corpus and remain argued, not
+measured.
+
+## What the residual junk now says — read one by one
+
+With the accessor spelling gone, the remaining 38 junk edges resolve into three named causes and one
+genuinely open question.
+
+**Polly — 6 of 10 are `implicit operator Func`.** Every one has a caller spelled
+`Polly.PredicateBuilder\`1::implicit operator Func`, `Polly.Simmy.Fault.FaultGenerator::implicit
+operator Func`, `Polly.Simmy.Outcomes.OutcomeGenerator\`1::implicit operator Func`, where IL says
+`op_Implicit`. 🔑 That is **plan item 5**, and it now has its measured witnesses: fixing it would take
+Polly from 0.9789 to about 0.9915.
+
+**Polly — the other 4, and serilog's 2, look like conditional compilation.**
+`BrokenCircuitException::.ctor`, `::GetObjectData`, `TimeoutRejectedException::GetObjectData`,
+`ExceptionUtilities::TrySetStackTrace`, `Serilog.Core.Logger::Emit` (twice). These are the shapes
+that live behind `#if`: legacy serialization surface and stack-trace plumbing. We read the source and
+report the call; the net8.0 assembly the oracle reads never compiled it. **This is a NEW category, not
+previously named anywhere** — it is not a wrong fact about the source, it is a fact about a target
+framework the answer key does not build. It needs its own investigation before it is called junk.
+
+**FluentValidation — 14 of 22 share ONE caller.** Every one of them is
+`FluentValidation.Internal.CollectionPropertyRule\`2::ValidateAsync`. A single method accounts for
+almost two-thirds of that cell's remaining junk, so this is one cause and not fourteen. It is an
+`async` method, and `EDGE_FORMAT.md`'s caller remapping (a compiler-generated state machine is
+remapped to the enclosing user-written method, a nested local function to the OUTERMOST one) is the
+first place to look. ⛔ Not diagnosed here — named, sized, and left for its own investigation rather
+than guessed at.
+
+The last 5 FluentValidation edges are three self-referential pairs
+(`RuleBase\`3::GetDisplayName -> RuleBase\`3::GetDisplayName`,
+`PropertyValidator\`2::GetDefaultMessageTemplate` and its async twin, each calling itself) plus
+`IncludeRule\`1::ValidateAsync -> PropertyRule\`2::ValidateAsync` and
+`RuleBuilder\`2::DependentRules -> ::DependentRulesInternal` — likely the same async/base-call
+family, unverified.
+
+## Standing numbers after e9
+
+| cell | grep | repowise | cheburnexus |
+|---|---|---|---|
+| Polly / without-tests | 0.246 / 0.247 | 0.367 / 0.191 | **0.9789 / 0.6615** |
+| FluentValidation / without-tests | 0.207 / 0.389 | 0.357 / 0.183 | **0.9512 / 0.6875** |
+| serilog / without-tests | 0.260 / 0.542 | 0.544 / 0.348 | **0.9956 / 0.8361** |
+| serilog / with-tests | 0.3205 / 0.7436 | 0.5948 / 0.2732 | **0.9957 / 0.3928** |
+
+The pre-registered **P1 criterion (≥0.97)** now holds in three of the four cells — both serilog cells
+are above 0.995 and Polly cleared it for the first time. FluentValidation, at 0.9512, is the only
+cell still below, and 14 of its 22 remaining junk edges have a single named cause.
