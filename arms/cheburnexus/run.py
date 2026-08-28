@@ -251,10 +251,36 @@ def _accessor_caller_method(method_name: str, accessor: str | None) -> str:
     against the ruler, disclosed rather than silently wrong. Detected here by the key shape itself
     (the literal "this[" prefix IndexerKey always emits), not by a separate flag.
     """
-    if accessor is None or method_name.startswith("this["):
+    if accessor is None or method_name.startswith("this[") or ".this[" in method_name:
         return method_name
     prefix = _ACCESSOR_PREFIX.get(accessor)
-    return f"{prefix}{method_name}" if prefix else method_name
+    if not prefix:
+        return method_name
+    # The prefix goes on the MEMBER, not on the whole name. An explicit interface implementation is
+    # spelled qualifier-first in metadata (`MyNs.IFoo.get_P`, never `get_MyNs.IFoo.P` — measured on a
+    # compiled probe), and by this point method_name may already carry that qualifier, either from the
+    # engine's source-text key or from MetadataName. A name with no dot is unaffected: rpartition
+    # returns ("", "", name) and the result is byte-identical to the old plain concatenation.
+    head, dot, member = method_name.rpartition(".")
+    return f"{head}{dot}{prefix}{member}"
+
+
+def _metadata_caller_method(method_name: str, entry: dict) -> str:
+    """Prefer the name the COMPILER gave this member, when the engine recorded one.
+
+    `CallSidecarEntry.MetadataName` is written only where a member explicitly implements an
+    interface and only in semantic mode, where a symbol exists. The engine's own key spells such a
+    member with the qualifier the SOURCE writes (`IValidator.Validate`) because that key must also be
+    producible without a semantic model; IL spells it with the interface's FULLY-QUALIFIED name
+    (`FluentValidation.IValidator.Validate`), and the two are genuinely different strings — measured
+    on this corpus, not assumed. This arm copies the recorded fact rather than reconstructing a
+    namespace it would have to guess, the same way it copies `CallEdge.Accessor`.
+
+    Absent field -> the name is returned untouched, so every other caller is byte-identical and the
+    syntactic fallback (which records nothing) is never given an invented qualification.
+    """
+    recorded = entry.get("MetadataName")
+    return recorded if recorded else method_name
 
 
 def _edges_from_calls(calls_path: Path, index: ClassIndex, repo_root: Path) -> Iterator[armkit.Edge]:
@@ -280,7 +306,9 @@ def _edges_from_calls(calls_path: Path, index: ClassIndex, repo_root: Path) -> I
             # Accessor translation happens per CALL, not once per raw_caller entry: a property's
             # getter and setter share this SAME entry (one member, per CallKeyBuilder.MemberKey),
             # so only each call's own Accessor tag says which body it came from.
-            effective_caller_method = _accessor_caller_method(caller_method, call.get("Accessor"))
+            effective_caller_method = _accessor_caller_method(
+                _metadata_caller_method(caller_method, entry), call.get("Accessor")
+            )
             caller_key = index.contract_key(caller_type, effective_caller_method)
 
             yield armkit.Edge(
