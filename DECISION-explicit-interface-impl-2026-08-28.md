@@ -52,55 +52,99 @@ This is the same defect class already fixed twice in this key space and document
 (`IndexerKey`). Both were fixed by making the key carry the distinction. Nothing new is being
 invented here; a third instance of a known bug is being closed.
 
+## ⚠ Correction, made before any code was written
+
+This document first argued that the metadata name is the **source text** of the specifier, so that
+"what the human wrote" and "what IL records" would be the same string. **That was wrong, and the
+error was caught by checking the corpus instead of trusting the reasoning.** FluentValidation's
+source writes `IValidator.Validate`; the answer key says `FluentValidation.IValidator.Validate`.
+Serilog writes `IEnumerable.GetEnumerator`; the key says
+`System.Collections.IEnumerable.GetEnumerator`.
+
+Probed on metal — a net8.0 assembly compiled and its metadata names read back by reflection
+(`scratchpad/ilprobe`), a class in namespace `Probe.Inner` implementing `Probe.IFoo`:
+
+| written in source | metadata name |
+|---|---|
+| `void IFoo.Bar()` | `Probe.IFoo.Bar` |
+| `void Probe.IFoo.Qux()` | `Probe.IFoo.Qux` |
+| `void Alias.Quux()`, after `using Alias = Probe.IFoo;` | `Probe.IFoo.Quux` |
+| `void global::Probe.IFoo.Baz()` | **`global::Probe.IFoo.Baz`** |
+| `IEnumerator IEnumerable.GetEnumerator()` | `System.Collections.IEnumerable.GetEnumerator` |
+| `void IGen<int>.G(int)` | `Probe.IGen<System.Int32>.G` |
+| `int IFoo.this[int]` | `Probe.IFoo.get_Item` (property `Probe.IFoo.Item`) |
+
+**The rule the data supports:** the name is the interface's FULLY-QUALIFIED name — aliases expanded,
+generic arguments written out with fully-qualified type names — plus `.` plus the member. A `global::`
+written by hand is the one thing carried over verbatim, which is why the odd row in the answer key has
+it: that member comes from generated source that wrote `global::`, not from any qualification rule.
+
+The consequence is structural: **the qualified name is NOT derivable from syntax.** `IFoo` is not
+`Probe.IFoo` until a symbol says so. And the arm cannot recover it either — `ClassModel.Interfaces`
+carries `FluentValidation.IValidator<T>` fully qualified but `IEnumerable<...>` unqualified in the
+same list, i.e. exactly the serilog case is missing.
+
 ## The decision
 
-**Fix the ENGINE. The member's name becomes the source text of its explicit interface specifier,
-verbatim, plus `.`, plus the identifier.** No translation in the arm.
+**Fix the ENGINE, in two separate pieces, because two different questions are being answered.**
+
+**(1) The key carries the SOURCE-TEXT qualifier**, in every mode and both sidecars:
 
     void IFoo.Bar()                            →  IFoo.Bar
-    Task IValidationRuleInternal<T>.Validate() →  FluentValidation.IValidationRuleInternal<T>.Validate
+    IEnumerator IEnumerable.GetEnumerator()    →  IEnumerable.GetEnumerator
 
-Four reasons, in the order they carry weight.
+This is what actually fixes the product defect. It un-collides the two members, so neither is dropped
+and neither is credited with the other's calls. It needs no semantic model, so
+`CallKeyBuilder.MethodKey` (syntax) and `MethodsSidecarBuilder.BuildKey` (parsed model) still produce
+byte-identical strings, and the semantic `--input` path and the syntactic `--project` fallback still
+agree — the invariant `CallKeyBuilder`'s own class doc states, kept rather than weakened. It is also
+the right answer for a reader: `who_calls` names the member as it is written in the file they will
+open.
 
-### 1. Unlike the accessor case, the product's key is WRONG, not merely differently spelled
+**(2) The exact compiler name is RECORDED as a separate fact**, not folded into the key:
+`CallSidecarEntry.MetadataName`, written only where a semantic model exists and only when it differs
+from the key's own member segment. The arm reads that fact and spells the caller the oracle's way.
 
-The accessor decision turned on the product's spelling being deliberate, documented and useful:
-`who_calls` should answer with the member a human can go and look at. That argument does not
-transfer. Here the product's key does not name a member a human wrote — it names *two* members with
-one string, keeps one at random, and attributes its body to the other. Changing the engine to make a
-benchmark number better would be the inversion this polygon exists to prevent; changing it because
-the shipped answer is false is the polygon working as intended.
+Reasons, in the order they carry weight.
+
+### 1. The product's key is WRONG, not merely differently spelled
+
+The accessor decision (e9) turned on the product's spelling being deliberate, documented and useful.
+That argument does not transfer. Here the key does not name a member a human wrote — it names *two*
+members with one string, keeps one at random, and attributes its body to the other. Changing the
+engine to make a benchmark number better would be the inversion this polygon exists to prevent;
+changing it because the shipped answer is false is the polygon working as intended.
 
 ### 2. Only the engine can fix it — the arm demonstrably cannot
 
 Two of FluentValidation's unmatched rows (`AbstractValidator\`1::IValidator.Validate` and
-`::ValidateAsync`) sit on a type that has **both** a public `Validate` overload and an explicit
+`::ValidateAsync`) sit on a type carrying **both** a public `Validate` overload and an explicit
 `IValidator.Validate`. The arm strips the parameter signature at
-`arms/cheburnexus/run.py:198-209` (`method_sig.split("(",1)[0]`) before `contract_key` ever sees a
-name, so the two are already one entry by the time any arm-side rewrite could run. No string
-rewriting in the arm can separate members the engine already collapsed. The engine can, because it
-stops collapsing them.
+`arms/cheburnexus/run.py:198-209` (`method_sig.split("(",1)[0]`) before `contract_key` sees a name,
+so the two are already one entry by the time any arm-side rewrite could run. No string rewriting in
+the arm can separate members the engine already collapsed.
 
-### 3. "What the human wrote" and "what IL records" are the SAME STRING here
+### 3. Splitting the two pieces is what keeps the invariant
 
-The C# compiler builds the metadata name of an explicit implementation from the *source text* of the
-specifier as written. The polygon's own answer key proves it: one FluentValidation row is spelled
+Putting the fully-qualified name straight into the key would have been the shorter patch and would
+have cost two invariants at once: the semantic and syntactic modes would spell the same member
+differently, and the methods sidecar — built from a syntax-parsed `MethodModel`, with no symbol in
+reach — could no longer produce the key the calls sidecar does, breaking the methods↔calls join
+`MethodQuery.cs` documents as byte-identical. Keeping the key syntactic and recording the compiler's
+name beside it costs one sparse field and keeps both.
 
-    CollectionPropertyRule`2::global::FluentValidation.IValidationRuleInternal<T>.Validate
+### 4. The translation reads a recorded fact, exactly as e9 required
 
-— `global::` and all, because the generated source that declared it wrote `global::`. So taking the
-syntax verbatim is simultaneously the product-honest choice (we report the text the reader will find
-in the file) and the oracle-exact one. There is no second key space and nothing for the arm to
-translate. Verified, not assumed: feeding our prospective key through the grader's own `method_key`
-yields the oracle's normalized string byte-for-byte — the grader's `strip_generic_arguments` absorbs
-the `<T>` symmetrically on both sides, so the arm needs no generic handling either.
+`CallEdge.Accessor` was added so the arm could re-spell an accessor caller without inferring
+anything. `MetadataName` is the same move for the same reason: the arm copies a string the compiler
+produced, it does not reconstruct a namespace it guessed. Null means no signal — the syntactic
+fallback has no symbol and says nothing rather than inventing a qualification.
 
-### 4. It is the cheapest correct place
+### 5. It generalises, and that is a bonus rather than the argument
 
-`MethodsSidecarBuilder.BuildKey` derives its key from `MethodModel.Name`, so fixing the parser
-carries the methods sidecar along for free. `CallKeyBuilder.MethodKey` must be changed in lockstep
-with the identical rule, because `MethodQuery.cs` documents the two sidecars' keys as byte-identical
-for the methods↔calls join — the two-ends contract that has already bitten this project once.
+A recorded metadata name is also the exact answer for `op_Implicit` (work item 3) and for the
+accessor spelling e9 currently derives in the arm. ⛔ Neither is folded into this change; noted only
+so the next reader sees that the arm's translation table has a principled end state.
 
 ## What is deliberately NOT done
 
