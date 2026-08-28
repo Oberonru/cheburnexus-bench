@@ -31,6 +31,9 @@ PUBLISHED = ROOT / "results" / "published"
 BLOCKED_EXIT = 3  # armkit.EXIT_BLOCKED — the arm ran but was refused the data
 CELLS = ("without-tests", "with-tests")
 
+sys.path.insert(0, str(ROOT / "arms" / "_lib"))
+import armkit  # noqa: E402  (path inserted above, matching the existing _lib/__pycache__ convention)
+
 
 @dataclass
 class ArmRun:
@@ -98,6 +101,45 @@ class CellNotMeasurable(Exception):
     """This repository and cell cannot be measured, and must be reported rather than approximated."""
 
 
+def unmatched_test_scope_projects(entry: dict, cell: str) -> list[str]:
+    """`test_assemblies_projects` entries the arms are scoped to read for which `test_assemblies`
+    lists no matching assembly at the cell's probed framework.
+
+    Only `with-tests` consults `test_assemblies_projects` at all (see
+    `armkit.scope_dirs_from_entry`), so a mismatch cannot affect `without-tests` and this always
+    returns `[]` for it.
+
+    Matched by PROJECT, not by string: a `test_assemblies_projects` entry is a `.csproj` path,
+    sometimes with a trailing parenthetical note (`_strip_trailing_note`); a `test_assemblies` entry
+    is a built `.dll` path several directories deeper under the same project directory
+    (`_project_dir`). A project counts as covered when some framework-filtered `test_assemblies`
+    entry's path starts with its directory, compared by path COMPONENT so `test/Serilog.Tests` does
+    not also match a hypothetical sibling `test/Serilog.Tests.Something`.
+    """
+    if cell != "with-tests":
+        return []
+    projects = entry.get("test_assemblies_projects") or []
+    if not projects:
+        return []
+
+    wanted = entry.get("target_framework_probed")
+    covered_parts = [
+        Path(a.replace("\\", "/")).parts
+        for a in entry.get("test_assemblies", [])
+        if not wanted or targets_framework(a, wanted)
+    ]
+
+    unmatched = []
+    for project in projects:
+        project_dir = armkit._project_dir(project)
+        if project_dir is None:
+            continue  # same "cannot express a directory" case armkit._project_dir documents
+        dir_parts = Path(project_dir).parts
+        if not any(parts[:len(dir_parts)] == dir_parts for parts in covered_parts):
+            unmatched.append(armkit._strip_trailing_note(project))
+    return sorted(unmatched)
+
+
 def build_oracle(entry: dict, checkout: Path, cell: str, out_dir: Path) -> tuple[Path, Path, list[str]] | None:
     """Extract the answer key for one repository and cell. Returns (edges, overrides, first_party)."""
     assemblies = assemblies_for(entry, checkout, cell)
@@ -118,6 +160,21 @@ def build_oracle(entry: dict, checkout: Path, cell: str, out_dir: Path) -> tuple
                 f"command only builds the product projects, so the answer key would be identical to "
                 f"without-tests while the arms read the test sources — build the test projects, or "
                 f"drop this cell for this repository."
+            )
+
+        # One level finer than the check above: some test assembly exists, but not one for every
+        # project the arms are scoped to read. Those projects' calls are compiled, read by the arms,
+        # and judged against nothing — silently junk by construction, the exact defect e8 fixed for
+        # serilog (Serilog.PerformanceTests and AotTestApp were in scope but not in the answer key).
+        unmatched = unmatched_test_scope_projects(entry, cell)
+        if unmatched:
+            wanted = entry.get("target_framework_probed")
+            raise CellNotMeasurable(
+                f"test_assemblies_projects and test_assemblies disagree for {wanted}: the arms are "
+                f"scoped to read {', '.join(unmatched)}, but test_assemblies lists no matching "
+                f"{wanted} assembly for {'it' if len(unmatched) == 1 else 'them'} — build the "
+                f"project and add its assembly to test_assemblies, or drop it from "
+                f"test_assemblies_projects."
             )
 
     edges = out_dir / "oracle.jsonl"

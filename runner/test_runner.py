@@ -220,6 +220,100 @@ def check_with_tests_refuses_a_fake_cell(tmp: Path) -> list[str]:
     return failures
 
 
+def check_test_scope_guard(tmp: Path) -> list[str]:
+    """`test_assemblies_projects` (what the arms read) and `test_assemblies` (what the answer key is
+    built from) must describe the same set of projects for `with-tests`.
+
+    This shipped once for real: serilog's `test_assemblies_projects` listed five test projects —
+    the arms' read scope — while `test_assemblies` listed only two — the answer key's scope.
+    Serilog.PerformanceTests, TestDummies and AotTestApp were read but never judgeable, so every
+    call with a caller in one of them was junk by construction: the compiler recorded it, nobody put
+    it in the key, and the arm was charged for reporting it correctly (e8, 2026-08-28).
+    """
+    from run import CellNotMeasurable, build_oracle, unmatched_test_scope_projects
+
+    failures = []
+
+    # The PRE-FIX shape: exactly serilog's corpus.json entry before e8.
+    mismatched = {
+        "target_framework_probed": "net8.0",
+        "test_assemblies": [
+            "test/Serilog.ApprovalTests/bin/Release/net8.0/Serilog.ApprovalTests.dll",
+            "test/Serilog.Tests/bin/Release/net8.0/Serilog.Tests.dll",
+        ],
+        "test_assemblies_projects": [
+            "test/Serilog.Tests/Serilog.Tests.csproj",
+            "test/Serilog.ApprovalTests/Serilog.ApprovalTests.csproj",
+            "test/Serilog.PerformanceTests/Serilog.PerformanceTests.csproj",
+            "test/TestDummies/TestDummies.csproj (test helper, not itself a suite)",
+            "test/AotTestApp/AotTestApp.csproj (AOT smoke-test app, not itself a suite)",
+        ],
+    }
+    expected_unmatched = [
+        "test/AotTestApp/AotTestApp.csproj",
+        "test/Serilog.PerformanceTests/Serilog.PerformanceTests.csproj",
+        "test/TestDummies/TestDummies.csproj",
+    ]
+
+    got = unmatched_test_scope_projects(mismatched, "with-tests")
+    if got != expected_unmatched:
+        failures.append(f"pre-fix shape: expected {expected_unmatched} unmatched, got {got}")
+    if unmatched_test_scope_projects(mismatched, "without-tests"):
+        failures.append("without-tests must never be affected — it never reads "
+                        "test_assemblies_projects at all")
+
+    # The guard must fire through build_oracle, the actual caller, not just exist as an unused
+    # pure function. Assembly files are empty stand-ins: the raise happens before either is opened.
+    checkout = tmp / "mismatched-repo"
+    for relative in mismatched["test_assemblies"]:
+        target = checkout / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"")
+    entry = dict(mismatched, product_assemblies=[])
+    try:
+        build_oracle(entry, checkout, "with-tests", tmp / "oracle-out-mismatched")
+        failures.append("build_oracle accepted a scope mismatch instead of refusing it")
+    except CellNotMeasurable as why:
+        message = str(why)
+        print(f"    guard message (pre-fix shape): {message}")
+        for project in expected_unmatched:
+            if project not in message:
+                failures.append(f"guard message did not name {project}: {message}")
+    except Exception as unexpected:  # noqa: BLE001 - any other failure is still a failure to report
+        failures.append(f"expected CellNotMeasurable, got {type(unexpected).__name__}: {unexpected}")
+
+    # The POST-FIX shape: corpus.json's actual serilog entry today must be silent.
+    corpus = json.loads((ROOT / "corpus.json").read_text(encoding="utf-8"))
+    serilog = next(e for e in corpus if e["name"] == "serilog/serilog")
+    still_unmatched = unmatched_test_scope_projects(serilog, "with-tests")
+    print(f"    unmatched_test_scope_projects on corpus.json's serilog entry: {still_unmatched!r}")
+    if still_unmatched:
+        failures.append(f"corpus.json's serilog entry still has an unmatched scope: {still_unmatched}")
+
+    # A repository whose test_assemblies is EMPTY (Polly, FluentValidation) must keep getting the
+    # older, more specific "no test assembly was found on disk" message — this guard must not paper
+    # over that refusal with a different one.
+    checkout_empty = tmp / "empty-test-assemblies-repo"
+    product_dll = checkout_empty / "src/App/bin/Release/net8.0/App.dll"
+    product_dll.parent.mkdir(parents=True, exist_ok=True)
+    product_dll.write_bytes(b"")
+    empty_test_assemblies = dict(
+        mismatched, test_assemblies=[],
+        product_assemblies=["src/App/bin/Release/net8.0/App.dll"],
+    )
+    try:
+        build_oracle(empty_test_assemblies, checkout_empty, "with-tests", tmp / "oracle-out-empty")
+        failures.append("build_oracle accepted a with-tests cell with no test assembly at all")
+    except CellNotMeasurable as why:
+        if "no test assembly was found on disk" not in str(why):
+            failures.append(f"the empty-test_assemblies case must keep raising the older, more "
+                            f"specific message, got: {why}")
+    except Exception as unexpected:  # noqa: BLE001
+        failures.append(f"expected CellNotMeasurable, got {type(unexpected).__name__}: {unexpected}")
+
+    return failures
+
+
 def main() -> int:
     failures: list[str] = check_framework_selection()
     with tempfile.TemporaryDirectory() as raw:
@@ -229,6 +323,7 @@ def main() -> int:
         failures += check_row_writer(tmp)
         failures += check_blocked_is_not_empty(tmp)
         failures += check_with_tests_refuses_a_fake_cell(tmp)
+        failures += check_test_scope_guard(tmp)
 
     if failures:
         print("FAILED:")

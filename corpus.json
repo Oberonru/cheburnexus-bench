@@ -9,7 +9,7 @@
   "clone_date_utc": "2026-08-23T15:22:10Z",
   "license": "Apache-2.0",
   "license_file": "LICENSE",
-  "build_command": "dotnet build src/Serilog/Serilog.csproj -c Release",
+  "build_command": "dotnet build Serilog.sln -c Release && dotnet build test/AotTestApp/AotTestApp.csproj -c Release",
   "build_modifications": "none (global.json in this tag already pins sdk 8.0.100 with rollForward=latestFeature)",
   "target_frameworks_produced": [
    "net8.0",
@@ -27,7 +27,9 @@
   ],
   "test_assemblies": [
    "test/Serilog.ApprovalTests/bin/Release/net8.0/Serilog.ApprovalTests.dll",
-   "test/Serilog.Tests/bin/Release/net8.0/Serilog.Tests.dll"
+   "test/Serilog.Tests/bin/Release/net8.0/Serilog.Tests.dll",
+   "test/Serilog.PerformanceTests/bin/Release/net8.0/Serilog.PerformanceTests.dll",
+   "test/AotTestApp/bin/Release/net8.0/AotTestApp.dll"
   ],
   "test_detection_rule": "projects living under top-level test/ directory; the actual assertion suites (Serilog.Tests, Serilog.ApprovalTests, Serilog.PerformanceTests) reference Microsoft.NET.Test.Sdk/xunit; product code lives only under src/Serilog",
   "sizes": {
@@ -48,10 +50,9 @@
    "test/Serilog.Tests/Serilog.Tests.csproj",
    "test/Serilog.ApprovalTests/Serilog.ApprovalTests.csproj",
    "test/Serilog.PerformanceTests/Serilog.PerformanceTests.csproj",
-   "test/TestDummies/TestDummies.csproj (test helper, not itself a suite)",
    "test/AotTestApp/AotTestApp.csproj (AOT smoke-test app, not itself a suite)"
   ],
-  "test_assemblies_note": "Built assemblies, not project files. The pin originally listed .csproj paths here, which the runner could never treat as an answer-key input — the with-tests cell was refused for all three repositories until this was corrected on 2026-08-24.",
+  "test_assemblies_note": "Built assemblies, not project files. The pin originally listed .csproj paths here, which the runner could never treat as an answer-key input — the with-tests cell was refused for all three repositories until this was corrected on 2026-08-24. Serilog.PerformanceTests and AotTestApp joined this list on 2026-08-28 to match test_assemblies_projects, which already scoped the arms to read them (see e8 preregistration). test/TestDummies/TestDummies.csproj was dropped from test_assemblies_projects the same day: it targets netstandard2.0;net462 and produces no net8.0 assembly, so it cannot join test_assemblies for the net8.0-probed cell, and runner/run.py:assemblies_for's framework filter must not be weakened to admit it — that filter exists to stop one method counting twice from two target frameworks. Its calls into Serilog are still made by the compiler and still visible to any arm that reads the checkout unscoped, but this corpus entry no longer claims them as in-scope for with-tests.",
   "with_tests_cell": "available: test assemblies built with the pinned SDK"
  },
  {
