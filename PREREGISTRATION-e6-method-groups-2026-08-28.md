@@ -190,3 +190,18 @@ all still landed in band.
 These four cells supersede e5. ⛔ P1 (≥0.97 everywhere) is still MISSED: Polly 0.964,
 FluentValidation 0.932, serilog / with-tests 0.9498 — three of four below, unchanged in status by
 this work. FluentValidation moved further from it, knowingly and for a disclosed reason.
+
+---
+
+## ⚠ Correction to this file, 2026-08-28, after the run
+
+This pre-registration twice called the accessor-caller mismatch **"pre-declared"** (§"The measurement
+the prediction rests on" and §"Every new edge, read one by one"). **That attribution is wrong.**
+`grader/EDGE_FORMAT.md` pre-declared the *explicit interface implementation* spelling; it said nothing
+about a caller that is a property accessor — its only accessor rule excludes an accessor as **callee**.
+
+What is true and unchanged: the mismatch was known to us before this run (9 edges, read one by one on
+2026-08-25) and the 3 junk edges were predicted here by name and by count before grading. What is
+false is that the BENCH had disclosed it. It is disclosed now, in `EDGE_FORMAT.md`, explicitly marked
+as written after its cost was known. No number in this file changes.
+

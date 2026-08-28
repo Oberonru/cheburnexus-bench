@@ -140,3 +140,21 @@ rendered a deliberately honest lower bound as an ordinary hole.
 stays unmatched, and recall is computed exactly as before. All the column does is let a reader see
 whether a gap was admitted or concealed. It was added while our own column was still blank, so it
 cannot be a category invented to rescue a number — and any arm may fill it, including theirs.
+
+## Known spellings that count AGAINST the cheburnexus arm
+
+Written down so a reader does not have to discover them from a junk diff. Neither changes how
+anything is graded — each is a place where our arm's key differs from the oracle's and we therefore
+lose the edge.
+
+- **Caller inside a property / indexer / event accessor.** IL names the accessor
+  (`Ns.Type::set_Value`); the arm names the member the user wrote (`Ns.Type::Value`), because
+  `CallKeyBuilder.MemberKey` deliberately keeps ONE node per property rather than synthesizing
+  `get_`/`set_` nodes. Every call written inside an accessor is junk for this reason alone.
+  ⚠ Disclosed **2026-08-28, after** its cost was known — 9 edges at the 2026-08-25 read-through and
+  3 more from method groups in e6. It was NOT declared before those runs, and an earlier note in this
+  project claiming it was is wrong: what this file pre-declared was the *explicit interface
+  implementation* spelling, a different item. Recorded here so the claim stops being repeated.
+- **Explicit interface implementation** reported bare (`ValidateAsync`, not
+  `Ns.IValidationRuleInternal.ValidateAsync`). This one WAS declared before any run.
+
