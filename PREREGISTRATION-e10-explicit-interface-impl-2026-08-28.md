@@ -104,3 +104,55 @@ absent from the corpus checkout. The estimate had counted them.
   here: FluentValidation reports **749 unresolved call sites against 43 external**, Polly.Core 572
   against 48. It is being diagnosed separately and is the most promising lead yet for work item 2 of
   the coverage campaign, "caller never appears in our output at all".
+
+---
+
+# RESULT — every number landed exactly
+
+Run `results/2026-08-28-explicit-interface`, engine `1c3a5cd0`, all three arms, all four cells.
+
+| cell | precision | recall | junk | matched |
+|---|---|---|---|---|
+| Polly / without-tests | 0.9789 → **0.9789** | 0.6615 → **0.6615** | 10 → 10 | 465 → 465 |
+| FluentValidation / without-tests | 0.9512 → **0.9978** | 0.6875 → **0.7276** | 22 → **1** | 429 → **454** |
+| serilog / without-tests | 0.9956 → **1.0000** | 0.8361 → **0.8399** | 2 → **0** | 449 → **451** |
+| serilog / with-tests | 0.9957 → **0.9978** | 0.3928 → **0.3937** | 4 → **2** | 916 → **918** |
+
+Every forecast value above matched the graded run, including the supporting edge counts
+(arm edges 475 / 455 / 451 / 920) and the cause split (24 re-spelled + 1 target correction).
+
+**P1 (precision ≥ 0.97) now holds in ALL FOUR cells** — previously three. serilog/without-tests
+reaches **1.0000**: not one junk edge in the graded cell.
+
+Falsifiers, all checked:
+
+1. **grep and repowise are byte-identical** to `results/2026-08-28-accessor-caller` in all twelve
+   rows — precision, recall, matched and arm-edge counts alike. The harness did not move.
+2. **Polly did not move at all.** The control held; its answer key has no explicit-interface callers
+   and the change touched nothing there.
+3. serilog/without-tests hit exactly 1.0000, as predicted.
+4. No row was lost in any cell.
+
+## The residual junk, read one by one
+
+- **Polly, 10** — **6** are `implicit operator Func` against IL's `op_Implicit`: work item 3, whose
+  witnesses were already measured in e9 and are unchanged. **3** are the conditional-compilation
+  category (`GetObjectData` ×2, `TrySetStackTrace`) — calls we read in source that the net8.0
+  assembly never compiled. **1** is new and unexplained: `SingleHealthMetrics::TryReset → Reset`.
+- **FluentValidation, 1** — `IncludeRule\`1::ValidateAsync → PropertyRule\`2::ValidateAsync`, the
+  single edge e9 had already isolated as not belonging to the explicit-interface group.
+- **serilog/with-tests, 2** — both inside `Serilog.Tests`, around `RemotelyCallable`.
+
+⚠ Counting junk as a plain set difference over-reports by one on Polly (11 vs the grader's 10): one
+edge is accepted through the overrides map, which `Cell.score` applies and a naive difference does
+not. The table above is the grader's number.
+
+## What this uncovered and did NOT fix
+
+The compilations this arm feeds the engine leave framework types unbound —
+**FluentValidation: 749 unresolved call sites against 43 external; Polly.Core: 572 against 48.** An
+explicit implementation of a framework interface therefore has no symbol to read, so it gets no
+recorded `MetadataName` and cannot be re-spelled for the oracle (serilog's
+`EnricherStack::System.Collections.IEnumerable.GetEnumerator` rows stay unmatched for exactly this
+reason). That is a separate and much larger finding than this one, and the most promising lead so
+far for work item 2 of the coverage campaign.
