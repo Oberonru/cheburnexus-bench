@@ -147,10 +147,34 @@ Written down so a reader does not have to discover them from a junk diff. Neithe
 anything is graded — each is a place where our arm's key differs from the oracle's and we therefore
 lose the edge.
 
-- **Caller inside a property / indexer / event accessor.** IL names the accessor
-  (`Ns.Type::set_Value`); the arm names the member the user wrote (`Ns.Type::Value`), because
-  `CallKeyBuilder.MemberKey` deliberately keeps ONE node per property rather than synthesizing
-  `get_`/`set_` nodes. Every call written inside an accessor is junk for this reason alone.
+- **Caller inside a property / indexer / event accessor — TRANSLATED for get/set/init/add/remove,
+  2026-08-28.** IL names the accessor (`Ns.Type::set_Value`); the engine's `CallKeyBuilder.MemberKey`
+  deliberately keeps ONE node per property rather than synthesizing `get_`/`set_` nodes (a property
+  is one member — splitting would invent a distinction `who_calls` never asked about), and instead
+  records which accessor a given call sat in separately, per call, as `CallEdge.Accessor`. The arm's
+  `_edges_from_calls` (`arms/cheburnexus/run.py`) now reads that per-call tag and rewrites the
+  caller's method-name segment before it reaches `ClassIndex.contract_key` — the same boundary and
+  the same class of move that function already makes for a constructor, renaming it to `.ctor`. The
+  mapping is `get`→`get_X`, `set`→`set_X`, `add`→`add_X`, `remove`→`remove_X`, and **`init`→`set_X`,
+  NOT `init_X`** — verified empirically against a compiled `{ get; init; }` property
+  (`PropertyInfo.SetMethod.Name` is `set_X`; there is no separate "init method" in metadata, only an
+  `IsExternalInit`-marked setter). `RoslynMethodParser.ParseAccessor` synthesizes its own `init_`
+  spelling for a different, in-memory, never-serialised list (`ClassModel.Accessors`) — that
+  convention is deliberately NOT reused here, since it would ship the same wrong spelling against
+  this oracle. See `DECISION-accessor-caller-spelling-2026-08-28.md` for the full argument.
+
+  Two things this does NOT fix:
+  - **An indexer accessor caller is left exactly as it is, on purpose.** Our key for an indexer is
+    `this[paramTypes]` (`CallKeyBuilder.IndexerKey`) and carries no item name at all; IL defaults to
+    `get_Item`/`set_Item`, but a `[IndexerName("...")]` attribute can rename it and the engine
+    records nothing about that attribute anywhere in this sidecar. Translating would mean assuming a
+    name we never read, and this engine does not guess — so an indexer-accessor caller stays junk
+    against the ruler, a disclosed limitation rather than an unexamined one. None occur in the
+    current corpora.
+  - **The `--project` (syntactic) path has no such edge to translate at all.** Its builder does not
+    walk property, indexer or event bodies, so it never emits an accessor-tagged call in the first
+    place — a larger, separate gap in that path, not created or hidden by this fix.
+
   ⚠ Disclosed **2026-08-28, after** its cost was known — 9 edges at the 2026-08-25 read-through and
   3 more from method groups in e6. It was NOT declared before those runs, and an earlier note in this
   project claiming it was is wrong: what this file pre-declared was the *explicit interface

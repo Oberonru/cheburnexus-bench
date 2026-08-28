@@ -220,6 +220,43 @@ def _to_repo_relative(abs_path: str, repo_root: Path) -> str:
         return posix  # never silently invent a path; worst case the caller_file is absolute
 
 
+# ── accessor-caller translation ─────────────────────────────────────────────────────────────────
+# A call written inside a property/indexer/event accessor is keyed by the engine's CallKeyBuilder
+# as the MEMBER a human wrote — MemberKey/IndexerKey deliberately keep ONE node for a whole
+# property/indexer/event, see that file's own comment — while the accessor it was written in is
+# recorded separately, per CALL, as CallEdge.Accessor ∈ {get, set, init, add, remove}. IL, and
+# therefore this polygon's oracle, names the accessor, not the member. We translate the CALLER's
+# method-name segment to match, for each individual call — the same class of translation
+# ClassIndex.contract_key already does one section up for a constructor (renaming its
+# class-simple-name spelling to ".ctor"): reading a fact the engine already recorded, at the same
+# boundary function where this arm expresses the engine's key space in the oracle's vocabulary, not
+# a new seam. See DECISION-accessor-caller-spelling-2026-08-28.md for the full argument.
+#
+# `init` maps to `set_X`, NOT `init_X` — verified empirically against a compiled `{ get; init; }`
+# property (PropertyInfo.SetMethod.Name -> "set_X"; there is no "init method" in metadata, only an
+# IsExternalInit-marked setter). RoslynMethodParser.ParseAccessor synthesizes "init_" + name for its
+# own separate, in-memory, never-serialised ClassModel.Accessors list — that convention must NOT be
+# reused here, since it would ship the same wrong spelling against this arm's oracle.
+_ACCESSOR_PREFIX = {"get": "get_", "set": "set_", "init": "set_", "add": "add_", "remove": "remove_"}
+
+
+def _accessor_caller_method(method_name: str, accessor: str | None) -> str:
+    """Rewrite one call's caller method-name segment to the accessor IL actually names.
+
+    Deliberately leaves an INDEXER caller untouched. Our key for an indexer is
+    `this[paramTypes]` (CallKeyBuilder.IndexerKey) and carries no item name at all; IL defaults to
+    `get_Item`/`set_Item`, but a `[IndexerName("...")]` attribute can rename it and the engine
+    records nothing about that attribute anywhere in this sidecar. Translating would mean assuming
+    a name we never read, and this engine does not guess — so an indexer-shaped caller stays junk
+    against the ruler, disclosed rather than silently wrong. Detected here by the key shape itself
+    (the literal "this[" prefix IndexerKey always emits), not by a separate flag.
+    """
+    if accessor is None or method_name.startswith("this["):
+        return method_name
+    prefix = _ACCESSOR_PREFIX.get(accessor)
+    return f"{prefix}{method_name}" if prefix else method_name
+
+
 def _edges_from_calls(calls_path: Path, index: ClassIndex, repo_root: Path) -> Iterator[armkit.Edge]:
     envelope = json.loads(calls_path.read_text(encoding="utf-8"))
     data = envelope.get("Data") or {}
@@ -228,7 +265,6 @@ def _edges_from_calls(calls_path: Path, index: ClassIndex, repo_root: Path) -> I
         if parsed is None:
             continue
         caller_file, caller_type, caller_method = parsed
-        caller_key = index.contract_key(caller_type, caller_method)
         caller_rel = _to_repo_relative(caller_file, repo_root)
 
         for call in entry.get("Calls", []) or []:
@@ -240,6 +276,12 @@ def _edges_from_calls(calls_path: Path, index: ClassIndex, repo_root: Path) -> I
                 continue
             _, callee_type, callee_method = tparsed
             callee_key = index.contract_key(callee_type, callee_method)
+
+            # Accessor translation happens per CALL, not once per raw_caller entry: a property's
+            # getter and setter share this SAME entry (one member, per CallKeyBuilder.MemberKey),
+            # so only each call's own Accessor tag says which body it came from.
+            effective_caller_method = _accessor_caller_method(caller_method, call.get("Accessor"))
+            caller_key = index.contract_key(caller_type, effective_caller_method)
 
             yield armkit.Edge(
                 caller=caller_key,
