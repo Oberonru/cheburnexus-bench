@@ -61,3 +61,27 @@ picked through a `System.*` type, a receiver whose type came from a generic BCL 
 ⛔ Every polygon number published before this run was measured against a blinded engine. The
 direction was always favourable to a sceptic — our coverage was understated, never inflated — but the
 figures did not describe the shipped engine, and the ones after this run do.
+
+---
+
+# RESULT — every number landed exactly, again
+
+Run `results/2026-08-28-bench-engine-bcl`, all three arms, all four cells.
+
+| cell | precision | recall | junk | matched |
+|---|---|---|---|---|
+| Polly / without-tests | 0.9789 → **0.9792** | 0.6615 → **0.6700** | 10 → 10 | 465 → **471** |
+| FluentValidation / without-tests | 0.9978 → **0.9980** | 0.7276 → **0.8029** | 1 → 1 | 454 → **501** |
+| serilog / without-tests | 1.0000 → **1.0000** | 0.8399 → **0.8510** | 0 → 0 | 451 → **457** |
+| serilog / with-tests | 0.9978 → **0.9978** | 0.3937 → **0.3962** | 2 → 2 | 918 → **924** |
+
+Falsifiers all held: grep and repowise byte-identical in all twelve rows; junk rose in no cell;
+serilog/without-tests stayed at exactly 1.0000.
+
+**These are the first polygon numbers ever measured against an engine that could see the framework.**
+Everything published before was scored on a binary with zero BCL references.
+
+Side effect, worth recording: with the framework visible, `CallSidecarEntry.MetadataName` is now
+recorded for explicit implementations of framework interfaces too — entries carrying it went from 10
+to 21 across the corpora. Two remain without it (`EnricherStack::IEnumerable<ILogEventEnricher>.GetEnumerator`),
+a residual disclosed rather than hidden.
