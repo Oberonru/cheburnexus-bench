@@ -44,3 +44,41 @@ So, mechanically:
 
 Precision falling anywhere, or recall rising anywhere. Either would mean the change did something
 other than what it was argued to do, and the argument would have to be re-opened.
+
+---
+
+# RESULT — run of 2026-08-28, `results/2026-08-28-auditfix` (gitignored, local only)
+
+**Every cell is unchanged, and not merely in its score: the arm's raw edge sets are byte-identical
+to the superseded run** — 638, 564, 684 and 1268 edges, `sort`-compared line for line, zero
+differences. repowise and grep byte-identical as well.
+
+| cell | precision | recall |
+|---|---|---|
+| Polly / without-tests | 0.963 | 0.597 |
+| FluentValidation / without-tests | 0.938 | 0.633 |
+| serilog / without-tests | 0.982 | 0.808 |
+| serilog / with-tests | 0.950 | 0.394 |
+
+Prediction held on every clause: precision never fell, recall never rose, and the pre-registered
+"zero movement is an acceptable outcome" is what happened. The kill condition did not trigger.
+
+## What this actually proves, and what it does not
+
+It proves the three corpora contain none of the shapes the audit found — no positional record or
+C# 12 primary-constructor class with a field initializer, and no `partial` type whose initializer
+and constructor sit in different files — and that the `: base()` → `.cctor()` defect is confined to
+the `--project` syntactic path the bench never uses.
+
+🔴 It does NOT prove the defects were minor. It proves **this benchmark could not see them.** Three
+fabricated facts shipped, and the matrix moved by exactly zero — every cell would have reported the
+engine as unchanged and healthy. A wrong fact that the corpus never exercises is invisible to the
+ruler, and no number in this repository can be read as evidence that such facts are absent. The unit
+tests settle those three independently, which is why they exist and why each was proven failing
+first.
+
+## Standing numbers
+
+The four cells above supersede `PREREGISTRATION-e4-full-matrix-2026-08-28.md`. They are numerically
+identical to it, so nothing published from e4 becomes wrong — but e5 is the run made by an engine
+with no known fabricated facts, and it is the one to quote.
