@@ -136,9 +136,17 @@ Falsifiers, all checked:
 ## The residual junk, read one by one
 
 - **Polly, 10** — **6** are `implicit operator Func` against IL's `op_Implicit`: work item 3, whose
-  witnesses were already measured in e9 and are unchanged. **3** are the conditional-compilation
-  category (`GetObjectData` ×2, `TrySetStackTrace`) — calls we read in source that the net8.0
-  assembly never compiled. **1** is new and unexplained: `SingleHealthMetrics::TryReset → Reset`.
+  witnesses were already measured in e9 and are unchanged. **4** are the conditional-compilation
+  category (`BrokenCircuitException::.ctor`, `GetObjectData` ×2, `TrySetStackTrace`) — calls we read
+  in source that the net8.0 assembly never compiled. Nothing here is unexplained.
+
+  ⚠ **Correction to an earlier version of this section**, which listed an eleventh edge
+  (`SingleHealthMetrics::TryReset → Reset`) as "new and unexplained". It is not junk at all: IL names
+  the DECLARATION (`HealthMetrics::Reset`, the virtual slot) where we name the OVERRIDE, and
+  `Cell.score` accepts exactly that through the oracle's `overrides` map. The listing was produced by
+  a plain set difference, which does not apply that map — the same caveat this section already stated
+  two paragraphs above and then contradicted. Re-counted with the map applied: **10, all accounted
+  for.**
 - **FluentValidation, 1** — `IncludeRule\`1::ValidateAsync → PropertyRule\`2::ValidateAsync`, the
   single edge e9 had already isolated as not belonging to the explicit-interface group.
 - **serilog/with-tests, 2** — both inside `Serilog.Tests`, around `RemotelyCallable`.
