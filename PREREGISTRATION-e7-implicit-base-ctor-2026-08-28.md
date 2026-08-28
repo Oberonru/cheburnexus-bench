@@ -147,3 +147,79 @@ Precision rises slightly in the other three cells because every new pair there i
    `--arms cheburnexus` cannot perform this check.
 
 Run command: `PYTHONHASHSEED=0 python3 runner/run.py --checkouts corpus --out results/2026-08-28-implicitbase`
+
+---
+
+# RESULT — run of 2026-08-28, `results/2026-08-28-implicitbase` (gitignored, local only)
+
+| cell | arm edges | matched | precision | recall | verdict |
+|---|---|---|---|---|---|
+| Polly / without | 446 → **475** (pred 475) | 430 → **459** (pred 459) | 0.9641 → **0.9663** (pred 0.9663) | 0.6117 → **0.6529** (pred 0.6529) | ✅ exact, all four |
+| FluentValidation / without | 429 → **451** (pred 451) | 400 → **422** (pred 422) | 0.9324 → **0.9357** (pred 0.9357) | 0.6410 → **0.6763** (pred 0.6763) | ✅ exact, all four |
+| serilog / without | 443 → **451** (pred 451) | 435 → **443** (pred 443) | 0.9819 → **0.9823** (pred 0.9823) | 0.8101 → **0.8250** (pred 0.8249) | ✅ exact, all four |
+| serilog / with | 917 → **928** (pred 930, band 928–931) | 871 → **882** (pred 882) | 0.9498 → **0.9504** (pred 0.9484, band 0.944–0.951) | 0.3954 → **0.4004** (pred 0.4003) | ⚠ in band, one clause WRONG |
+
+Twelve of sixteen numbers landed on the point estimate. Every number landed inside its band. Recall
+rose in all four cells; precision rose in all four.
+
+## The clause that was WRONG, stated plainly
+
+> "**A precision DROP is predicted in serilog / with-tests and nowhere else** … two of that cell's
+> thirteen new pairs have a `TestDummies` caller and callee … They are junk BY CONSTRUCTION."
+
+Precision **rose**, 0.9498 → 0.9504. The two `TestDummies` pairs were correctly identified and
+correctly counted — but they were not junk, because they never entered the primary cell. Read out
+of the cell table: the `excluded — callee outside the corpus` cell went from 3 arm edges to **5**,
+and the primary cell gained **11**, not 13. All 11 matched.
+
+The reasoning error, named so it is not repeated: an arm edge is placed in the cell that the ORACLE
+already assigns to its CALLEE (`grader/grade.py:60`, `build_callee_cell` — "which oracle cell first
+claims each callee"), and only a callee the compiler records nowhere at all falls through to primary
+as junk. `TestDummies.Console.Themes.ConsoleTheme::.ctor` IS recorded by the oracle — `Serilog.Tests`
+calls into `TestDummies`, so the callee is known and already classified as outside the corpus. I had
+assumed "callee's assembly is not in `first_party` ⇒ junk in primary", which is only true when the
+oracle never saw the callee.
+
+🔑 This also sharpens **plan item 2** (the with-tests corpus scope mismatch). An out-of-scope
+assembly costs precision through the CALLER, not the callee: an edge whose callee lives in an
+unbuilt assembly is excluded cleanly, while an edge whose caller lives there and whose callee is
+first-party lands in primary with nothing to match. The 21 junk edges found on 2026-08-28 must be
+re-read with that distinction before item 2 is acted on.
+
+## The checks, run rather than inferred
+
+**Kill 1 — nothing but the target group moved.** `sort`-compared `cheburnexus/edges.jsonl` against
+e6's, per cell: **added 30 / 33 / 10 / 15, removed 0 in every cell** — exactly the counts measured
+before the run. Every one of the 88 added edges was machine-checked to be a `::.ctor -> ::.ctor`
+pair: **0 exceptions**.
+
+**Kill 2 — recall must not fall.** It rose in all four cells: +0.0412, +0.0353, +0.0149, +0.0050.
+
+**Kill 3 — precision floor.** Lowest cell is FluentValidation at 0.9357, above the 0.93 floor.
+serilog / without-tests is **0.9823**, so the pre-registered **P1 (≥0.97) still holds**.
+
+**Kill 4 — the untouched arms.** `cmp` on the raw edge files, e6 vs e7, all four cells and both free
+arms: **byte-identical in all eight** (grep 1131 / 5602 / 3647 / 13099, repowise 377 / 322 / 348 /
+1101). The grader's own row counts are unchanged too (serilog/with-tests: 10292 rows,
+471 unremappable callers, 380 without a source anchor, in both runs).
+
+## Standing numbers after e7
+
+| cell | precision | recall |
+|---|---|---|
+| Polly / without-tests | 0.9663 | 0.6529 |
+| FluentValidation / without-tests | 0.9357 | 0.6763 |
+| serilog / without-tests | 0.9823 | 0.8250 |
+| serilog / with-tests | 0.9504 | 0.4004 |
+
+Free arms, unchanged: grep 0.260/0.542 · 0.284/0.746 · 0.246/0.247 · 0.207/0.389 —
+repowise 0.544/0.348 · 0.572/0.280 · 0.367/0.191 · 0.357/0.183.
+
+## What made this forecast land
+
+e6's forecast missed one number because sizing by the mechanism measures the ENGINE, while the
+grader's key normalisation sits between that and the score. Here that normalisation was applied by
+hand BEFORE writing the prediction: the raw added edges (30/33/10/15) were deduplicated on
+`(caller, callee)` — the grader's actual key — down to 29/22/8/13 pairs, and the predictions were
+arithmetic on those. The one remaining gap was not normalisation but CELL ASSIGNMENT, which is a
+third stage nobody had modelled yet. It is modelled now.
