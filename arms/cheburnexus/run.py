@@ -443,6 +443,46 @@ def _conversion_operator_caller_method(method_name: str) -> str:
     return method_name
 
 
+
+# ── operator spelling ───────────────────────────────────────────────────────────────────────────
+# The engine keys an operator by its C# token (`operator==`), deliberately — see
+# CallKeyBuilder.OperatorKey, whose comment argues that the token is what tells `+` from `-` and no
+# real member name can begin with "operator". The CLR names the same member `op_Equality`. Same
+# situation as the conversion operators e13 translated, one step along: the engine's spelling is
+# right for the engine's own key space and is not what the answer key calls the member.
+#
+# BOTH ends, unlike the conversion translation, which measured zero conversion-operator CALLEES in
+# all four corpora. A record's synthesized `operator!=` calls its `operator==`, so this shape appears
+# as caller AND as callee in the same edge — reading only one end would have converted a miss into a
+# junk edge instead of a match.
+_IL_OPERATOR_NAMES = {
+    "operator==": "op_Equality",   "operator!=": "op_Inequality",
+    "operator<":  "op_LessThan",   "operator>":  "op_GreaterThan",
+    "operator<=": "op_LessThanOrEqual", "operator>=": "op_GreaterThanOrEqual",
+    "operator+":  "op_Addition",   "operator-":  "op_Subtraction",
+    "operator*":  "op_Multiply",   "operator/":  "op_Division",
+    "operator%":  "op_Modulus",    "operator&":  "op_BitwiseAnd",
+    "operator|":  "op_BitwiseOr",  "operator^":  "op_ExclusiveOr",
+    "operator<<": "op_LeftShift",  "operator>>": "op_RightShift",
+    "operator!":  "op_LogicalNot", "operator~":  "op_OnesComplement",
+    "operator++": "op_Increment",  "operator--": "op_Decrement",
+    "operator true": "op_True",    "operator false": "op_False",
+}
+
+
+def _il_operator_method(method_name: str) -> str:
+    """Rewrite an operator's method-name segment to the name IL gives it.
+
+    Split at the last '.' the way `_accessor_caller_method` does, so an explicit-interface qualifier
+    (`IAdd<W>.operator+` — legal since C# 11) keeps its prefix. A qualifier can itself contain dots,
+    but the operator token never can, so the last dot is always the boundary.
+    """
+    head, sep, tail = method_name.rpartition(".")
+    il = _IL_OPERATOR_NAMES.get(tail if sep else method_name)
+    if il is None:
+        return method_name
+    return head + sep + il
+
 def _edges_from_calls(calls_path: Path, index: ClassIndex, repo_root: Path) -> Iterator[armkit.Edge]:
     envelope = json.loads(calls_path.read_text(encoding="utf-8"))
     data = envelope.get("Data") or {}
@@ -461,7 +501,7 @@ def _edges_from_calls(calls_path: Path, index: ClassIndex, repo_root: Path) -> I
             if tparsed is None:
                 continue
             _, callee_type, callee_method = tparsed
-            callee_key = index.contract_key(callee_type, callee_method)
+            callee_key = index.contract_key(callee_type, _il_operator_method(callee_method))
 
             # Accessor translation happens per CALL, not once per raw_caller entry: a property's
             # getter and setter share this SAME entry (one member, per CallKeyBuilder.MemberKey),
@@ -473,7 +513,9 @@ def _edges_from_calls(calls_path: Path, index: ClassIndex, repo_root: Path) -> I
             # operator body is never itself an accessor, so `_accessor_caller_method` is a no-op on
             # its output either way.
             effective_caller_method = _accessor_caller_method(
-                _conversion_operator_caller_method(_metadata_caller_method(caller_method, entry)),
+                _il_operator_method(
+                    _conversion_operator_caller_method(_metadata_caller_method(caller_method, entry))
+                ),
                 call.get("Accessor"),
             )
             caller_key = index.contract_key(caller_type, effective_caller_method)
