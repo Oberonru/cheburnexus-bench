@@ -68,3 +68,22 @@ deliberately uses `a.Equals(b)` rather than `a == b` so that a record-shaped nam
 4. Matched rows land outside the forecast ±2 in any cell.
 
 ⛔ Nothing about the engine, the arm, the grader or the corpus is touched after these numbers are seen.
+
+---
+
+# RESULT — run and grading, 2026-08-29
+
+`results/2026-08-29-e16-record-members`.
+
+| cell | matched | junk | precision | recall |
+|---|---|---|---|---|
+| Polly / without-tests | **576** (+44) | 1 | **0.9983** | 0.7568 → **0.8193** |
+| FluentValidation / without-tests | **570** (+4) | 1 | 0.9982 | 0.9071 → **0.9135** |
+| serilog / without-tests | 509 | 1 | 0.9980 | 0.9479 — byte-identical |
+| serilog / with-tests | 1077 | 1 | 0.9991 | 0.4618 — byte-identical |
+
+Every forecast number exact. Junk moved in no cell. grep and repowise byte-identical everywhere, and
+so are both serilog cells' own cheburnexus rows — the no-op claim held to the byte.
+
+Polly's primary cell: **0.6743 → 0.8193 recall across four experiments today**, precision never below
+0.998.
