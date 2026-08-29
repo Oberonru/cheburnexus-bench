@@ -29,10 +29,14 @@ sys.path.insert(0, str(HERE))
 
 import armkit  # noqa: E402
 from run import (  # noqa: E402
+    ENGINE_ENV,
     _conversion_operator_caller_method,
     _parse_raw_key,
     _to_repo_relative,
     backtick_arity,
+    engine_identity,
+    find_engine,
+    withheld_graph_reason,
 )
 
 
@@ -96,6 +100,103 @@ def check_conversion_operator_caller_spelling() -> list[str]:
             failures.append(
                 f"_conversion_operator_caller_method({raw!r}) = {got!r}, expected {expected!r} — {why}"
             )
+    return failures
+
+
+
+def check_engine_binary_is_never_guessed() -> list[str]:
+    """With $CHEBURNEXUS_ENGINE unset, the arm must find NO engine — not fall back to one.
+
+    A hardcoded fallback used to live in `find_engine`, pointing at this machine's packaged
+    distributable. On 2026-08-29 it silently spent a whole four-cell run: that binary predates the
+    passport signing-key rotation, so it fails closed to Free and every cell came back BLOCKED as
+    though the machine were unlicensed, while the passport on disk was healthy. The arm cannot know
+    whether a binary it picked by itself is the one the experiment means, so it must pick none.
+    This check fails on the pre-fix code, where the fallback resolves on this very machine."""
+    failures = []
+    saved = os.environ.pop(ENGINE_ENV, None)
+    try:
+        found = find_engine()
+        if found is not None:
+            failures.append(
+                f"find_engine() returned {str(found)!r} with ${ENGINE_ENV} unset — a silently "
+                "chosen engine is exactly the defect: it can be older than the change under test, "
+                "or older than the passport signing key, and yields a plausible wrong number")
+        os.environ[ENGINE_ENV] = "/nonexistent/arch-computer.exe"
+        if find_engine() is not None:
+            failures.append(
+                f"find_engine() returned an engine with ${ENGINE_ENV} pointing at a missing file — "
+                "a bad explicit path must refuse, not fall through to some other binary")
+    finally:
+        os.environ.pop(ENGINE_ENV, None)
+        if saved is not None:
+            os.environ[ENGINE_ENV] = saved
+    return failures
+
+
+def check_engine_identity_tells_two_builds_apart() -> list[str]:
+    """Every run must record WHICH engine ran, in terms that go stale audibly.
+
+    The old answer parsed a version out of the distributable's folder name: the two 2026-08-29 runs
+    recorded "unknown" and "1.7.0", and neither string revealed that one of them was a 20-day-old
+    binary. Identity must therefore key on CONTENT and BUILD DATE, and must key on the analysis
+    assembly rather than the launcher — two different publishes were observed sharing a
+    byte-identical arch-computer.exe, so hashing the launcher would certify them as one engine."""
+    failures = []
+    with tempfile.TemporaryDirectory() as raw:
+        tmp = Path(raw)
+        ids = {}
+        for name, core in (("a", b"engine-code-A"), ("b", b"engine-code-B")):
+            d = tmp / name
+            d.mkdir()
+            (d / "arch-computer.exe").write_bytes(b"identical-generic-apphost")
+            (d / "ArchitectureAnalyzer.Core.dll").write_bytes(core)
+            ids[name] = engine_identity(d / "arch-computer.exe")
+        if ids["a"] == ids["b"]:
+            failures.append(
+                "two builds whose analysis assembly differs got the SAME identity "
+                f"{ids['a']!r} — the launcher is a generic apphost and cannot identify an engine")
+        if "ArchitectureAnalyzer.Core.dll" not in ids["a"]:
+            failures.append(f"identity {ids['a']!r} does not name the assembly it hashed")
+        bare = tmp / "c"
+        bare.mkdir()
+        (bare / "arch-computer.exe").write_bytes(b"single-file-publish")
+        old = time.time() - 20 * 24 * 3600
+        os.utime(bare / "arch-computer.exe", (old, old))
+        ident = engine_identity(bare / "arch-computer.exe")
+        stale_date = time.strftime("%Y-%m-%d", time.gmtime(old))
+        if stale_date not in ident:
+            failures.append(
+                f"identity {ident!r} of a 20-day-old binary does not state its build date "
+                f"({stale_date}) — a stale engine must say its own age in every result")
+    return failures
+
+
+def check_withheld_graph_reason_asserts_no_cause() -> list[str]:
+    """When the engine withholds the call graph the arm reports WHAT it saw, never WHY.
+
+    The old wording asserted "no valid passport is present on this machine" — a fact about the
+    machine this arm cannot check, and one that was plainly false on 2026-08-29: an unexpired
+    passport sat at the canonical path the entire time and the real cause was an engine binary older
+    than the signing key. Reading that sentence sent the diagnosis at the wrong half of the system."""
+    failures = []
+    with tempfile.TemporaryDirectory() as raw:
+        tmp = Path(raw)
+        (tmp / "arch-computer.exe").write_bytes(b"apphost")
+        (tmp / "ArchitectureAnalyzer.Core.dll").write_bytes(b"code")
+        reason = withheld_graph_reason(tmp / "arch-computer.exe")
+    if "no valid passport is present on this machine" in reason:
+        failures.append(
+            "withheld_graph_reason still asserts 'no valid passport is present on this machine' — "
+            "the arm cannot check that, and it was false the one time it mattered")
+    if "signing key" not in reason:
+        failures.append(
+            "withheld_graph_reason names only one cause — an engine binary older than the passport "
+            "signing key produces the identical symptom with a healthy passport, and must be named")
+    if "sha256:" not in reason:
+        failures.append(
+            f"withheld_graph_reason {reason!r} does not name the engine that was used — naming it "
+            "is what lets a reader settle the two causes in one look")
     return failures
 
 
@@ -390,6 +491,9 @@ def main() -> int:
     failures = check_generic_arity()
     failures += check_key_parsing()
     failures += check_conversion_operator_caller_spelling()
+    failures += check_engine_binary_is_never_guessed()
+    failures += check_engine_identity_tells_two_builds_apart()
+    failures += check_withheld_graph_reason_asserts_no_cause()
     failures += check_paths_are_repo_relative()
     failures += check_refused_is_not_empty()
     failures += check_describe_carries_identity()

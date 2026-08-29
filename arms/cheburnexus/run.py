@@ -24,6 +24,7 @@ without needing one.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -41,43 +42,109 @@ import armkit  # noqa: E402  (path inserted above, matching the existing _lib/__
 WORK_ROOT = HERE / ".work"
 
 ENGINE_ENV = "CHEBURNEXUS_ENGINE"
-# Only resolves on the machine that built this arm — the "live for us" half of the live/replay
-# split in ARCHITECTURE.md. Anyone else sets $CHEBURNEXUS_ENGINE or gets the published replay rows.
-DEFAULT_ENGINE_CANDIDATES = [
-    Path.home() / "dev/Cheburnexus/LLM-CheburNexus/dist-all/cheburnexus-all-1.7.0-osx-x64/arch-computer.exe",
-]
 
-_DIST_VERSION_RE = re.compile(r"cheburnexus-all-([0-9][0-9.]*)-")
+# ── which binary runs is NEVER guessed ──────────────────────────────────────────────────────────
+# There used to be a hardcoded fallback here — this machine's packaged
+# dist-all/cheburnexus-all-1.7.0-osx-x64/arch-computer.exe — used whenever $CHEBURNEXUS_ENGINE was
+# unset. On 2026-08-29 that fallback silently spent a full four-cell run: the packaged binary was
+# built 2026-08-09, three days BEFORE the passport signing key was rotated in the product repo, so
+# it embeds the superseded public key, cannot verify a passport issued after the rotation, and
+# fails closed to Free. Every cell came back BLOCKED with the call graph withheld, which reads
+# exactly like "this machine has no licence" — while the passport on disk was healthy the whole
+# time. Nothing in the run said which binary had been chosen or how old it was.
+#
+# A default that resolves to *some* binary is the whole defect: the arm cannot know whether the
+# binary it picked is the one the experiment means, and a wrong-but-plausible engine produces
+# wrong-but-plausible numbers. So there is no default. The engine is named explicitly or the arm
+# refuses to run — the same rule the PRODUCT engine follows about facts it cannot establish
+# (an exact fact or silence, never a guess). Cost of the rule: one env var per run. Cost of not
+# having it, measured: one full run, published-looking and wrong.
 
 
 def find_engine() -> Path | None:
+    """The engine binary named by $CHEBURNEXUS_ENGINE, or None. There is deliberately no fallback."""
     env = os.environ.get(ENGINE_ENV)
-    if env:
-        p = Path(env)
-        if p.is_file():
-            return p
-        print(f"cheburnexus: ${ENGINE_ENV}={env!r} does not exist", file=sys.stderr)
-    for candidate in DEFAULT_ENGINE_CANDIDATES:
-        if candidate.is_file():
-            return candidate
+    if not env:
+        return None
+    p = Path(env)
+    if p.is_file():
+        return p
+    print(f"cheburnexus: ${ENGINE_ENV}={env!r} does not exist", file=sys.stderr)
     return None
 
 
+def engine_missing_message() -> str:
+    return (
+        f"cheburnexus engine binary not found — set ${ENGINE_ENV} to the arch-computer.exe "
+        f"(ArchitectureAnalyzer.CLI) of the build this experiment means. There is no default on "
+        f"purpose: a silently-chosen binary can be older than the product change under test, or "
+        f"older than the passport signing key, and either way it yields a plausible wrong number. "
+        f"This arm is live only on a machine that has the product built; see arms/ARCHITECTURE.md's "
+        f"live/replay split and NOTES.md."
+    )
+
+
+# The engine's analysis code lives in this assembly beside the launcher; the launcher itself is a
+# generic apphost that two different builds can share byte for byte (observed: the e12 and e13 HEAD
+# publishes had identical arch-computer.exe and different contents). Hashing the launcher would
+# therefore certify two different engines as the same one.
+_ENGINE_CODE_ASSEMBLY = "ArchitectureAnalyzer.Core.dll"
+
+
+def engine_identity(engine: Path) -> str:
+    """What binary actually ran, in terms that cannot go stale without saying so out loud.
+
+    The old answer parsed a version number out of the distributable's FOLDER NAME — a label a build
+    writes once and never revises. Both 2026-08-29 runs recorded one: the run that worked said
+    "unknown" (its folder did not match the packaging regex) and the run that silently degraded to
+    Free on a 20-day-old binary said "1.7.0". Both strings sat in the manifests and neither told the
+    reader anything, least of all which one was old. A build date and a content hash cannot fail
+    that way: a stale engine now states its own age in every result this arm produces, and two
+    builds that differ are never described identically.
+    """
+    code = engine.parent / _ENGINE_CODE_ASSEMBLY
+    stamped = code if code.is_file() else engine
+    built = time.strftime("%Y-%m-%d", time.gmtime(stamped.stat().st_mtime))
+    digest = hashlib.sha256(stamped.read_bytes()).hexdigest()[:12]
+    return f"{stamped.name} built {built} sha256:{digest} at {engine}"
+
+
 def version() -> str:
-    """The tool's own version — cheap and fast, since --describe is called on every run. Parsed from
-    the distributable folder name rather than from a live analysis (which would be the only way to
-    read the assembly-level EngineVersion field, and far too slow for a --describe call). See
-    NOTES.md: the assembly-level EngineVersion observed in architecture.json output was "1.1.0" at
-    time of writing, distinct from this 1.7.0 distributable — and no git sha is exposed anywhere in
-    the CLI's own output for us to surface.
+    """The tool's own version — cheap and fast, since --describe is called on every run. Read from
+    the binary on disk rather than from a live analysis (which would be the only way to read the
+    assembly-level EngineVersion field, and far too slow for a --describe call). See NOTES.md: the
+    assembly-level EngineVersion observed in architecture.json output was "1.1.0" at time of
+    writing, and no git sha is exposed anywhere in the CLI's own output for us to surface — which
+    is exactly why identity is reported as build date + content hash instead of a version string.
     """
     engine = find_engine()
     if engine is None:
-        return "unavailable (engine binary not found — set $CHEBURNEXUS_ENGINE)"
-    match = _DIST_VERSION_RE.search(str(engine))
-    dist_version = match.group(1) if match else "unknown"
-    return f"{dist_version} (ArchitectureAnalyzer.CLI --solution, Roslyn semantic front end)"
+        return f"unavailable (engine binary not found — set ${ENGINE_ENV})"
+    return f"{engine_identity(engine)} (ArchitectureAnalyzer.CLI --solution, Roslyn semantic front end)"
 
+
+def withheld_graph_reason(engine: Path) -> str:
+    """Why a project that exited 0 produced only the aggregate counts sidecar and no per-edge one.
+
+    States the observation and both known causes, and asserts NEITHER. The previous wording said the
+    withholding was "consistent with the documented entitlement wall (analyzer.semantic is a Pro
+    feature and no valid passport is present on this machine)". That sentence names a fact about the
+    machine that this arm cannot check and, on 2026-08-29, was simply false: a valid unexpired
+    passport was sitting at the canonical path throughout, and the real cause was the engine binary
+    being older than the passport signing key. Reading the message cost real time pointed at the
+    wrong half of the system. An arm may report what it saw; it may not report why, when it does not
+    know why — and naming the binary is what lets the reader settle it in one look.
+    """
+    return (
+        "the engine analyzed this project (exit 0) but emitted only "
+        "architecture.calls-counts.json (aggregate counts, no caller identity) — no "
+        "architecture.calls.json. That is the shape the engine produces when it resolves this "
+        "machine to the Free tier (the semantic call graph is Pro-gated — see NOTES.md); the "
+        "engine's own output does not state a reason, so this arm does not claim one. Two causes "
+        "produce it and only inspection can tell them apart: no valid passport on this machine, OR "
+        "an engine binary older than the passport signing key it must verify against, which fails "
+        f"closed to Free with a perfectly healthy passport on disk. Engine used: {engine_identity(engine)}."
+    )
 
 # ── generic-arity conversion ────────────────────────────────────────────────────────────────────
 # The engine emits source-level open-generic syntax ("Cache<T>"). The grader's own key function
@@ -504,11 +571,7 @@ def _run_engine(engine: Path, csproj: Path, out_dir: Path) -> dict:
 def collect(repo_root: Path, cell: str) -> Iterable[armkit.Edge]:
     engine = find_engine()
     if engine is None:
-        raise RuntimeError(
-            f"cheburnexus engine binary not found — set ${ENGINE_ENV} to arch-computer.exe "
-            f"(ArchitectureAnalyzer.CLI). This arm is live only on a machine that has the product "
-            f"built; see arms/ARCHITECTURE.md's live/replay split and NOTES.md."
-        )
+        raise RuntimeError(engine_missing_message())
 
     product, test = _discover_csproj(repo_root)
     candidates = list(product) + (test if cell == "with-tests" else [])
@@ -552,17 +615,7 @@ def collect(repo_root: Path, cell: str) -> Iterable[armkit.Edge]:
             edges.extend(_edges_from_calls(result["calls"], index, repo_root))
             productive.append(rel)
         elif result["counts"] is not None:
-            # A fresh, successful (exit 0) run that emitted only the aggregate counts sidecar and no
-            # per-edge one. The engine itself prints no message confirming why — this reading comes
-            # from having read ModelProjectionService.cs (see NOTES.md), not from anything on
-            # stderr, so it is stated as our own inference, not attributed to the engine.
-            reason = (
-                "the engine analyzed this project (exit 0) but emitted only "
-                "architecture.calls-counts.json (aggregate counts, no caller identity) — no "
-                "architecture.calls.json. Consistent with the documented entitlement wall "
-                "(analyzer.semantic is a Pro feature and no valid passport is present on this "
-                "machine — see NOTES.md); the engine's own output does not state a reason."
-            )
+            reason = withheld_graph_reason(engine)
             print(f"cheburnexus: {rel} analyzed but the call graph was withheld — {reason}",
                   file=sys.stderr)
             unproductive.append((rel, reason))

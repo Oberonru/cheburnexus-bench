@@ -247,11 +247,26 @@ no commit sha appears anywhere in `ArchitectureAnalyzer.CLI`'s own JSON output.
 
 ## Engine discovery
 
-`$CHEBURNEXUS_ENGINE` env var, else a hardcoded default pointing at this machine's own product-repo
-checkout (`~/dev/Cheburnexus/LLM-CheburNexus/dist-all/cheburnexus-all-1.7.0-osx-x64/arch-computer.exe`).
-This only resolves here — the "live for us" half of `ARCHITECTURE.md`'s live/replay split. Anyone
-else needs `$CHEBURNEXUS_ENGINE` pointed at their own build, or the published replay rows once those
-exist (none are published yet — this arm has never produced a nonzero edge list to publish).
+`$CHEBURNEXUS_ENGINE`, and **nothing else — there is no default**. The arm refuses to run rather
+than choose a binary for you; this is the "live for us" half of `ARCHITECTURE.md`'s live/replay
+split, and anyone without a build of the product uses the published replay rows instead.
+
+⛔ There *was* a hardcoded default here
+(`~/dev/Cheburnexus/LLM-CheburNexus/dist-all/cheburnexus-all-1.7.0-osx-x64/arch-computer.exe`), and
+on 2026-08-29 it cost a full four-cell run. That packaged binary was built 2026-08-09, three days
+before the product rotated its passport signing key, so it embeds the superseded public key, cannot
+verify a passport issued after the rotation, and fails closed to Free. Every cell came back BLOCKED
+with the call graph withheld — the exact symptom of an unlicensed machine — while the passport on
+disk was valid the entire time. The lesson is not "keep the default fresher": a default that
+resolves to *some* binary means the arm cannot know whether it ran the engine the experiment meant,
+and a wrong-but-plausible engine yields wrong-but-plausible numbers.
+
+Every run now records WHICH engine ran, as build date + content hash of
+`ArchitectureAnalyzer.Core.dll` (the analysis assembly — two different publishes were observed
+sharing a byte-identical `arch-computer.exe` launcher, so the launcher cannot identify an engine).
+That replaces a version string parsed from the distributable's folder name, which had recorded
+"unknown" for the run that worked and "1.7.0" for the run that silently degraded — two labels that
+told a reader nothing, least of all which binary was three weeks old.
 
 ## Verification run (2026-08-23, this machine)
 
