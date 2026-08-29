@@ -142,3 +142,69 @@ as a harness defect, not as evidence about this change.
 
 Run command:
 `PYTHONHASHSEED=0 python3 runner/run.py --checkouts corpus --out results/2026-08-29-e13-conversion-operator-spelling`
+
+---
+
+# RESULT — run and grading, 2026-08-29
+
+Run `results/2026-08-29-e13-conversion-operator-spelling`, engine binary
+`dist-all/_bench-engine-e12-tfm-defines/arch-computer.exe` — **the very binary that produced the e12
+baseline**, chosen deliberately over an equally fresh HEAD build so that "byte-identical" tests the
+arm change alone and nothing else. All three arms, all four cells.
+
+| cell | arm edges | matched | junk | precision | recall | forecast |
+|---|---|---|---|---|---|---|
+| Polly / without-tests | 480 | **480** | **0** | **1.0000** | **0.6828** | ✅ exact |
+| FluentValidation / without-tests | 502 | 501 | 1 | 0.9980 | 0.8029 | ✅ unchanged |
+| serilog / without-tests | 494 | 494 | 0 | 1.0000 | 0.9199 | ✅ unchanged |
+| serilog / with-tests | 992 | 992 | 0 | 1.0000 | 0.4254 | ✅ unchanged |
+
+Every kill criterion cleared:
+
+1. ✅ grep and repowise `edges.jsonl` **byte-identical** to `results/2026-08-29-e12-tfm-defines` in
+   all four cells, both arms — eight files, eight matches. Their `result.json`s are identical
+   objects, not merely equal numbers.
+2. ✅ cheburnexus `edges.jsonl` **byte-identical** in FluentValidation/without-tests,
+   serilog/without-tests and serilog/with-tests.
+3. ✅ No cell lost precision or recall anywhere.
+4. ✅ Polly/without-tests landed on the point estimates exactly: 480 / 480 / 0 / 1.0000 / 0.6828.
+   Polly's `edges.jsonl` keeps its 684 lines and differs in **exactly 12** of them — the 12 raw
+   conversion-operator rows named in advance, renamed and nothing else. After the grader strips
+   generic arguments the 4 `PredicateBuilder` variants collapse onto one caller key, which is why 12
+   raw renames buy 6 graded matches, exactly as sized.
+5. ✅ The unit test was **proven to fail first, on behaviour and not on import**. `ImportError` from
+   the pre-fix tree is not a proof — the function simply did not exist yet. Re-checked properly: a
+   detached worktree at `bcea434` with the post-fix test file and an identity stub standing in for
+   the new function fails three real assertions (`implicit operator Func\`2` → itself instead of
+   `op_Implicit`, likewise for the explicit and explicit-interface cases). The same test passes on
+   the committed code.
+
+**Polly's primary cell is now clean: precision 1.0000, zero junk edges.** The first cell in this
+polygon to reach a perfect precision with a non-trivial edge count on the worst-recall repository.
+
+## Additional check the commit message asked for: the CALLEE end
+
+Re-measured independently of the pre-registration's own step-1(b), against each cell's
+`_oracle/oracle.jsonl` filtered to a first-party callee assembly: `op_Implicit`/`op_Explicit` appear
+as **callee in 0 rows in all four cells**, and as **caller in 16 raw Polly rows** (the 6 graded keys
+after generic-argument stripping) and 0 rows elsewhere. The defect is caller-only and Polly-only,
+as pre-registered. Nothing is owed on the callee side.
+
+## ⛔ The run this replaces, and why it was thrown away
+
+An earlier attempt (`results/2026-08-29-e13-BLOCKED-stale-engine-1.7.0/`, kept as evidence) had the
+cheburnexus arm BLOCKED in all four cells: the engine exited 0 but emitted only
+`architecture.calls-counts.json`, the Free-tier shape. The passport was healthy the whole time
+(`tier=promax`, expires 2026-11-30). The cause was `find_engine`'s hardcoded fallback
+(`arms/cheburnexus/run.py:46-48`): with `$CHEBURNEXUS_ENGINE` unset it silently picked
+`dist-all/cheburnexus-all-1.7.0-osx-x64/arch-computer.exe`, built **2026-08-09** — three days before
+the passport signing key was rotated (`6c58bae5`, 2026-08-12). That binary embeds the pre-rotation
+public key, so it cannot verify a passport issued 2026-08-24 and fails closed to Free, with no
+stated reason.
+
+The manifest recorded the difference and nobody read it: e12 says `"version": "unknown"` (an engine
+path that does not match the packaging regex — i.e. an explicitly pointed-at fresh build), e13 says
+`"version": "1.7.0"` (the stale default). ⚠ **A silent fallback to a stale artifact is a way to
+publish a plausible wrong number.** It was already named as a trap on 2026-08-24 and left unfixed;
+this is its second bite. `find_engine` should refuse the packaged default rather than fall back to
+it silently.
