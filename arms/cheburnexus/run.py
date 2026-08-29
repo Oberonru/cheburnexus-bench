@@ -91,6 +91,9 @@ def engine_missing_message() -> str:
 _ENGINE_CODE_ASSEMBLY = "ArchitectureAnalyzer.Core.dll"
 
 
+_IDENTITY_CACHE: dict[tuple[str, int, int], str] = {}
+
+
 def engine_identity(engine: Path) -> str:
     """What binary actually ran, in terms that cannot go stale without saying so out loud.
 
@@ -101,12 +104,36 @@ def engine_identity(engine: Path) -> str:
     reader anything, least of all which one was old. A build date and a content hash cannot fail
     that way: a stale engine now states its own age in every result this arm produces, and two
     builds that differ are never described identically.
+
+    Reading the file can fail — a locked or unreadable assembly, or a file that disappears between
+    the `is_file()` test and the read. Provenance is not worth crashing a run over, and a crash here
+    would leave the runner calling the cell "could not run here" instead of naming a cause, so an
+    I/O failure is reported AS the identity: an unreadable engine is itself a fact worth publishing.
     """
-    code = engine.parent / _ENGINE_CODE_ASSEMBLY
-    stamped = code if code.is_file() else engine
-    built = time.strftime("%Y-%m-%d", time.gmtime(stamped.stat().st_mtime))
-    digest = hashlib.sha256(stamped.read_bytes()).hexdigest()[:12]
-    return f"{stamped.name} built {built} sha256:{digest} at {engine}"
+    # Resolve first: a symlinked engine must be identified by the assembly beside its TARGET, not
+    # beside the link, or a shared launcher would stand in for a real build's analysis assembly.
+    real = engine.resolve()
+    code = real.parent / _ENGINE_CODE_ASSEMBLY
+    stamped = code if code.is_file() else real
+    try:
+        st = stamped.stat()
+    except OSError as exc:
+        return f"{stamped.name} UNREADABLE ({exc.strerror or exc}) at {engine}"
+    # Keyed on identity-relevant stat fields, not just the path: a rebuilt binary at the same path
+    # must be re-hashed, while the same binary is hashed once per run however many projects ask.
+    # A self-contained single-file publish is ~42 MB and this is called once per withheld project.
+    key = (str(stamped), st.st_mtime_ns, st.st_size)
+    cached = _IDENTITY_CACHE.get(key)
+    if cached is not None:
+        return cached
+    built = time.strftime("%Y-%m-%d", time.gmtime(st.st_mtime))
+    try:
+        digest = hashlib.sha256(stamped.read_bytes()).hexdigest()[:12]
+    except OSError as exc:
+        return f"{stamped.name} built {built} UNREADABLE ({exc.strerror or exc}) at {engine}"
+    identity = f"{stamped.name} built {built} sha256:{digest} at {engine}"
+    _IDENTITY_CACHE[key] = identity
+    return identity
 
 
 def version() -> str:

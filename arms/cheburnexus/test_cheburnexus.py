@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -259,23 +260,87 @@ def check_refused_is_not_empty() -> list[str]:
     return failures
 
 
-def check_describe_carries_identity() -> list[str]:
-    """A published row set is worthless if it cannot be tied to the version that produced it."""
-    failures = []
+def _describe(env_engine: Path | None) -> tuple[subprocess.CompletedProcess, dict]:
+    env = dict(os.environ)
+    env.pop(ENGINE_ENV, None)
+    if env_engine is not None:
+        env[ENGINE_ENV] = str(env_engine)
     result = subprocess.run([sys.executable, str(HERE / "run.py"), "--describe"],
-                            capture_output=True, text=True)
-    if result.returncode != 0:
-        failures.append(f"--describe failed: {result.stderr.strip()[:200]}")
-        return failures
+                            capture_output=True, text=True, env=env)
     try:
-        described = json.loads(result.stdout.strip().splitlines()[-1])
+        return result, json.loads(result.stdout.strip().splitlines()[-1])
     except (json.JSONDecodeError, IndexError):
-        failures.append(f"--describe did not print one JSON object: {result.stdout[:200]!r}")
-        return failures
-    if described.get("name") != "cheburnexus":
-        failures.append(f"--describe reports name {described.get('name')!r}")
-    if not described.get("version") or described["version"] in ("unknown", ""):
-        failures.append("--describe reports no engine version — results could not be traced to a build")
+        return result, {}
+
+
+def check_describe_carries_identity() -> list[str]:
+    """A published row set is worthless if it cannot be tied to the BUILD that produced it.
+
+    This check used to accept any non-empty version string other than the literal "unknown", and it
+    used to be exercised by accident: the arm had a hardcoded default engine, so on the author's
+    machine `--describe` always resolved a real binary. Deleting that default (correctly) took the
+    accident with it — with no engine configured the arm honestly answers "unavailable ...", which
+    is non-empty and not "unknown", so the check passed while testing nothing at all. A test whose
+    coverage depends on the ambient environment is a test that reports green on a fresh clone and on
+    CI without ever running the code it guards. It now supplies its own engine and demands the
+    identity actually carry a build date and a content hash."""
+    failures = []
+    with tempfile.TemporaryDirectory() as raw:
+        tmp = Path(raw)
+        (tmp / "arch-computer.exe").write_bytes(b"apphost")
+        (tmp / "ArchitectureAnalyzer.Core.dll").write_bytes(b"engine-code")
+        result, described = _describe(tmp / "arch-computer.exe")
+        if result.returncode != 0:
+            return [f"--describe failed: {result.stderr.strip()[:200]}"]
+        if not described:
+            return [f"--describe did not print one JSON object: {result.stdout[:200]!r}"]
+        if described.get("name") != "cheburnexus":
+            failures.append(f"--describe reports name {described.get('name')!r}")
+        version = described.get("version") or ""
+        if "sha256:" not in version:
+            failures.append(
+                f"--describe reports version {version!r} with no content hash — a build label alone "
+                "cannot distinguish two builds, and did not: both 2026-08-29 runs recorded one")
+        if not re.search(r"built \d{4}-\d{2}-\d{2}", version):
+            failures.append(
+                f"--describe reports version {version!r} with no build date — a stale engine must "
+                "state its own age in every row set it produces")
+        # And the honest answer when there is none must not look like a version.
+        _, none_described = _describe(None)
+        if "sha256:" in (none_described.get("version") or ""):
+            failures.append(
+                f"--describe invented an identity with no engine configured: "
+                f"{none_described.get('version')!r}")
+    return failures
+
+
+def check_engine_identity_survives_an_unreadable_binary() -> list[str]:
+    """Provenance is not worth crashing a run over.
+
+    `engine_identity` reads and hashes a file, which the folder-name regex it replaced never did.
+    An unreadable or locked assembly, or one that vanishes between the `is_file()` test and the
+    read, would raise out of `version()` (called on EVERY --describe) and out of the per-project
+    loop. `armkit.main` catches only `Blocked`, so the arm would die with an unnamed traceback and
+    the runner would file the cell as "could not run here" instead of naming what happened."""
+    failures = []
+    with tempfile.TemporaryDirectory() as raw:
+        tmp = Path(raw)
+        exe = tmp / "arch-computer.exe"
+        exe.write_bytes(b"apphost")
+        code = tmp / "ArchitectureAnalyzer.Core.dll"
+        code.write_bytes(b"engine-code")
+        code.chmod(0o000)
+        try:
+            identity = engine_identity(exe)
+        except OSError as exc:
+            code.chmod(0o600)
+            return [f"engine_identity raised {type(exc).__name__} on an unreadable assembly instead "
+                    f"of reporting it — this propagates out of --describe as an unnamed crash"]
+        code.chmod(0o600)
+        if "UNREADABLE" not in identity:
+            failures.append(
+                f"engine_identity returned {identity!r} for an unreadable assembly — an engine we "
+                "cannot read is a fact to state, not one to paper over")
     return failures
 
 
@@ -493,6 +558,7 @@ def main() -> int:
     failures += check_conversion_operator_caller_spelling()
     failures += check_engine_binary_is_never_guessed()
     failures += check_engine_identity_tells_two_builds_apart()
+    failures += check_engine_identity_survives_an_unreadable_binary()
     failures += check_withheld_graph_reason_asserts_no_cause()
     failures += check_paths_are_repo_relative()
     failures += check_refused_is_not_empty()
