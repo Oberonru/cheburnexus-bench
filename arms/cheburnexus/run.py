@@ -283,6 +283,42 @@ def _metadata_caller_method(method_name: str, entry: dict) -> str:
     return recorded if recorded else method_name
 
 
+# ── conversion-operator caller translation ──────────────────────────────────────────────────────
+# A user-defined conversion (`implicit operator T` / `explicit operator T`) is keyed by the
+# engine's CallKeyBuilder.ConversionOperatorKey with the SOURCE spelling — the implicit/explicit
+# keyword and the target type are part of the identity there, deliberately, because two
+# conversions to different types on the same class are two distinct members and must not collapse
+# onto one key. That is the right key for the engine's OWN space, but it is not the name IL gives
+# the member: the CLR names every user-defined conversion `op_Implicit` or `op_Explicit`,
+# regardless of its target type — overloads are told apart by signature in metadata, the same way
+# `CallKeyBuilder.MethodSignature`'s own comment already argues for generic method arity. Measured
+# on Polly/without-tests: 6 primary-cell oracle rows have a caller of exactly this shape, all
+# `op_Implicit`, and the untranslated arm missed every one of them, both as precision (6 junk
+# edges) and as recall (the same 6 oracle rows unmatched) — see
+# PREREGISTRATION-e13-conversion-operator-spelling-2026-08-29.md. Same class of defect as
+# `_accessor_caller_method` above, one level down: DECISION-accessor-caller-spelling-2026-08-28.md's
+# argument applies here without change.
+_CONVERSION_KEYWORDS = (("implicit operator ", "op_Implicit"), ("explicit operator ", "op_Explicit"))
+
+
+def _conversion_operator_caller_method(method_name: str) -> str:
+    """Rewrite a conversion-operator caller's method-name segment to the name IL actually gives it.
+
+    Finds the keyword rather than splitting on the last '.', unlike `_accessor_caller_method`: a
+    property/event identifier never contains a dot, but a conversion's target TYPE can
+    (`implicit operator System.Threading.Tasks.Task`), and splitting there would cut the qualifier
+    in the wrong place. Everything before the keyword — nothing, or an explicit-interface
+    qualifier plus its dot — is a fact from the source and is kept untouched; everything from the
+    keyword to the end names only the kind of conversion, which IL never varies by target type, so
+    it is replaced whole.
+    """
+    for keyword, il_name in _CONVERSION_KEYWORDS:
+        pos = method_name.find(keyword)
+        if pos != -1:
+            return method_name[:pos] + il_name
+    return method_name
+
+
 def _edges_from_calls(calls_path: Path, index: ClassIndex, repo_root: Path) -> Iterator[armkit.Edge]:
     envelope = json.loads(calls_path.read_text(encoding="utf-8"))
     data = envelope.get("Data") or {}
@@ -305,9 +341,16 @@ def _edges_from_calls(calls_path: Path, index: ClassIndex, repo_root: Path) -> I
 
             # Accessor translation happens per CALL, not once per raw_caller entry: a property's
             # getter and setter share this SAME entry (one member, per CallKeyBuilder.MemberKey),
-            # so only each call's own Accessor tag says which body it came from.
+            # so only each call's own Accessor tag says which body it came from. Conversion-operator
+            # translation runs AFTER metadata and BEFORE accessor: an explicit-interface conversion's
+            # MetadataName already arrives correctly spelled (`FluentValidation.IFoo.op_Implicit`,
+            # the compiler's own answer) and so never matches `_CONVERSION_KEYWORDS` — only a
+            # non-explicit-interface conversion's untouched source spelling does — and a conversion
+            # operator body is never itself an accessor, so `_accessor_caller_method` is a no-op on
+            # its output either way.
             effective_caller_method = _accessor_caller_method(
-                _metadata_caller_method(caller_method, entry), call.get("Accessor")
+                _conversion_operator_caller_method(_metadata_caller_method(caller_method, entry)),
+                call.get("Accessor"),
             )
             caller_key = index.contract_key(caller_type, effective_caller_method)
 

@@ -28,7 +28,12 @@ sys.path.insert(0, str(ROOT / "arms" / "_lib"))
 sys.path.insert(0, str(HERE))
 
 import armkit  # noqa: E402
-from run import _parse_raw_key, _to_repo_relative, backtick_arity  # noqa: E402
+from run import (  # noqa: E402
+    _conversion_operator_caller_method,
+    _parse_raw_key,
+    _to_repo_relative,
+    backtick_arity,
+)
 
 
 def check_generic_arity() -> list[str]:
@@ -64,6 +69,33 @@ def check_key_parsing() -> list[str]:
     if _parse_raw_key("not-a-key") is not None:
         failures.append("a malformed key was parsed instead of rejected — a bad row must be "
                         "dropped, never turned into an edge that scores")
+    return failures
+
+
+def check_conversion_operator_caller_spelling() -> list[str]:
+    """A conversion operator caller must be spelled the way IL spells it, `op_Implicit`/
+    `op_Explicit` — see `_conversion_operator_caller_method`'s own comment and
+    CallKeyBuilder.ConversionOperatorKey in the product repo, whose source-syntax spelling
+    (`implicit operator Func<...>`) is deliberate for the engine's OWN key space but is not what
+    the answer key names the same member. Measured on Polly/without-tests: 6 primary-cell oracle
+    rows have exactly this caller shape, all missed before this translation existed."""
+    failures = []
+    cases = [
+        ("implicit operator Func`2", "op_Implicit", "the common case: implicit, no qualifier"),
+        ("explicit operator System.Int32", "op_Explicit",
+         "explicit conversions get their own IL name, not implicit's"),
+        ("IFoo.implicit operator Func`2", "IFoo.op_Implicit",
+         "an explicit-interface conversion keeps its qualifier, only the kind+type text is renamed"),
+        ("Build", "Build", "an ordinary method is untouched"),
+        ("get_Count", "get_Count", "an accessor-shaped name is untouched — a different translation "
+         "owns that shape"),
+    ]
+    for raw, expected, why in cases:
+        got = _conversion_operator_caller_method(raw)
+        if got != expected:
+            failures.append(
+                f"_conversion_operator_caller_method({raw!r}) = {got!r}, expected {expected!r} — {why}"
+            )
     return failures
 
 
@@ -357,6 +389,7 @@ def check_partial_project_coverage_fails_the_cell_loudly() -> list[str]:
 def main() -> int:
     failures = check_generic_arity()
     failures += check_key_parsing()
+    failures += check_conversion_operator_caller_spelling()
     failures += check_paths_are_repo_relative()
     failures += check_refused_is_not_empty()
     failures += check_describe_carries_identity()
