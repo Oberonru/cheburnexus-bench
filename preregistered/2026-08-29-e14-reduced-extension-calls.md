@@ -94,3 +94,44 @@ losing precision or recall anywhere.
 
 Run command:
 `CHEBURNEXUS_ENGINE=…/_bench-engine-e14-reduced-extensions/arch-computer.exe PYTHONHASHSEED=0 python3 runner/run.py --checkouts corpus --out results/2026-08-29-e14-reduced-extension-calls`
+
+---
+
+# RESULT — run and grading, 2026-08-29
+
+`results/2026-08-29-e14-reduced-extension-calls`, engine `1c9c25af`, all three arms, all four cells.
+
+| cell | arm edges | matched | junk | precision | recall | forecast |
+|---|---|---|---|---|---|---|
+| Polly / without-tests | 505 | **505** | **0** | 1.0000 | 0.6828 → **0.7183** | ✅ exact |
+| FluentValidation / without-tests | 557 | **556** | 1 | 0.9980 → **0.9982** | 0.8029 → **0.8910** | ✅ exact |
+| serilog / without-tests | 494 | 494 | 0 | 1.0000 | 0.9199 | ✅ unchanged |
+| serilog / with-tests | 1017 | **1017** | **0** | 1.0000 | 0.4254 → **0.4361** | ✅ exact |
+
+Every matched count landed on the point estimate — 505 / 556 / 494 / 1017 — not merely inside the
+±3 the reconstruction's own baseline mismatch would have excused.
+
+All five kill criteria cleared:
+
+1. ✅ **Junk did not increase in any cell** — the sharpest claim in this document, and the one most
+   able to fail. 154 raw edges added across four cells, not one of them junk. Polly 0→0,
+   FluentValidation 1→1, serilog 0→0 and 0→0.
+2. ✅ No cell lost precision or recall; three cells hold precision 1.0000 and FluentValidation rose.
+3. ✅ grep and repowise byte-identical to baseline in all four cells — eight files, `result.json`s
+   identical objects, not merely equal numbers.
+4. ✅ serilog / without-tests cheburnexus `edges.jsonl` byte-identical, as the raw sizing required.
+5. ✅ Matched rows exact, well inside ±3.
+
+**Polly's primary cell keeps precision 1.0000 while recall rises 0.6828 → 0.7183**, and
+FluentValidation gains **+0.0881 recall** — the largest single-cell recall move of the campaign so far
+on that repository. serilog/without-tests did not move by one byte, exactly as measured in advance:
+its core has no reduced call to a first-party extension method.
+
+## What this closes
+
+The largest open bucket in [[finding-polly-recall-gap-bucketed-2026-08-29]] — "callees that vanish
+entirely, 75 rows, mechanism UNKNOWN" — is closed with a named mechanism and a product fix. The
+"silent loss" reading was itself wrong: these edges were counted as `DroppedExternal`, i.e. published
+as a false claim about which assembly a first-party method lives in.
+
+Still open on Polly: record-synthesized members (44) and C#12 primary constructors (≥15).
