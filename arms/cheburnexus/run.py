@@ -201,6 +201,30 @@ def backtick_arity(segment: str) -> str:
     return f"{name}`{arity}"
 
 
+
+def _split_namespace(fqn: str) -> tuple[str, str]:
+    """Split "Ns.Outer/Inner" into ("Ns", "Outer/Inner").
+
+    The namespace boundary is the last dot BEFORE the nesting chain starts — a dot inside the chain
+    would be part of a generic argument (`Box<A.B>/Entry`), never a namespace separator, which is the
+    whole reason the engine spells nesting with a slash.
+    """
+    head = fqn.split("/", 1)[0]
+    if "." not in head:
+        return "", fqn
+    namespace = head.rsplit(".", 1)[0]
+    return namespace, fqn[len(namespace) + 1:]
+
+
+def nested_type_path(type_chain: str) -> str:
+    r"""Arity-convert every link of a nesting chain: `Box<T>/Entry` -> `` Box`1/Entry ``.
+
+    Per SEGMENT, because each link carries its own type parameters and the oracle spells arity on
+    every one of them (`HedgingExecutionContext\`1/ExecutionInfo\`1`). Running backtick_arity over the
+    whole chain would see one trailing `<...>` and rewrite only the last link.
+    """
+    return "/".join(backtick_arity(seg) for seg in type_chain.split("/"))
+
 # ── class index: namespace + constructor-name lookup, built per engine run ─────────────────────
 # Built from that run's own architecture.json Files[].Types[]. Two things it exists to fix:
 #
@@ -255,11 +279,17 @@ class ClassIndex:
             fqn = cls.get("fqn")
             if fqn:
                 full_key = fqn
-                type_namespace = fqn.rsplit(".", 1)[0] if "." in fqn else ""
+                type_namespace, type_chain = _split_namespace(fqn)
             else:
                 full_key = f"{namespace}.{name}" if namespace else name
                 type_namespace = namespace
-            type_path = backtick_arity(name)
+                type_chain = name
+            # NOT backtick_arity(name): `name` is a nested type's OWN simple name, and using it drops
+            # the enclosing type. Since 2026-08-29 the engine emits nested types (it never did before,
+            # which is why this went unnoticed), and keying `ResilienceContextPool/SharedPool` as
+            # `Polly.SharedPool` produced 21 junk edges naming a type that does not exist — the second
+            # end of the same key contract the engine change fixed at the first.
+            type_path = nested_type_path(type_chain)
             ctor_names = frozenset(
                 m.get("Name", "") for m in cls.get("Methods", []) if m.get("IsConstructor")
             )
@@ -271,8 +301,8 @@ class ClassIndex:
             # A type our own file walk did not cover — should not happen for same-project calls
             # (calls.json and architecture.json come from the same run), but a raw dot-split beats
             # silently dropping the edge if it ever does.
-            namespace, _, simple = dotted_type.rpartition(".")
-            type_path = backtick_arity(simple) if simple else backtick_arity(dotted_type)
+            namespace, simple = _split_namespace(dotted_type)
+            type_path = nested_type_path(simple)
         else:
             namespace, type_path, ctor_names = entry
             if method_name in ctor_names:
