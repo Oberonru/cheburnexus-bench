@@ -74,3 +74,27 @@ another arm is a harness defect, not evidence about this change.
 5. Precision falls below 0.9975 in any cell — the dip is accepted only at the size argued above.
 
 ⛔ Nothing about the engine, the arm, the grader or the corpus is touched after these numbers are seen.
+
+---
+
+# RESULT — run and grading, 2026-08-29
+
+`results/2026-08-29-e15-nested-types`.
+
+| cell | matched | junk | precision | recall | forecast |
+|---|---|---|---|---|---|
+| Polly / without-tests | **532** | 1 | **0.9981** | 0.7183 → **0.7568** | ✅ exact |
+| FluentValidation / without-tests | **566** | 1 | **0.9982** | 0.8910 → **0.9071** | ✅ exact |
+| serilog / without-tests | **509** | 1 | **0.9980** | 0.9199 → **0.9479** | ✅ exact |
+| serilog / with-tests | **1077** | 1 | **0.9991** | 0.4361 → **0.4618** | ✅ exact |
+
+All sixteen forecast numbers landed exactly, the pre-registered precision dip included. grep and
+repowise byte-identical in all four cells. **+112 matched rows for 3 junk edges**, both of whose
+causes were named before the run.
+
+Every cell of the matrix now sits at recall 0.45–0.95 with precision ≥ 0.998. Two named items remain
+on Polly: record-synthesized members (44 rows, 36 of them only reachable now that nested types are)
+and C#12 primary constructors. A third was found by this run's own junk: an explicit-interface
+caller must be spelled with its FULL interface qualifier
+(`System.Collections.IEnumerable.GetEnumerator`, not `IEnumerable.GetEnumerator`) — visible twice, as
+one junk edge and two unmatched oracle rows.
