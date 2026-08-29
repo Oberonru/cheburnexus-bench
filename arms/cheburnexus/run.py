@@ -422,7 +422,21 @@ def _metadata_caller_method(method_name: str, entry: dict) -> str:
 # PREREGISTRATION-e13-conversion-operator-spelling-2026-08-29.md. Same class of defect as
 # `_accessor_caller_method` above, one level down: DECISION-accessor-caller-spelling-2026-08-28.md's
 # argument applies here without change.
-_CONVERSION_KEYWORDS = (("implicit operator ", "op_Implicit"), ("explicit operator ", "op_Explicit"))
+#
+# The checked entry is listed FIRST and matched by trying each keyword in order: "explicit operator
+# checked " is a superstring of "explicit operator ", so if the plain entry were tried first it would
+# match the checked spelling too (it IS a prefix of it) and truncate `... checked int` down to just
+# `op_Explicit`, silently dropping the fact that the conversion was checked and misnaming the member
+# (IL calls it `op_CheckedExplicit`, not `op_Explicit` — a genuinely different member, the same
+# reason CallKeyBuilder.OperatorKey/ConversionOperatorKey key checked and unchecked operators apart).
+# There is no checked-implicit entry: the C# compiler rejects `implicit operator checked T` outright
+# (CS9024, verified by compiling the probe) — an implicit conversion can never overflow, so only
+# explicit conversions can be checked.
+_CONVERSION_KEYWORDS = (
+    ("explicit operator checked ", "op_CheckedExplicit"),
+    ("implicit operator ", "op_Implicit"),
+    ("explicit operator ", "op_Explicit"),
+)
 
 
 def _conversion_operator_caller_method(method_name: str) -> str:
@@ -455,6 +469,30 @@ def _conversion_operator_caller_method(method_name: str) -> str:
 # all four corpora. A record's synthesized `operator!=` calls its `operator==`, so this shape appears
 # as caller AND as callee in the same edge — reading only one end would have converted a miss into a
 # junk edge instead of a match.
+#
+# Every key here must be the literal `operator` + `OperatorToken.Text` the engine actually emits —
+# checked, not assumed. `operator true`/`operator false` used to carry a SPACE, copied from how the
+# member reads in C# source; compiling a probe and reading `OperatorToken.Text` back shows Roslyn
+# gives the `true`/`false` operator the same bare-token spelling as every other operator
+# (`"true"`/`"false"`, no leading space), so the engine key is `operatortrue`/`operatorfalse` and the
+# space-bearing entries never matched anything — `op_True`/`op_False` were dead code, silently
+# leaving every `operator true`/`operator false` callee's method name untranslated (junk on the
+# callee end, since IL never spells it that way) and, symmetrically, every such CALLER unmatched
+# against the oracle (a miss) — same failure shape `_conversion_operator_caller_method`'s own comment
+# already measured for conversion operators, one operator family over.
+#
+# `op_UnsignedRightShift` (`>>>`, C# 11) was simply missing — verified the same way: a probe with
+# `operator >>>` parses to `OperatorToken.Text == ">>>"`, so the untranslated key `operator>>>` fell
+# through `_il_operator_method`'s `None` branch unchanged, same dead-entry effect as the space bug
+# above, just via absence instead of a wrong spelling.
+#
+# `operatorchecked` + token (no space, no keyword-first "checked "): CallKeyBuilder.OperatorKey folds
+# C# 11's checked-operator keyword in exactly this position — see that method's own comment — so a
+# checked operator's engine key is `operatorchecked+`, not `operator checked+` or `operator+
+# checked`. Checked-ness is only ever legal on the operators the CLR itself names a checked overload
+# for (+, -, *, /, unary -, ++, --); the rest of the table has no `operatorchecked...` counterpart on
+# purpose, not by omission — there is no `op_Checked...` name for `==` or `<<` because C# does not
+# allow `operator checked ==`.
 _IL_OPERATOR_NAMES = {
     "operator==": "op_Equality",   "operator!=": "op_Inequality",
     "operator<":  "op_LessThan",   "operator>":  "op_GreaterThan",
@@ -464,9 +502,13 @@ _IL_OPERATOR_NAMES = {
     "operator%":  "op_Modulus",    "operator&":  "op_BitwiseAnd",
     "operator|":  "op_BitwiseOr",  "operator^":  "op_ExclusiveOr",
     "operator<<": "op_LeftShift",  "operator>>": "op_RightShift",
+    "operator>>>": "op_UnsignedRightShift",
     "operator!":  "op_LogicalNot", "operator~":  "op_OnesComplement",
     "operator++": "op_Increment",  "operator--": "op_Decrement",
-    "operator true": "op_True",    "operator false": "op_False",
+    "operatortrue": "op_True",     "operatorfalse": "op_False",
+    "operatorchecked+":  "op_CheckedAddition",       "operatorchecked-":  "op_CheckedSubtraction",
+    "operatorchecked*":  "op_CheckedMultiply",        "operatorchecked/":  "op_CheckedDivision",
+    "operatorchecked++": "op_CheckedIncrement",       "operatorchecked--": "op_CheckedDecrement",
 }
 
 

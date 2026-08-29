@@ -32,6 +32,7 @@ import armkit  # noqa: E402
 from run import (  # noqa: E402
     ENGINE_ENV,
     _conversion_operator_caller_method,
+    _il_operator_method,
     _parse_raw_key,
     _to_repo_relative,
     backtick_arity,
@@ -103,6 +104,75 @@ def check_conversion_operator_caller_spelling() -> list[str]:
             )
     return failures
 
+
+
+def check_il_operator_spelling() -> list[str]:
+    """An operator caller/callee must be spelled the way IL spells it — see `_il_operator_method`'s
+    own comment and CallKeyBuilder.OperatorKey/ConversionOperatorKey in the product repo.
+
+    `_IL_OPERATOR_NAMES` used to carry `"operator true"`/`"operator false"` WITH A SPACE, copied from
+    how the member reads in C# source. Compiling a probe and reading `OperatorToken.Text` back shows
+    Roslyn spells it bare, `"true"`/`"false"`, the same as every other operator token — so the
+    engine's actual key is `operatortrue`/`operatorfalse`, no space, and the space-bearing table
+    entries never matched anything: `op_True`/`op_False` were dead code. `>>>` (C# 11 unsigned right
+    shift) was simply absent from the table. Both left the untranslated engine spelling standing —
+    junk on the callee end (IL never spells a member that way) and a miss on the caller end (the
+    oracle row never matches an untranslated caller either) — the same failure shape already measured
+    for conversion operators.
+
+    The `operatorchecked...` cases pin the C# 11 checked-operator spelling
+    `CallKeyBuilder.OperatorKey` now emits (folded in as `operator` + `checked` + token, no spaces,
+    positioned where the source itself writes the keyword) against the CLR's own checked names."""
+    failures = []
+    cases = [
+        ("operatortrue", "op_True", "operator true, no space — the engine's real spelling"),
+        ("operatorfalse", "op_False", "operator false, no space — the engine's real spelling"),
+        ("operator true", "operator true",
+         "the OLD, space-bearing spelling must NOT match — it is not a key the engine ever emits"),
+        ("operator>>>", "op_UnsignedRightShift", "C# 11 unsigned right shift"),
+        ("operator+", "op_Addition", "an ordinary operator is untouched by the checked/>>>/true-false fixes"),
+        ("IAdd.operator+", "IAdd.op_Addition", "an explicit-interface operator keeps its qualifier"),
+        ("operatorchecked+", "op_CheckedAddition", "C# 11 checked addition"),
+        ("operatorchecked-", "op_CheckedSubtraction", "C# 11 checked subtraction"),
+        ("operatorchecked*", "op_CheckedMultiply", "C# 11 checked multiplication"),
+        ("operatorchecked/", "op_CheckedDivision", "C# 11 checked division"),
+        ("operatorchecked++", "op_CheckedIncrement", "C# 11 checked increment"),
+        ("operatorchecked--", "op_CheckedDecrement", "C# 11 checked decrement"),
+        ("Build", "Build", "an ordinary method is untouched"),
+    ]
+    for raw, expected, why in cases:
+        got = _il_operator_method(raw)
+        if got != expected:
+            failures.append(
+                f"_il_operator_method({raw!r}) = {got!r}, expected {expected!r} — {why}"
+            )
+    return failures
+
+
+def check_checked_conversion_operator_caller_spelling() -> list[str]:
+    """C# 11 lets an EXPLICIT conversion be checked (`explicit operator checked int`) alongside a
+    plain one — `CallKeyBuilder.ConversionOperatorKey` folds the keyword in where the source writes
+    it, and this arm must translate it to IL's `op_CheckedExplicit`, a genuinely different member
+    from `op_Explicit` (verified: the compiler rejects `implicit operator checked T` outright,
+    CS9024, so no checked-implicit case exists to test). The checked keyword entry must be tried
+    BEFORE the plain "explicit operator " entry — the plain one is a strict prefix of the checked
+    spelling, so trying it first would truncate `... checked int` down to `op_Explicit` and silently
+    lose the checked-ness."""
+    failures = []
+    cases = [
+        ("explicit operator checked int", "op_CheckedExplicit", "the checked keyword must win over the plain prefix match"),
+        ("explicit operator int", "op_Explicit", "an ordinary explicit conversion is unaffected"),
+        ("implicit operator int", "op_Implicit", "an ordinary implicit conversion is unaffected"),
+        ("IFoo.explicit operator checked System.Int32", "IFoo.op_CheckedExplicit",
+         "an explicit-interface checked conversion keeps its qualifier"),
+    ]
+    for raw, expected, why in cases:
+        got = _conversion_operator_caller_method(raw)
+        if got != expected:
+            failures.append(
+                f"_conversion_operator_caller_method({raw!r}) = {got!r}, expected {expected!r} — {why}"
+            )
+    return failures
 
 
 def check_engine_binary_is_never_guessed() -> list[str]:
@@ -556,6 +626,8 @@ def main() -> int:
     failures = check_generic_arity()
     failures += check_key_parsing()
     failures += check_conversion_operator_caller_spelling()
+    failures += check_il_operator_spelling()
+    failures += check_checked_conversion_operator_caller_spelling()
     failures += check_engine_binary_is_never_guessed()
     failures += check_engine_identity_tells_two_builds_apart()
     failures += check_engine_identity_survives_an_unreadable_binary()
