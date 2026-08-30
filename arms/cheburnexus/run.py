@@ -758,23 +758,160 @@ def _run_engine(engine: Path, csproj: Path, out_dir: Path) -> dict:
     return fallback
 
 
-def collect(repo_root: Path, cell: str) -> Iterable[armkit.Edge]:
-    engine = find_engine()
-    if engine is None:
-        raise RuntimeError(engine_missing_message())
+# ── combined-solution mode ───────────────────────────────────────────────────────────────────────
+# ESTABLISHED CAUSE (2026-08-30): the per-project loop above runs the engine on ONE .csproj at a
+# time, so a sibling in-scope <ProjectReference> enters that run only as a compiled DLL — the
+# engine's declaration index is built from parsed SOURCE only, so every call into a sibling
+# first-party project is counted DroppedExternal ("lives in another assembly") about a member that
+# IS in the corpus. Measured ceiling on serilog/with-tests: 1100 raw test->src edges recovered when
+# the same engine binary is pointed at Serilog.sln instead of at one project.
+#
+# The fix is not to teach the conversion logic about sibling projects — it is to stop asking the
+# engine about one project at a time. A synthetic solution listing every in-scope candidate together
+# lets Roslyn resolve a ProjectReference to the sibling's own SOURCE, the same way `dotnet build`
+# would. The solution file is written into THIS arm's own scratch dir, never into the corpus
+# checkout — `armkit.in_scope` already computed exactly which candidates belong in this cell, and
+# this mode must see precisely that list, not one project more or fewer (see
+# `_write_synthetic_solution` and its test below).
+DOTNET_ENV = "CHEBURNEXUS_DOTNET"
 
-    product, test = _discover_csproj(repo_root)
-    candidates = list(product) + (test if cell == "with-tests" else [])
-    # Defect #10: a sibling, non-first-party project (same repo, different assembly, e.g. Polly's
-    # legacy src/Polly/) is not a test directory, so it survived _discover_csproj unfiltered. Scope
-    # it out here against corpus.json's own product_projects/test_assemblies_projects — the same
-    # check armkit.source_files applies to raw source files for grep, and armkit.in_scope applies
-    # per-edge for repowise.
-    candidates = [c for c in candidates if armkit.in_scope(c, repo_root, cell)]
-    if not candidates:
-        raise RuntimeError(f"no .csproj found under {repo_root}")
 
-    scratch = WORK_ROOT / repo_root.name / cell
+def _dotnet_bin() -> str:
+    """Which `dotnet` builds the synthetic solution — overridable so a test can hand this a fake
+    shim instead of needing the real SDK's `dotnet new`/`dotnet sln add` to be hermetic. Unlike the
+    engine binary lookup above, an unpinned `dotnet` is not a correctness risk: this arm's own
+    numbers do not depend on which SDK patch assembled a project list, only on that list being
+    exactly right — which is what the tests below check, against a fake shim, not the real tool."""
+    return os.environ.get(DOTNET_ENV) or "dotnet"
+
+
+def _combined_out_dir(scratch: Path) -> Path:
+    return scratch / "_combined"
+
+
+def _write_synthetic_solution(
+    out_dir: Path, sln_name: str, csprojs: list[Path]
+) -> tuple[Path | None, str]:
+    """`dotnet new sln` + `dotnet sln add`, listing EXACTLY `csprojs` — sorted, so the file (and any
+    log naming it) is the same on a re-run. Returns (path, "") on success, or (None, reason) when
+    either step fails; the caller decides whether that means falling back to the per-project path.
+    `out_dir` is always inside this arm's own WORK_ROOT (enforced by `_reset_work_dir` on the
+    caller's side) — this function never writes into the corpus checkout.
+    """
+    dotnet = _dotnet_bin()
+    try:
+        new_proc = subprocess.run(
+            [dotnet, "new", "sln", "-n", sln_name],
+            cwd=str(out_dir), capture_output=True, text=True, timeout=120,
+        )
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        return None, f"{dotnet} new sln failed to start: {exc}"
+    sln_path = out_dir / f"{sln_name}.sln"
+    if new_proc.returncode != 0 or not sln_path.is_file():
+        tail = (new_proc.stderr or new_proc.stdout).strip()
+        return None, f"{dotnet} new sln failed: exit {new_proc.returncode}: {tail[-500:]}"
+
+    try:
+        add_proc = subprocess.run(
+            [dotnet, "sln", str(sln_path), "add", *[str(c) for c in sorted(csprojs)]],
+            capture_output=True, text=True, timeout=120,
+        )
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        return None, f"{dotnet} sln add failed to start: {exc}"
+    if add_proc.returncode != 0:
+        tail = (add_proc.stderr or add_proc.stdout).strip()
+        return None, f"{dotnet} sln add failed: exit {add_proc.returncode}: {tail[-500:]}"
+
+    return sln_path, ""
+
+
+def _run_combined(
+    engine: Path, repo_root: Path, cell: str, candidates: list[Path], scratch: Path
+) -> dict:
+    """One engine invocation over every in-scope candidate at once. Never raises: a synthetic-
+    solution failure or an engine refusal both come back as `{"ok": False, "reason": ...}` so
+    `collect()` can fall back to the per-project path instead of dying.
+
+    `--project <repo_root>` alongside `--solution` is the engine's own documented monorepo-scoping
+    combination (ArchitectureAnalyzer.CLI/Program.cs: "combine with --project to scope a monorepo to
+    one subtree") — without it the analysis root defaults to the SOLUTION FILE's own directory,
+    which is empty (the .sln lives in our scratch dir, never in the checkout), and the engine
+    refuses with "No in-scope C# sources found" before it ever reads a candidate. Pinning
+    `--project` to `repo_root` also makes every `Files[].Path` in the resulting architecture.json
+    repo-relative — the anchor `_combined_project_coverage` below relies on.
+    """
+    out_dir = _combined_out_dir(scratch)
+    _reset_work_dir(out_dir)  # defect #9 applies here too: never read a previous run's leftovers
+    sln_name = f"{repo_root.name}-{cell}"
+    sln_path, reason = _write_synthetic_solution(out_dir, sln_name, candidates)
+    if sln_path is None:
+        return {"ok": False, "reason": reason, "sln_path": None}
+
+    result = _invoke(engine, ["--solution", str(sln_path), "--project", str(repo_root)],
+                      out_dir, "combined-solution")
+    result["sln_path"] = sln_path
+    return result
+
+
+def _combined_project_coverage(
+    files: list[dict], candidates: list[Path], repo_root: Path
+) -> tuple[list[str], list[tuple[str, str]]]:
+    """Which in-scope candidates contributed at least one file to a combined run's
+    architecture.json — the same productive/unproductive split the old per-project loop got for
+    free from running the engine once per project and reading each invocation's own exit code. One
+    combined invocation's exit code can only say "the whole cell" succeeded or not; a project whose
+    own sources produced nothing (still possible — a project entirely under `#if` guards for this
+    TFM, say) must not be allowed to hide inside an overall-successful run, or a partial result
+    would be graded as a complete one again — the exact defect #9 masking bug the per-project loop
+    was built to catch.
+
+    Matched by path COMPONENT prefix, like `armkit.in_declared_scope` — a string-prefix test would
+    wrongly credit `src/Polly` for files that are actually under a sibling `src/Polly.Core`.
+    """
+    contributed_dirs = {
+        tuple(Path(f.get("Path", "").replace("\\", "/")).parts[:-1]) for f in files
+    }
+    productive: list[str] = []
+    unproductive: list[tuple[str, str]] = []
+    for csproj in sorted(candidates):
+        rel = str(csproj.relative_to(repo_root))
+        project_parts = csproj.parent.relative_to(repo_root).parts
+        hit = any(dirparts[: len(project_parts)] == project_parts for dirparts in contributed_dirs)
+        if hit:
+            productive.append(rel)
+        else:
+            unproductive.append((
+                rel,
+                "combined solution analysis contributed no files under this project's directory",
+            ))
+    return productive, unproductive
+
+
+def _edges_from_combined(
+    combined: dict, repo_root: Path, candidates: list[Path]
+) -> tuple[list[armkit.Edge], list[str], list[tuple[str, str]]]:
+    """Build ONE ClassIndex from the combined run's architecture.json and call `_edges_from_calls`
+    ONCE on its calls.json — the whole point of combining: a sibling ProjectReference is now parsed
+    SOURCE sitting in the SAME Files[] list, not a compiled DLL read by a separate invocation."""
+    arch_model = json.loads(combined["arch"].read_text(encoding="utf-8"))
+    files = arch_model.get("Files", [])
+    index = ClassIndex()
+    for file_obj in files:
+        index.add_file(file_obj)
+    edges = list(_edges_from_calls(combined["calls"], index, repo_root))
+    productive, unproductive = _combined_project_coverage(files, candidates, repo_root)
+    return edges, productive, unproductive
+
+
+def _collect_per_project(
+    engine: Path, repo_root: Path, cell: str, candidates: list[Path], scratch: Path
+) -> list[armkit.Edge]:
+    """The original one-project-at-a-time path — now the FALLBACK for when the combined solution run
+    cannot be produced at all (no `dotnet`, a broken synthetic solution, or the engine refusing the
+    combined invocation outright), never for a real per-project coverage gap, which the combined
+    path reports itself via `_combined_project_coverage`. Unchanged from before this fix: same
+    engine invocation per candidate, same defect-#9 masking guard, same without-tests filter.
+    """
     edges: list[armkit.Edge] = []
     # Defect #9 (masking): a project that ran but produced no call graph, and a project that
     # produced real edges, must not be allowed to average out into a plausible-looking partial
@@ -843,6 +980,82 @@ def collect(repo_root: Path, cell: str) -> Iterable[armkit.Edge]:
         ]
 
     return edges
+
+
+def collect(repo_root: Path, cell: str) -> tuple[list[armkit.Edge], armkit.Coverage]:
+    engine = find_engine()
+    if engine is None:
+        raise RuntimeError(engine_missing_message())
+
+    product, test = _discover_csproj(repo_root)
+    candidates = list(product) + (test if cell == "with-tests" else [])
+    # Defect #10: a sibling, non-first-party project (same repo, different assembly, e.g. Polly's
+    # legacy src/Polly/) is not a test directory, so it survived _discover_csproj unfiltered. Scope
+    # it out here against corpus.json's own product_projects/test_assemblies_projects — the same
+    # check armkit.source_files applies to raw source files for grep, and armkit.in_scope applies
+    # per-edge for repowise. This is also exactly the candidate list the synthetic solution below
+    # must list — not one project more (a sibling would leak into every callee) or fewer (the whole
+    # point of combining is lost).
+    candidates = [c for c in candidates if armkit.in_scope(c, repo_root, cell)]
+    if not candidates:
+        raise RuntimeError(f"no .csproj found under {repo_root}")
+
+    scratch = WORK_ROOT / repo_root.name / cell
+    combined = _run_combined(engine, repo_root, cell, candidates, scratch)
+
+    if combined["ok"] and combined.get("calls") is not None:
+        edges, productive, unproductive = _edges_from_combined(combined, repo_root, candidates)
+
+        if not productive:
+            detail = "; ".join(f"{rel}: {why}" for rel, why in unproductive)
+            raise armkit.Blocked(
+                f"combined solution run analyzed {len(candidates)} candidate project(s) for cell "
+                f"{cell!r} but none contributed a file to it — {detail}. "
+                f"Solution: {combined['sln_path']}"
+            )
+        if unproductive:
+            # Same masking guard as the per-project path, derived from file contribution instead of
+            # a per-invocation exit code — see `_combined_project_coverage`.
+            detail = "; ".join(f"{rel}: {why}" for rel, why in unproductive)
+            raise armkit.Blocked(
+                f"combined solution run: {len(unproductive)} of {len(candidates)} in-scope "
+                f"project(s) contributed no files even though {len(productive)} did "
+                f"({', '.join(productive)}) — refusing to grade a partial result as complete. "
+                f"{detail}. Solution: {combined['sln_path']}"
+            )
+
+        if cell == "without-tests":
+            edges = [
+                e for e in edges
+                if e.caller_file is None
+                or not armkit.is_test_path(repo_root / e.caller_file, repo_root)
+            ]
+
+        note = (f"combined solution mode: one engine invocation over {len(candidates)} in-scope "
+                f"project(s) via synthetic solution {combined['sln_path']}")
+        return edges, armkit.Coverage(note=note)
+
+    if combined["ok"] and combined.get("counts") is not None:
+        # The entitlement wall is a whole-cell fact, not a per-project one — a fallback per-project
+        # run would hit the identical wall on every project, so there is nothing to gain by retrying.
+        raise armkit.Blocked(
+            f"combined solution run analyzed {len(candidates)} candidate project(s) for cell "
+            f"{cell!r} but the call graph was withheld — {withheld_graph_reason(engine)}. "
+            f"Solution: {combined['sln_path']}"
+        )
+
+    # The combined run itself could not be produced (no dotnet, a broken synthetic solution, the
+    # engine refusing the combined invocation, or — belt and braces — an unexpected shape with
+    # neither sidecar) — fall back to the per-project path rather than emitting an empty graph.
+    fallback_reason = (
+        combined.get("reason") or "combined run produced neither calls.json nor calls-counts.json"
+    )
+    print(f"cheburnexus: combined solution mode unavailable for cell {cell!r} ({fallback_reason}) "
+          f"— falling back to per-project analysis", file=sys.stderr)
+    edges = _collect_per_project(engine, repo_root, cell, candidates, scratch)
+    note = (f"per-project fallback mode: combined solution analysis was unavailable "
+            f"({fallback_reason}) — analyzed {len(candidates)} project(s) individually")
+    return edges, armkit.Coverage(note=note)
 
 
 if __name__ == "__main__":

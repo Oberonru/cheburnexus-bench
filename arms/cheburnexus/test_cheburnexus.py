@@ -30,12 +30,15 @@ sys.path.insert(0, str(HERE))
 
 import armkit  # noqa: E402
 from run import (  # noqa: E402
+    DOTNET_ENV,
     ENGINE_ENV,
+    _combined_project_coverage,
     _conversion_operator_caller_method,
     _il_operator_method,
     _key_arity,
     _parse_raw_key,
     _to_repo_relative,
+    _write_synthetic_solution,
     backtick_arity,
     engine_identity,
     find_engine,
@@ -672,6 +675,233 @@ def check_partial_project_coverage_fails_the_cell_loudly() -> list[str]:
     return failures
 
 
+_FAKE_DOTNET_OK_SOURCE = '''#!/usr/bin/env python3
+import pathlib
+import sys
+
+args = sys.argv[1:]
+if args[:2] == ["new", "sln"]:
+    name = args[args.index("-n") + 1]
+    pathlib.Path(f"{name}.sln").write_text("FAKESLN\\n")
+    sys.exit(0)
+if args and args[0] == "sln" and len(args) > 2 and args[2] == "add":
+    sln = pathlib.Path(args[1])
+    with sln.open("a") as fh:
+        for project in args[3:]:
+            fh.write(f"PROJECT:{project}\\n")
+    sys.exit(0)
+sys.stderr.write(f"fake-dotnet: unrecognized args {args!r}\\n")
+sys.exit(1)
+'''
+
+_FAKE_DOTNET_FAIL_SOURCE = '''#!/usr/bin/env python3
+import sys
+sys.stderr.write("fake-dotnet: simulated failure (no SDK on this fake PATH)\\n")
+sys.exit(1)
+'''
+
+
+def _write_fake_dotnet(tmp: Path, source: str) -> Path:
+    dotnet = tmp / "fake_dotnet.py"
+    dotnet.write_text(source, encoding="utf-8")
+    dotnet.chmod(0o755)
+    return dotnet
+
+
+def check_synthetic_solution_lists_exactly_in_scope_projects() -> list[str]:
+    """The synthetic solution is the ONLY thing that tells the engine which sibling
+    ProjectReferences to resolve as source instead of a compiled DLL. If it ever listed a project
+    outside the caller's candidate set, that project's calls would go from a disclosed
+    DroppedExternal gap to a silently WRONG attribution (a call resolved against a project the cell
+    never scoped in); if it dropped a candidate, that candidate's calls into its own siblings would
+    silently keep failing to resolve — the exact defect this whole change exists to fix."""
+    failures = []
+    with tempfile.TemporaryDirectory() as raw:
+        tmp = Path(raw)
+        dotnet = _write_fake_dotnet(tmp, _FAKE_DOTNET_OK_SOURCE)
+        out_dir = tmp / "out"
+        out_dir.mkdir()
+        candidates = [Path("/repo/src/Beta/Beta.csproj"), Path("/repo/src/Alpha/Alpha.csproj")]
+        os.environ[DOTNET_ENV] = str(dotnet)
+        try:
+            sln_path, reason = _write_synthetic_solution(out_dir, "probe", candidates)
+        finally:
+            os.environ.pop(DOTNET_ENV, None)
+        if sln_path is None:
+            return [f"_write_synthetic_solution failed unexpectedly: {reason}"]
+        listed = {
+            line.split("PROJECT:", 1)[1]
+            for line in sln_path.read_text(encoding="utf-8").splitlines()
+            if line.startswith("PROJECT:")
+        }
+        expected = {str(c) for c in candidates}
+        if listed != expected:
+            failures.append(
+                f"synthetic solution listed {sorted(listed)}, expected exactly {sorted(expected)} "
+                "— a project missing here never gets its siblings resolved as source, and an extra "
+                "one leaks a project outside the cell's own scope into the run")
+    return failures
+
+
+def check_combined_mode_reports_zero_file_project_as_unproductive() -> list[str]:
+    """`_combined_project_coverage` stands in, for a combined run, for the per-project exit code the
+    old loop used to catch a project that analyzed cleanly overall but produced nothing of its own —
+    a project entirely gated out for this TFM, say. If this silently called every candidate
+    "productive" merely because the COMBINED run as a whole exited 0, a partial result would again
+    be graded as a complete one — the exact defect #9 masking bug the per-project loop was built to
+    catch, reappearing one level up."""
+    failures = []
+    repo_root = Path("/repo")
+    alpha = repo_root / "src" / "Alpha" / "Alpha.csproj"
+    beta = repo_root / "src" / "Beta" / "Beta.csproj"
+    # Beta contributes nothing; a sibling "src/Beta.Extra" must not be mistaken for it — a
+    # string-prefix test would wrongly credit Beta with files that are actually a DIFFERENT project.
+    files = [
+        {"Path": "src/Alpha/A.cs"},
+        {"Path": "src/Alpha/Sub/B.cs"},
+        {"Path": "src/Beta.Extra/C.cs"},
+    ]
+    productive, unproductive = _combined_project_coverage(files, [alpha, beta], repo_root)
+    if productive != ["src/Alpha/Alpha.csproj"]:
+        failures.append(f"productive = {productive!r}, expected only Alpha")
+    unproductive_paths = [rel for rel, _why in unproductive]
+    if unproductive_paths != ["src/Beta/Beta.csproj"]:
+        failures.append(
+            f"unproductive = {unproductive_paths!r}, expected only Beta — a sibling directory "
+            "(src/Beta.Extra) must not be credited to Beta by a string-prefix match")
+    return failures
+
+
+# ── combined-mode CLI integration: a second fake engine that understands --project <root> ─────────
+# The defect #9 fake engine above keys on a marker INSIDE the target path it is given (args[1]),
+# which is a per-project .csproj path in the old per-project mode. Combined mode's target is a
+# synthetic SOLUTION path that carries none of those markers — a repo-shaped fake engine is needed
+# instead, keyed on which candidate directories it can see under --project.
+_COMBINED_FAKE_ENGINE_SOURCE = '''#!/usr/bin/env python3
+import json
+import pathlib
+import sys
+
+args = sys.argv[1:]
+out_path = pathlib.Path(args[args.index("--output") + 1])
+
+if "--project" not in args:
+    sys.stderr.write("fake-combined-engine: expected --project alongside --solution\\n")
+    sys.exit(1)
+
+project_root = pathlib.Path(args[args.index("--project") + 1])
+alpha_dir = project_root / "src" / "Alpha"
+if not alpha_dir.is_dir():
+    sys.stderr.write(f"fake-combined-engine: no Alpha under {project_root}\\n")
+    sys.exit(1)
+
+# Only Alpha ever contributes a file — a Beta directory, when present under the same root, never
+# does, so a test can assert on which of the two the coverage accounting names.
+out_path.write_text(json.dumps({
+    "Files": [{"Path": "src/Alpha/A.cs", "Namespace": "App", "Types": [{"Name": "Alpha", "Methods": []}]}]
+}))
+out_path.with_name("architecture.calls.json").write_text(json.dumps({
+    "Data": {
+        "src/Alpha/A.cs::App.Alpha::Run": {
+            "Calls": [{"Target": "src/Alpha/A.cs::App.Alpha::Helper()", "Line": 7}]
+        }
+    }
+}))
+sys.exit(0)
+'''
+
+
+def _write_combined_fake_engine(tmp: Path) -> Path:
+    engine = tmp / "fake_combined_engine.py"
+    engine.write_text(_COMBINED_FAKE_ENGINE_SOURCE, encoding="utf-8")
+    engine.chmod(0o755)
+    return engine
+
+
+def _make_two_project_repo(tmp: Path, names: list[str]) -> Path:
+    repo = tmp / f"repo-{tmp.name}"
+    for name in names:
+        proj_dir = repo / "src" / name
+        proj_dir.mkdir(parents=True)
+        (proj_dir / f"{name}.csproj").write_text(
+            '<Project Sdk="Microsoft.NET.Sdk"></Project>', encoding="utf-8")
+        (proj_dir / "Widget.cs").write_text("namespace App { class Widget {} }", encoding="utf-8")
+    return repo
+
+
+def _run_arm_cli_combined(
+    repo: Path, cell: str, out: Path, engine: Path, dotnet: Path
+) -> subprocess.CompletedProcess:
+    env = dict(os.environ)
+    env["CHEBURNEXUS_ENGINE"] = str(engine)
+    env[DOTNET_ENV] = str(dotnet)
+    return subprocess.run(
+        [sys.executable, str(HERE / "run.py"), "--repo", str(repo), "--cell", cell, "--out", str(out)],
+        capture_output=True, text=True, env=env)
+
+
+def check_manifest_states_combined_mode() -> list[str]:
+    """A reader of the manifest must not have to guess whether a row came from the combined-solution
+    run or the per-project fallback — the two modes measure genuinely different things (the whole
+    point of this change), so silently blending them into one unlabelled "cheburnexus" row would
+    hide exactly the improvement being sized."""
+    failures = []
+    with tempfile.TemporaryDirectory() as raw:
+        tmp = Path(raw)
+        engine = _write_combined_fake_engine(tmp)
+        dotnet = _write_fake_dotnet(tmp, _FAKE_DOTNET_OK_SOURCE)
+        repo = _make_two_project_repo(tmp, ["Alpha"])
+        out = tmp / "out.jsonl"
+        result = _run_arm_cli_combined(repo, "without-tests", out, engine, dotnet)
+        if result.returncode != 0:
+            return [f"combined run failed unexpectedly: exit {result.returncode}, "
+                    f"stderr {result.stderr[-800:]!r}"]
+        coverage_path = Path(str(out) + ".coverage.json")
+        if not coverage_path.is_file():
+            return ["a successful combined run wrote no coverage sidecar — the manifest has "
+                    "nothing to read the mode from"]
+        note = json.loads(coverage_path.read_text(encoding="utf-8")).get("note", "")
+        if "combined solution mode" not in note:
+            failures.append(f"coverage note {note!r} does not say the graph came from combined "
+                            "solution mode")
+        if not out.exists() or out.read_text(encoding="utf-8").strip() == "":
+            failures.append("combined mode reported success but wrote no edges")
+    return failures
+
+
+def check_manifest_states_fallback_mode_when_combined_unavailable() -> list[str]:
+    """When `dotnet` cannot assemble the synthetic solution at all, the arm must still produce a
+    result via the per-project path — but the manifest must say it took the fallback, not present a
+    per-project result as though it came from the (absent) combined run. Silence here would make a
+    fallback row indistinguishable from a combined one, hiding a real difference in what was
+    measured."""
+    failures = []
+    with tempfile.TemporaryDirectory() as raw:
+        tmp = Path(raw)
+        engine = _write_fake_engine(tmp)  # the ORIGINAL per-project fake engine (keys on "Good")
+        dotnet = _write_fake_dotnet(tmp, _FAKE_DOTNET_FAIL_SOURCE)
+        repo = _make_fake_repo(tmp, ["Good"])
+        out = tmp / "out.jsonl"
+        result = _run_arm_cli_combined(repo, "without-tests", out, engine, dotnet)
+        if result.returncode != 0:
+            return [f"fallback run failed unexpectedly: exit {result.returncode}, "
+                    f"stderr {result.stderr[-800:]!r}"]
+        if "falling back to per-project analysis" not in result.stderr:
+            failures.append("no stderr line disclosed that combined mode was unavailable and the "
+                            f"arm fell back — stderr: {result.stderr[-800:]!r}")
+        coverage_path = Path(str(out) + ".coverage.json")
+        if not coverage_path.is_file():
+            return ["a fallback run wrote no coverage sidecar"]
+        note = json.loads(coverage_path.read_text(encoding="utf-8")).get("note", "")
+        if "per-project fallback mode" not in note:
+            failures.append(f"coverage note {note!r} does not say the graph came from the "
+                            "per-project fallback")
+        if not out.exists() or out.read_text(encoding="utf-8").strip() == "":
+            failures.append("the fallback produced no edges even though the Good project should "
+                            "have analyzed cleanly")
+    return failures
+
+
 def main() -> int:
     failures = check_generic_arity()
     failures += check_key_parsing()
@@ -690,6 +920,10 @@ def main() -> int:
     failures += check_freshness_catches_exit_zero_with_no_output()
     failures += check_non_entitlement_refusal_is_not_mislabelled()
     failures += check_partial_project_coverage_fails_the_cell_loudly()
+    failures += check_synthetic_solution_lists_exactly_in_scope_projects()
+    failures += check_combined_mode_reports_zero_file_project_as_unproductive()
+    failures += check_manifest_states_combined_mode()
+    failures += check_manifest_states_fallback_mode_when_combined_unavailable()
 
     if failures:
         print("FAILED:")
