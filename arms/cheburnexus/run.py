@@ -512,15 +512,62 @@ _IL_OPERATOR_NAMES = {
 }
 
 
-def _il_operator_method(method_name: str) -> str:
+# The three tokens C# spells the SAME for one operand and for two. `-x` and `a - b` are different
+# members with different IL names, and the operator token alone cannot tell them apart — only the
+# parameter count can. Nothing else in the table is ambiguous: `*`, `/`, `%`, the comparisons and the
+# shifts are binary-only, `!`, `~`, `++`, `--`, `true`, `false` are unary-only, and each already has
+# exactly one IL name. There is no `op_CheckedUnaryPlus`, because C# does not allow `operator
+# checked +` on one operand.
+_IL_UNARY_OPERATOR_NAMES = {
+    "operator+": "op_UnaryPlus",
+    "operator-": "op_UnaryNegation",
+    "operatorchecked-": "op_CheckedUnaryNegation",
+}
+
+
+def _key_arity(raw_key: str) -> int | None:
+    """Parameter count of an engine key's signature, or None when the key carries no signature.
+
+    Counted at DEPTH ZERO only: a signature holds full type spellings, so `Box<A,B>` and `int[,]`
+    each contain a comma that belongs to a type, not to the parameter list. Splitting naively would
+    report `operator +(Box<A,B> x)` as binary and hand it the wrong IL name.
+    """
+    _, sep, sig = raw_key.partition("(")
+    if not sep:
+        return None
+    sig = sig.rpartition(")")[0]
+    if not sig.strip():
+        return 0
+    depth = 0
+    count = 1
+    for ch in sig:
+        if ch in "<[(":
+            depth += 1
+        elif ch in ">])":
+            depth -= 1
+        elif ch == "," and depth == 0:
+            count += 1
+    return count
+
+
+def _il_operator_method(method_name: str, arity: int | None = None) -> str:
     """Rewrite an operator's method-name segment to the name IL gives it.
 
     Split at the last '.' the way `_accessor_caller_method` does, so an explicit-interface qualifier
     (`IAdd<W>.operator+` — legal since C# 11) keeps its prefix. A qualifier can itself contain dots,
     but the operator token never can, so the last dot is always the boundary.
+
+    `arity` is the declared parameter count, and it is what separates `operator -(A a)` from
+    `operator -(A a, A b)`: the same source token, two different IL names. Passing None keeps the
+    binary reading — the only safe default, since every other entry in the table is unambiguous.
     """
     head, sep, tail = method_name.rpartition(".")
-    il = _IL_OPERATOR_NAMES.get(tail if sep else method_name)
+    token = tail if sep else method_name
+    il = None
+    if arity == 1:
+        il = _IL_UNARY_OPERATOR_NAMES.get(token)
+    if il is None:
+        il = _IL_OPERATOR_NAMES.get(token)
     if il is None:
         return method_name
     return head + sep + il
@@ -543,7 +590,8 @@ def _edges_from_calls(calls_path: Path, index: ClassIndex, repo_root: Path) -> I
             if tparsed is None:
                 continue
             _, callee_type, callee_method = tparsed
-            callee_key = index.contract_key(callee_type, _il_operator_method(callee_method))
+            callee_key = index.contract_key(
+                callee_type, _il_operator_method(callee_method, _key_arity(target)))
 
             # Accessor translation happens per CALL, not once per raw_caller entry: a property's
             # getter and setter share this SAME entry (one member, per CallKeyBuilder.MemberKey),
@@ -556,7 +604,8 @@ def _edges_from_calls(calls_path: Path, index: ClassIndex, repo_root: Path) -> I
             # its output either way.
             effective_caller_method = _accessor_caller_method(
                 _il_operator_method(
-                    _conversion_operator_caller_method(_metadata_caller_method(caller_method, entry))
+                    _conversion_operator_caller_method(_metadata_caller_method(caller_method, entry)),
+                    _key_arity(raw_caller),
                 ),
                 call.get("Accessor"),
             )

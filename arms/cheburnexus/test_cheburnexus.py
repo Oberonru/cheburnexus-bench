@@ -33,6 +33,7 @@ from run import (  # noqa: E402
     ENGINE_ENV,
     _conversion_operator_caller_method,
     _il_operator_method,
+    _key_arity,
     _parse_raw_key,
     _to_repo_relative,
     backtick_arity,
@@ -146,6 +147,55 @@ def check_il_operator_spelling() -> list[str]:
             failures.append(
                 f"_il_operator_method({raw!r}) = {got!r}, expected {expected!r} — {why}"
             )
+    return failures
+
+
+
+def check_unary_vs_binary_operator_arity() -> list[str]:
+    """`operator -` is TWO members, and the token cannot tell them apart — only the parameter count.
+
+    IL names them `op_UnaryNegation` and `op_Subtraction`; the engine key spells both `operator-`,
+    because CallKeyBuilder.OperatorKey carries the source token and the signature separately. The
+    table alone therefore mapped every unary minus onto the binary name: a callee spelled as a member
+    that does not exist (junk) and, at the same time, the oracle's real `op_UnaryNegation` row left
+    unmatched (a miss) — the two-ends shape this arm has now hit four times.
+
+    Dormant until operator USES became call sites: before that, a unary operator appeared only as a
+    caller, and only inside its own body's edges.
+
+    `_key_arity` counts at depth zero on purpose — `Box<A,B>` holds a comma that belongs to a type,
+    not to the parameter list, and a naive split would call a unary operator binary."""
+    failures = []
+    cases = [
+        ("operator-", 1, "op_UnaryNegation", "one operand is negation, not subtraction"),
+        ("operator-", 2, "op_Subtraction", "two operands is subtraction"),
+        ("operator+", 1, "op_UnaryPlus", "one operand is unary plus, not addition"),
+        ("operator+", 2, "op_Addition", "two operands is addition"),
+        ("operatorchecked-", 1, "op_CheckedUnaryNegation", "C# 11 checked unary minus"),
+        ("operatorchecked-", 2, "op_CheckedSubtraction", "C# 11 checked subtraction"),
+        ("operator-", None, "op_Subtraction", "no signature to read: the binary reading is the default"),
+        ("operator*", 1, "op_Multiply", "an unambiguous token ignores arity — there is no unary `*`"),
+        ("IAdd.operator-", 1, "IAdd.op_UnaryNegation", "an explicit-interface operator keeps its qualifier"),
+    ]
+    for raw, arity, expected, why in cases:
+        got = _il_operator_method(raw, arity)
+        if got != expected:
+            failures.append(
+                f"_il_operator_method({raw!r}, {arity!r}) = {got!r}, expected {expected!r} — {why}"
+            )
+
+    arity_cases = [
+        ("f.cs::N.A::operator-(A)", 1, "one parameter"),
+        ("f.cs::N.A::operator-(A,A)", 2, "two parameters"),
+        ("f.cs::N.A::operator-(Box<A,B>)", 1, "a generic argument's comma is not a parameter boundary"),
+        ("f.cs::N.A::operator-(int[,])", 1, "an array rank's comma is not a parameter boundary"),
+        ("f.cs::N.A::Build()", 0, "an empty signature is zero parameters, not one"),
+        ("f.cs::N.A::Build", None, "no signature at all reads as unknown, never as zero"),
+    ]
+    for raw, expected_arity, why in arity_cases:
+        got = _key_arity(raw)
+        if got != expected_arity:
+            failures.append(f"_key_arity({raw!r}) = {got!r}, expected {expected_arity!r} — {why}")
     return failures
 
 
@@ -627,6 +677,7 @@ def main() -> int:
     failures += check_key_parsing()
     failures += check_conversion_operator_caller_spelling()
     failures += check_il_operator_spelling()
+    failures += check_unary_vs_binary_operator_arity()
     failures += check_checked_conversion_operator_caller_spelling()
     failures += check_engine_binary_is_never_guessed()
     failures += check_engine_identity_tells_two_builds_apart()
