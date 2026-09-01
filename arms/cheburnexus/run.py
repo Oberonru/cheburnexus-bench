@@ -1013,6 +1013,16 @@ def _collect_per_project(
             f"grade a partial result as complete. {detail}. Per-project engine logs: {scratch}"
         )
 
+    # Same defect #10 leak as the combined path below, one level down: this engine invocation ran
+    # on ONE .csproj at a time, but Roslyn follows that project's OWN <ProjectReference> edges when
+    # it resolves --solution, so a sibling that is out of `candidates` (and therefore out of this
+    # cell's declared scope) can still surface as a CALLER here. Scope every edge's caller against
+    # `armkit.in_scope` the same way grep (run.py:383) and repowise (run.py:383) already do per
+    # edge — `is_test_path` alone only drops TEST callers, not out-of-scope siblings.
+    edges = [
+        e for e in edges
+        if e.caller_file is None or armkit.in_scope(repo_root / e.caller_file, repo_root, cell)
+    ]
     if cell == "without-tests":
         edges = [
             e for e in edges
@@ -1064,6 +1074,20 @@ def collect(repo_root: Path, cell: str) -> tuple[list[armkit.Edge], armkit.Cover
                 f"{detail}. Solution: {combined['sln_path']}"
             )
 
+        # Defect (2026-09-01, sibling of defect #10): the synthetic solution lists only in-scope
+        # `candidates`, but the engine loads it via --solution and follows every <ProjectReference>
+        # edge it finds INSIDE those candidates' own .csproj files — a sibling that is a first-party
+        # project's dependency but not itself declared in-scope (Humanizer's
+        # src/Humanizer.SourceGenerators and the three src/Humanizer.Analyzers.* projects) gets
+        # pulled into the compilation and shows up as a CALLER, even though it was never one of the
+        # candidates this cell scoped in. grep (run.py:383) and repowise (run.py:383) already scope
+        # every emitted edge's caller against `armkit.in_scope`, not just against the discovery list
+        # that fed the engine — do the same here. `armkit.in_scope` already covers test-project dirs
+        # for the with-tests cell, so this is correct for both cells, not just without-tests.
+        edges = [
+            e for e in edges
+            if e.caller_file is None or armkit.in_scope(repo_root / e.caller_file, repo_root, cell)
+        ]
         if cell == "without-tests":
             edges = [
                 e for e in edges
