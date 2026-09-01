@@ -168,5 +168,54 @@
   ],
   "test_assemblies_note": "Built assemblies, not project files. The pin originally listed .csproj paths here, which the runner could never treat as an answer-key input — the with-tests cell was refused for all three repositories until this was corrected on 2026-08-24.",
   "with_tests_cell": "unavailable: the test projects target net10.0 and do not build on the pinned SDK 8.0.421 (NETSDK1045). Recorded rather than silently skipped — the cell is missing, not zero."
+ },
+ {
+  "name": "jbogard/MediatR",
+  "url": "https://github.com/jbogard/MediatR",
+  "pinned_ref": "main HEAD at clone time",
+  "sha": "916ef1b3d68ccdc96db8f914eaf1b32fc7db52c5",
+  "commit_date": "2026-07-02T08:34:20-05:00",
+  "clone_date_utc": "2026-09-01T00:00:00Z",
+  "license": "RPL-1.5",
+  "license_file": "LICENSE.md",
+  "build_command": "dotnet build src/MediatR/MediatR.csproj -c Release -f net8.0 -p:DebugType=portable -p:ContinuousIntegrationBuild=false",
+  "build_modifications": "none. No global.json in this checkout (local SDK 10.0.400 is picked up directly); LangVersion=13.0 in Directory.Build.props built cleanly. A `git log -1 --format=%cI` EmbedBuildDate MSBuild target fails under Git Bash's pretty-format quoting (harmless, non-fatal — falls back to DateTime.UtcNow) and is unrelated to the -f/-p flags.",
+  "target_frameworks_produced": [
+   "netstandard2.0",
+   "net8.0",
+   "net9.0",
+   "net10.0",
+   "net462 (Windows only)"
+  ],
+  "target_framework_probed": "net8.0",
+  "product_assemblies": [
+   "src/MediatR/bin/Release/net8.0/MediatR.dll"
+  ],
+  "product_projects": [
+   "src/MediatR/MediatR.csproj"
+  ],
+  "test_assemblies": [],
+  "test_detection_rule": "projects living under top-level test/ directory (MediatR.Tests, MediatR.DependencyInjectionTests, MediatR.Benchmarks); product code lives only under src/MediatR",
+  "sizes": {
+   "checkout_disk": "8.0M",
+   "build_output_disk_net8.0_project": "188K",
+   "cs_file_count_src_only": 42,
+   "loc_src_only": 2859
+  },
+  "oracle_probe": {
+   "dll": "src/MediatR/bin/Release/net8.0/MediatR.dll",
+   "edges": 1936,
+   "no_debug_pct": 14.3,
+   "caller_cgen_pct": 38.1,
+   "spot_check_rows_verified": 3,
+   "spot_check_notes": "MediatRServiceCollectionExtensions.cs:33, :35, :37 all verified"
+  },
+  "test_assemblies_projects": [
+   "test/MediatR.Tests/MediatR.Tests.csproj",
+   "test/MediatR.DependencyInjectionTests/MediatR.DependencyInjectionTests.csproj",
+   "test/MediatR.Benchmarks/MediatR.Benchmarks.csproj"
+  ],
+  "test_assemblies_note": "All three test projects target net10.0 only (MediatR.Tests also adds net462 on Windows) — none produce a net8.0 assembly, so none can join test_assemblies for the net8.0-probed cell.",
+  "with_tests_cell": "unavailable: test projects target net10.0 (no net8.0 output at the probed framework)."
  }
 ]
