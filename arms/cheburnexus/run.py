@@ -789,6 +789,37 @@ def _combined_out_dir(scratch: Path) -> Path:
     return scratch / "_combined"
 
 
+def _run_new_sln(
+    dotnet: str, out_dir: Path, sln_name: str, extra: list[str]
+) -> tuple[subprocess.CompletedProcess | None, str | None]:
+    """One `dotnet new sln` invocation. Returns (proc, None) when the process ran (whatever its exit
+    code), or (None, reason) when it could not even start — the caller inspects a returned proc's own
+    exit code, but a failure to launch dotnet at all is terminal for this whole path."""
+    try:
+        proc = subprocess.run(
+            [dotnet, "new", "sln", "-n", sln_name, *extra],
+            cwd=str(out_dir), capture_output=True, text=True, timeout=120,
+        )
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        return None, f"{dotnet} new sln failed to start: {exc}"
+    return proc, None
+
+
+def _format_flag_unrecognized(proc: subprocess.CompletedProcess) -> bool:
+    """Did `dotnet new sln --format sln` fail specifically because THIS SDK does not know `--format`?
+
+    `--format` landed in the SDK 9 templating engine; an older SDK (8/7/3.1, the pins CORPUS_NOTES.md
+    documents) rejects it as an unrecognised argument while still defaulting to the classic `.sln`, so
+    that single case — and only that case — is worth retrying without the flag. Any OTHER failure is a
+    real one and must surface, not be masked by a second attempt. Matched on the CLI's own wording
+    ("Unrecognized command or argument '--format'"), case-folded and tolerant of the phrasing varying
+    across SDK versions."""
+    text = f"{proc.stdout}\n{proc.stderr}".lower()
+    if "format" not in text:
+        return False
+    return any(w in text for w in ("unrecognized", "unrecognised", "unknown", "invalid", "unexpected"))
+
+
 def _write_synthetic_solution(
     out_dir: Path, sln_name: str, csprojs: list[Path]
 ) -> tuple[Path | None, str]:
@@ -799,14 +830,23 @@ def _write_synthetic_solution(
     caller's side) — this function never writes into the corpus checkout.
     """
     dotnet = _dotnet_bin()
-    try:
-        new_proc = subprocess.run(
-            [dotnet, "new", "sln", "-n", sln_name],
-            cwd=str(out_dir), capture_output=True, text=True, timeout=120,
-        )
-    except (subprocess.TimeoutExpired, OSError) as exc:
-        return None, f"{dotnet} new sln failed to start: {exc}"
     sln_path = out_dir / f"{sln_name}.sln"
+
+    # SDK 9+ `dotnet new sln` defaults to the NEW `.slnx` XML solution format. This arm looks up
+    # `<name>.sln` (just below) and hands the file to the engine's `--solution` parser, whose ability
+    # to read `.slnx` is unknown — so a `.slnx` here silently fails the `.sln` lookup and drops the
+    # whole cell to the per-project fallback (the e18 regression, measured as Polly recall
+    # 0.8734 → 0.8193). Force the classic format with `--format sln`. That flag only exists on SDK 9+;
+    # an older SDK rejects it as an unknown argument but already defaults to `.sln`, so when the flag
+    # itself is what it choked on, retry once without it.
+    new_proc, start_err = _run_new_sln(dotnet, out_dir, sln_name, ["--format", "sln"])
+    if start_err is not None:
+        return None, start_err
+    if (new_proc.returncode != 0 or not sln_path.is_file()) and _format_flag_unrecognized(new_proc):
+        new_proc, start_err = _run_new_sln(dotnet, out_dir, sln_name, [])
+        if start_err is not None:
+            return None, start_err
+
     if new_proc.returncode != 0 or not sln_path.is_file():
         tail = (new_proc.stderr or new_proc.stdout).strip()
         return None, f"{dotnet} new sln failed: exit {new_proc.returncode}: {tail[-500:]}"

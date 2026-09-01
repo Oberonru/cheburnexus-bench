@@ -682,7 +682,10 @@ import sys
 args = sys.argv[1:]
 if args[:2] == ["new", "sln"]:
     name = args[args.index("-n") + 1]
-    pathlib.Path(f"{name}.sln").write_text("FAKESLN\\n")
+    # Honour `--format <fmt>` the way SDK 9+ does — the arm now passes `--format sln` to force the
+    # classic format, so the produced file must follow the requested format's extension.
+    fmt = args[args.index("--format") + 1] if "--format" in args else "sln"
+    pathlib.Path(f"{name}.{fmt}").write_text("FAKESLN\\n")
     sys.exit(0)
 if args and args[0] == "sln" and len(args) > 2 and args[2] == "add":
     sln = pathlib.Path(args[1])
@@ -697,6 +700,58 @@ sys.exit(1)
 _FAKE_DOTNET_FAIL_SOURCE = '''#!/usr/bin/env python3
 import sys
 sys.stderr.write("fake-dotnet: simulated failure (no SDK on this fake PATH)\\n")
+sys.exit(1)
+'''
+
+# SDK 9+ behaviour: `dotnet new sln` DEFAULTS to the new `.slnx` XML format, and only produces a
+# classic `.sln` when `--format sln` is passed explicitly. This is the shim that reproduces the e18
+# regression: without the fix (no `--format`), it writes `probe.slnx`, the arm's `.sln` lookup misses,
+# and the whole cell silently drops to per-project analysis.
+_FAKE_DOTNET_SLNX_DEFAULT_SOURCE = '''#!/usr/bin/env python3
+import pathlib
+import sys
+
+args = sys.argv[1:]
+if args[:2] == ["new", "sln"]:
+    name = args[args.index("-n") + 1]
+    if "--format" in args:
+        fmt = args[args.index("--format") + 1]
+        pathlib.Path(f"{name}.{fmt}").write_text("FAKESLN\\n")
+    else:
+        pathlib.Path(f"{name}.slnx").write_text("<Solution/>\\n")  # SDK 9+ default
+    sys.exit(0)
+if args and args[0] == "sln" and len(args) > 2 and args[2] == "add":
+    sln = pathlib.Path(args[1])
+    with sln.open("a") as fh:
+        for project in args[3:]:
+            fh.write(f"PROJECT:{project}\\n")
+    sys.exit(0)
+sys.stderr.write(f"fake-dotnet: unrecognized args {args!r}\\n")
+sys.exit(1)
+'''
+
+# Older SDK (8/7/3.1) behaviour: `--format` is not a known argument, so `dotnet new sln --format sln`
+# is REJECTED as unrecognised — but a plain `dotnet new sln` already defaults to the classic `.sln`.
+# The fix must notice the unrecognised-flag failure and retry once without the flag.
+_FAKE_DOTNET_OLD_SDK_REJECTS_FORMAT_SOURCE = '''#!/usr/bin/env python3
+import pathlib
+import sys
+
+args = sys.argv[1:]
+if args[:2] == ["new", "sln"]:
+    if "--format" in args:
+        sys.stderr.write("Unrecognized command or argument '--format'.\\n")
+        sys.exit(1)
+    name = args[args.index("-n") + 1]
+    pathlib.Path(f"{name}.sln").write_text("FAKESLN\\n")
+    sys.exit(0)
+if args and args[0] == "sln" and len(args) > 2 and args[2] == "add":
+    sln = pathlib.Path(args[1])
+    with sln.open("a") as fh:
+        for project in args[3:]:
+            fh.write(f"PROJECT:{project}\\n")
+    sys.exit(0)
+sys.stderr.write(f"fake-dotnet: unrecognized args {args!r}\\n")
 sys.exit(1)
 '''
 
@@ -740,6 +795,71 @@ def check_synthetic_solution_lists_exactly_in_scope_projects() -> list[str]:
                 f"synthetic solution listed {sorted(listed)}, expected exactly {sorted(expected)} "
                 "— a project missing here never gets its siblings resolved as source, and an extra "
                 "one leaks a project outside the cell's own scope into the run")
+    return failures
+
+
+def check_synthetic_solution_forces_classic_sln_on_sdk9_plus() -> list[str]:
+    """SDK 9+ `dotnet new sln` defaults to `.slnx`; the arm must force `.sln` with `--format sln`.
+
+    This is the e18 regression, reproduced at unit level: the shim writes `<name>.slnx` when NOT
+    given `--format` (SDK 9+ default) and `<name>.sln` when it is. A fixed `_write_synthetic_solution`
+    passes `--format sln`, so it must come back with a real `.sln` path. Against the PRE-FIX code
+    (which passed no `--format`), this same shim would have written `probe.slnx`, the `<name>.sln`
+    lookup would have missed, and the function would have returned `(None, reason)` — the silent
+    fallback that dropped Polly's combined-solution recall from 0.8734 to 0.8193. So this test is red
+    on the old code and green on the new."""
+    failures = []
+    with tempfile.TemporaryDirectory() as raw:
+        tmp = Path(raw)
+        dotnet = _write_fake_dotnet(tmp, _FAKE_DOTNET_SLNX_DEFAULT_SOURCE)
+        out_dir = tmp / "out"
+        out_dir.mkdir()
+        candidates = [Path("/repo/src/Alpha/Alpha.csproj")]
+        os.environ[DOTNET_ENV] = str(dotnet)
+        try:
+            sln_path, reason = _write_synthetic_solution(out_dir, "probe", candidates)
+        finally:
+            os.environ.pop(DOTNET_ENV, None)
+        if sln_path is None:
+            failures.append(
+                f"_write_synthetic_solution fell back to failure ({reason!r}) against an SDK-9+ shim "
+                "— the fix must pass `--format sln` so a classic `.sln` is produced, not the `.slnx` "
+                "default the arm's own lookup cannot see")
+            return failures
+        if sln_path.suffix != ".sln":
+            failures.append(f"produced {sln_path.name!r}, expected a classic `.sln` file")
+        if (out_dir / "probe.slnx").is_file():
+            failures.append("an unforced `.slnx` was created — the `--format sln` flag did not take")
+    return failures
+
+
+def check_synthetic_solution_retries_without_format_on_old_sdk() -> list[str]:
+    """An older SDK rejects `--format` as unknown but already defaults to `.sln`.
+
+    The fix tries `--format sln` first; when THAT specific failure is an unrecognised-flag error, it
+    must retry once WITHOUT the flag rather than give up. The shim here rejects any invocation
+    carrying `--format` (stderr: "Unrecognized command or argument '--format'.") and succeeds on the
+    plain one, writing `probe.sln`. So a robust `_write_synthetic_solution` must still return a real
+    `.sln` path — proving the fix does not break the very SDKs CORPUS_NOTES.md pins to (8/7/3.1)."""
+    failures = []
+    with tempfile.TemporaryDirectory() as raw:
+        tmp = Path(raw)
+        dotnet = _write_fake_dotnet(tmp, _FAKE_DOTNET_OLD_SDK_REJECTS_FORMAT_SOURCE)
+        out_dir = tmp / "out"
+        out_dir.mkdir()
+        candidates = [Path("/repo/src/Alpha/Alpha.csproj")]
+        os.environ[DOTNET_ENV] = str(dotnet)
+        try:
+            sln_path, reason = _write_synthetic_solution(out_dir, "probe", candidates)
+        finally:
+            os.environ.pop(DOTNET_ENV, None)
+        if sln_path is None:
+            failures.append(
+                f"_write_synthetic_solution gave up ({reason!r}) on an SDK that rejects `--format` — "
+                "it must retry once without the flag, since the old default is already `.sln`")
+            return failures
+        if sln_path.suffix != ".sln":
+            failures.append(f"produced {sln_path.name!r}, expected a classic `.sln` file")
     return failures
 
 
@@ -921,6 +1041,8 @@ def main() -> int:
     failures += check_non_entitlement_refusal_is_not_mislabelled()
     failures += check_partial_project_coverage_fails_the_cell_loudly()
     failures += check_synthetic_solution_lists_exactly_in_scope_projects()
+    failures += check_synthetic_solution_forces_classic_sln_on_sdk9_plus()
+    failures += check_synthetic_solution_retries_without_format_on_old_sdk()
     failures += check_combined_mode_reports_zero_file_project_as_unproductive()
     failures += check_manifest_states_combined_mode()
     failures += check_manifest_states_fallback_mode_when_combined_unavailable()
