@@ -268,5 +268,55 @@
   ],
   "test_assemblies_note": "All test/benchmark projects target net10.0 only (UnitTests also adds net471 on Windows) — none produce a net8.0 assembly, so none can join test_assemblies for the net8.0-probed cell.",
   "with_tests_cell": "unavailable: test projects target net10.0 (no net8.0 output at the probed framework)."
+ },
+ {
+  "name": "Humanizr/Humanizer",
+  "url": "https://github.com/Humanizr/Humanizer",
+  "pinned_ref": "main HEAD at clone time",
+  "sha": "ffc2b77c0f30d2fb176875841424379319d0ae9b",
+  "commit_date": "2026-08-05T22:42:38Z",
+  "clone_date_utc": "2026-09-01T00:00:00Z",
+  "license": "MIT",
+  "license_file": "license.txt",
+  "build_command": "dotnet build src/Humanizer/Humanizer.csproj -c Release -p:TargetFrameworks=net8.0 -p:DebugType=portable -p:ContinuousIntegrationBuild=false",
+  "build_modifications": "global.json sdk.version changed from 11.0.100-preview.6.26359.118 (unavailable) to 10.0.400 (rollForward=latestFeature and allowPrerelease=true left as-is) — see corpus-patches/Humanizer.patch. Additionally, -f net8.0 alone is not enough: Microsoft.NET.TargetFrameworkInference.targets validates the FULL multi-target list (netstandard2.0;net8.0;net48;net10.0;net11.0) against the installed SDK before framework selection even for a single -f build, and fails NETSDK1045 on the net11.0 entry regardless. Overriding the TargetFrameworks property itself with -p:TargetFrameworks=net8.0 (build_command above) sidesteps that check entirely. Directory.Build.props sets DebugType=embedded by default (same PDB trap as FluentValidation), hence -p:DebugType=portable. LangVersion=preview in Directory.Build.props built cleanly under SDK 10.0.400 with no preview-only C# syntax errors.",
+  "build_caveat": "This project uses UseArtifactsOutput=true (Arcade-style layout), so build output lands under artifacts/bin/<Project>/<config>_<tfm>/, not the conventional src/<Project>/bin/<config>/<tfm>/ path.",
+  "target_frameworks_produced": [
+   "net11.0",
+   "net10.0",
+   "net8.0",
+   "net48",
+   "netstandard2.0"
+  ],
+  "target_framework_probed": "net8.0",
+  "product_assemblies": [
+   "artifacts/bin/Humanizer/release_net8.0/Humanizer.dll"
+  ],
+  "product_projects": [
+   "src/Humanizer/Humanizer.csproj"
+  ],
+  "test_assemblies": [
+   "artifacts/bin/Humanizer.Tests/release_net8.0/Humanizer.Tests.dll"
+  ],
+  "test_detection_rule": "projects living under top-level tests/ directory (Humanizer.Tests, Humanizer.Analyzers.Tests.*, Humanizer.SourceGenerators.Tests); product code lives only under src/Humanizer",
+  "sizes": {
+   "checkout_disk": "129M",
+   "build_output_disk_net8.0_project": "6.5M",
+   "cs_file_count_src_only": 212,
+   "loc_src_only": 48284
+  },
+  "oracle_probe": {
+   "dll": "artifacts/bin/Humanizer/release_net8.0/Humanizer.dll",
+   "edges": 110340,
+   "no_debug_pct": 5.7,
+   "caller_cgen_pct": 6.9,
+   "spot_check_rows_verified": 3,
+   "spot_check_notes": "ArticlePrefixSort.cs:17 verified; artifacts/obj/Humanizer/release_net8.0/Humanizer.Version.cs:29-30 are a legitimate MSBuild ThisAssembly source-generator output (a real file on disk under artifacts/obj/, unlike FluentValidation's virtual regex-generator rows), not a broken build"
+  },
+  "test_assemblies_projects": [
+   "tests/Humanizer.Tests/Humanizer.Tests.csproj"
+  ],
+  "test_assemblies_note": "Humanizer.Tests.csproj's TargetFrameworks list uniquely includes net8.0 alongside net10.0/net11.0/net48 (Windows) even though the product project no longer ships net8.0 as its primary target — built successfully with `dotnet build tests/Humanizer.Tests/Humanizer.Tests.csproj -c Release -p:TargetFrameworks=net8.0 -p:DebugType=portable -p:ContinuousIntegrationBuild=false`, same TargetFrameworks-override trick as the product project. Humanizer.Analyzers.Tests.* and Humanizer.SourceGenerators.Tests are Roslyn-analyzer/source-generator test suites (tooling, not product-surface tests) and were left out of test_assemblies_projects — they exercise the analyzer/generator projects, not Humanizer.dll's runtime API.",
+  "with_tests_cell": "available: Humanizer.Tests built for net8.0 with the pinned SDK."
  }
 ]
