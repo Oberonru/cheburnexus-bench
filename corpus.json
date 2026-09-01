@@ -217,5 +217,56 @@
   ],
   "test_assemblies_note": "All three test projects target net10.0 only (MediatR.Tests also adds net462 on Windows) — none produce a net8.0 assembly, so none can join test_assemblies for the net8.0-probed cell.",
   "with_tests_cell": "unavailable: test projects target net10.0 (no net8.0 output at the probed framework)."
+ },
+ {
+  "name": "AutoMapper/AutoMapper",
+  "url": "https://github.com/AutoMapper/AutoMapper",
+  "pinned_ref": "main HEAD at clone time",
+  "sha": "dfa6dd587c5854b4beee5934beb39ba6e9569b84",
+  "commit_date": "2026-07-01T08:13:43-05:00",
+  "clone_date_utc": "2026-09-01T00:00:00Z",
+  "license": "RPL-1.5",
+  "license_file": "LICENSE.md",
+  "build_command": "dotnet build src/AutoMapper/AutoMapper.csproj -c Release -f net8.0 -p:DebugType=portable -p:ContinuousIntegrationBuild=false",
+  "build_modifications": "none. No global.json in this checkout (local SDK 10.0.400 is picked up directly); LangVersion=14.0 in the product csproj built cleanly with no preview-feature errors. Same harmless EmbedBuildDate git-log-format failure as MediatR (falls back to DateTime.UtcNow).",
+  "target_frameworks_produced": [
+   "netstandard2.0",
+   "net8.0",
+   "net9.0",
+   "net10.0",
+   "net471 (Windows only)"
+  ],
+  "target_framework_probed": "net8.0",
+  "product_assemblies": [
+   "src/AutoMapper/bin/Release/net8.0/AutoMapper.dll"
+  ],
+  "product_projects": [
+   "src/AutoMapper/AutoMapper.csproj"
+  ],
+  "test_assemblies": [],
+  "test_detection_rule": "projects living side by side under src/ but named by suffix (AutoMapper.UnitTests, AutoMapper.IntegrationTests, AutoMapper.DI.Tests, Benchmark, TestApp), distinguished from the product project (src/AutoMapper) by name only — no separate test/ directory",
+  "sizes": {
+   "checkout_disk": "136M",
+   "build_output_disk_net8.0_project": "520K",
+   "cs_file_count_src_only": 89,
+   "loc_src_only": 9804
+  },
+  "oracle_probe": {
+   "dll": "src/AutoMapper/bin/Release/net8.0/AutoMapper.dll",
+   "edges": 7744,
+   "no_debug_pct": 13.4,
+   "caller_cgen_pct": 27.6,
+   "spot_check_rows_verified": 3,
+   "spot_check_notes": "ServiceCollectionExtensions.cs:29 verified (three call sites inside the lambda body: ctor, Action.Invoke, AddAutoMapperClasses)"
+  },
+  "test_assemblies_projects": [
+   "src/UnitTests/AutoMapper.UnitTests.csproj",
+   "src/IntegrationTests/AutoMapper.IntegrationTests.csproj",
+   "src/AutoMapper.DI.Tests/AutoMapper.DI.Tests.csproj",
+   "src/Benchmark/Benchmark.csproj (benchmark harness, not itself a suite)",
+   "src/TestApp/TestApp.csproj (smoke-test app, not itself a suite)"
+  ],
+  "test_assemblies_note": "All test/benchmark projects target net10.0 only (UnitTests also adds net471 on Windows) — none produce a net8.0 assembly, so none can join test_assemblies for the net8.0-probed cell.",
+  "with_tests_cell": "unavailable: test projects target net10.0 (no net8.0 output at the probed framework)."
  }
 ]
