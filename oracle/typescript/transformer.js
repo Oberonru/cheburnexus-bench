@@ -117,6 +117,29 @@ function makeTransformer(ts, fileTag) {
       return factory.createBlock([factory.createReturnStatement(runCall)], true);
     }
 
+    // EXPR-BODIED-ARROW FIX (2026-09-03): wraps a non-block arrow BODY EXPRESSION (`() => expr`)
+    // into `__stack.run("label", (async) () => (expr))` as an EXPRESSION, not a Block+Return --
+    // turning `() => expr` into `() => { return __stack.run(...) }` would silently change the
+    // arrow from expression-bodied to block-bodied, which is observable (e.g. as the return value
+    // of Function.prototype.toString()) and unnecessary since als.run() already returns whatever
+    // the inner callback returns. Same als.run()-per-call strategy as wrapBody, just expression-
+    // shaped output.
+    function wrapExpr(bodyExpr, label, async) {
+      const innerArrow = factory.createArrowFunction(
+        async ? [factory.createModifier(ts.SyntaxKind.AsyncKeyword)] : undefined,
+        undefined,
+        [],
+        undefined,
+        factory.createToken(ts.SyntaxKind.EqualsGreaterThanToken),
+        bodyExpr
+      );
+      return factory.createCallExpression(
+        factory.createPropertyAccessExpression(factory.createIdentifier('__stack'), 'run'),
+        undefined,
+        [factory.createStringLiteral(label), innerArrow]
+      );
+    }
+
     function visit(node) {
       if (ts.isClassDeclaration(node) || ts.isClassExpression(node)) {
         const cname = node.name ? node.name.text : `<anonClass:${lineOf(node)}>`;
@@ -215,6 +238,22 @@ function makeTransformer(ts, fileTag) {
         counter++;
         const label = labelFor(visited, `arrow${counter}`);
         const newBody = wrapBody(visited.body, label, isAsyncNode(ts, visited));
+        return factory.updateArrowFunction(
+          visited, visited.modifiers, visited.typeParameters, visited.parameters,
+          visited.type, visited.equalsGreaterThanToken, newBody
+        );
+      }
+
+      // FIX (2026-09-03): expression-bodied arrows (`() => expr`), including curried arrows
+      // (`(a) => (b) => a + b`, both levels expr-bodied) and class-field arrow initializers
+      // (`fieldArrow = () => fieldArrowBody()`), were previously invisible -- the only arrow
+      // branch above requires ts.isBlock(visited.body). Wrap the BODY EXPRESSION itself via
+      // wrapExpr rather than converting to a block, preserving the arrow's expression-bodied
+      // shape and its async-ness.
+      if (ts.isArrowFunction(visited) && visited.body && !ts.isBlock(visited.body)) {
+        counter++;
+        const label = labelFor(visited, `arrow${counter}`);
+        const newBody = wrapExpr(visited.body, label, isAsyncNode(ts, visited));
         return factory.updateArrowFunction(
           visited, visited.modifiers, visited.typeParameters, visited.parameters,
           visited.type, visited.equalsGreaterThanToken, newBody
