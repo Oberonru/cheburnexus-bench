@@ -15,7 +15,11 @@
 function nameOf(ts, node, fallback) {
   if (node.name && ts.isIdentifier(node.name)) return node.name.text;
   if (node.name && ts.isPrivateIdentifier(node.name)) return node.name.text;
-  if (node.name && ts.isComputedPropertyName(node.name)) return '<computed>';
+  if (node.name && ts.isComputedPropertyName(node.name)) {
+    const expr = node.name.expression;
+    if (ts.isStringLiteral(expr) || ts.isNumericLiteral(expr)) return expr.text;
+    return '<computed>';
+  }
   return fallback;
 }
 
