@@ -218,12 +218,98 @@ now either impossible to hit or fails loudly.
 On top of that, the adapter counts the bodies it wraps and **exits non-zero if a whole run wrapped
 zero of them**.
 
+## Vite/Vitest adapter (2026-09-03)
+
+`transformer.js` and `shadow_stack.js` are compiler/harness-agnostic; ts-jest was the first
+harness wired up, not the only one possible. A second adapter targets Vitest:
+
+- `vite_shadow_stack_plugin.js` — a Vite plugin factory (`shadowStackPlugin({corpusRoot})`).
+  **Vite compiles TS via esbuild, not the TypeScript compiler API** — esbuild only strips types,
+  it runs no arbitrary AST transform, so a plugin that just "registers" would instrument NOTHING.
+  This plugin's `transform()` hook does the work itself: `ts.createSourceFile` on the incoming
+  source, `transformer.js`'s `transform` run over the AST, `ts.createPrinter().printFile()` back
+  out as TS text, which Vite's own esbuild pass then strips as normal. It runs with
+  `enforce: 'pre'` so it sees real un-stripped source. `SHADOW_STACK_DEBUG=1` prints the first
+  file's raw incoming source so this can be checked by hand instead of assumed — done, see below.
+  `transformer.js` is required unmodified; `ts` is injected, resolved from the corpus root, exactly
+  as in the jest adapter.
+- `vitest_setup_stack.js` — the Vitest `setupFiles` sink, functionally identical to
+  `jest_setup_stack.js` (same disk-append-to-`EDGE_OUT` strategy; Vitest isolates test files by
+  default too, so an in-memory Set wouldn't accumulate across files here either).
+- `vitest.instrumented.config.mts` — loads the corpus's own `vitest.config.(ts|js)`, strips any
+  `test.projects` workspace-fanout field (see the file's header comment for why: a per-package
+  config that itself `mergeConfig()`s a monorepo root config drags the root's `projects` list back
+  in, resolved from the wrong directory, and vitest refuses to start), and injects the plugin +
+  setup file. **File extension must be `.mts`**, not `.ts`: `oracle/typescript/package.json` has
+  no `"type": "module"`, so a `.ts` config gets bundled to CJS output and Vitest's own top-level
+  `await` inside the loader dies with "Top-level await is currently not supported with the 'cjs'
+  output format". Loading the corpus's own `.ts` config file is done by bundling it with the
+  **corpus's own `esbuild`** (`packages: 'external'` so bare imports like `"vitest/config"` stay
+  real runtime imports, only the corpus's own relative `.ts` files get inlined) rather than a
+  plain `import()`, which cannot parse `.ts` syntax at all under plain Node.
+
+### What was actually measured
+
+Corpus: **zod** (`D:\DEV\TsTest\zod`), a pnpm monorepo. `pnpm install` at the repo root (pnpm was
+not present on this machine; installed globally via `npm install -g pnpm@10.12.1` first — `corepack
+enable` failed with `EPERM` writing into `Program Files`, that route was abandoned). Scope run:
+**`packages/zod` only** (one workspace package, not the whole monorepo — `docs`, `bench`,
+`integration`, `mini`, `resolution`, `treeshake`, `tsc` packages were not run), 192 `*.test.ts`
+files, 2744 tests, via `--root packages/zod --config oracle/typescript/vitest.instrumented.config.mts`.
+
+- **Tests: 2731/2744 passed instrumented** (run 1), **2728/2744** (run 2) — NOT stable between
+  runs, see caveat below. Uninstrumented control (same scope, same config-loading path with the
+  plugin line removed, to get an apples-to-apples comparison — the corpus's own bare
+  `packages/zod/vitest.config.ts` cannot be run standalone at all, same `projects`-fanout bug
+  noted above): **2740/2744 passed**.
+- **7972 function bodies wrapped** this run (printed unconditionally now; the zero-wrap guard is
+  gated on this being nonzero, confirmed both by a real run and by a `-t` filter that skips every
+  test body but still triggers all module-load-time wrapping — same 7972 in both cases, i.e.
+  wrapping happens at transform/import time, independent of which tests execute).
+- **Determinism: sorted-UNIQUE edge sets are byte-identical across two full runs** — 25,560 unique
+  edges both times, `diff` on the sorted-unique files is empty. Raw (non-deduplicated) edge line
+  counts differ between runs (3,249,539 vs 3,249,874) and are NOT claimed identical — several of
+  zod's own tests assert wall-clock performance budgets (e.g. "large registry converts in linear
+  time" with a `< 5000` assertion) whose iteration counts/outcomes vary run to run under the
+  instrumentation's own overhead, and one intermittent bug (next paragraph) affected a different
+  number of tests each run. The determinism claim here is scoped to the same thing the class-
+  validator/ts-jest measurement scoped it to: the SET of distinct call edges, not raw call volume.
+- **⚠️ New, un-fixed bug found on this corpus, not seen on class-validator**: one intermittent
+  unhandled rejection, `TypeError: Cannot assign to read only property 'Symbol(kResourceStore)' of
+  object '#<Promise>'`, thrown from inside `AsyncLocalStorage.run()` itself (`shadow_stack.js:29`),
+  reproduced in both runs, always from `src/v3/tests/readonly.test.ts` / `src/v3/types.ts`
+  (`ZodOptional`). This looks like a Node ALS edge case triggered by some interaction between
+  `als.run()`-per-call and zod's own Promise-subclassing/chaining internals — NOT diagnosed further
+  (out of scope for this adapter task), reported here rather than hidden. This, plus the
+  performance-threshold tests above, accounts for the gap between the 2740/2744 uninstrumented
+  control and the ~2728-2731/2744 instrumented runs; none of it looks like a wrong-caller/
+  fabricated-edge defect in the mechanism itself (the edge SET stayed identical across runs).
+- **Wall time: ~72s instrumented (both runs, 71.8s / 72.6s) vs ~7.9s uninstrumented control** on
+  the same scope — roughly **9x**, higher than the ~4.4x measured for class-validator/ts-jest; not
+  decomposed further (candidates: zod's own test count is ~3.4x class-validator's, no per-file
+  breakdown was taken here).
+- Config-loading and plugin behavior were verified live, not assumed: `SHADOW_STACK_DEBUG=1`
+  confirmed the `transform()` hook receives intact, un-stripped TypeScript (`import` statements,
+  no type erasure) as its FIRST argument, before this plugin does anything to it.
+
+**Not attempted**: date-fns, immer, bullmq were listed as fallback corpora but zod worked on the
+first real attempt (after clearing the pnpm/esbuild/mergeConfig/top-level-await hurdles above), so
+they were not tried. The other zod workspace packages (`mini`, `treeshake`, `resolution`, ...)
+were not run either — `packages/zod` alone was judged sufficient scope for verifying the adapter
+mechanism.
+
 ## Not done here
 
-- Not wired into `runner/run.py` / `ORACLE_BUILDERS`. There is no `.sln`/`csproj`-equivalent
-  "single command produces the answer key for any TS repo" story yet — the corpus root is a
-  hand-supplied env var, and the edge format has not been converted to whatever
-  `oracle/csharp` emits.
+- Not wired into `runner/run.py` / `ORACLE_BUILDERS` — neither the ts-jest nor the Vitest adapter.
+  There is no `.sln`/`csproj`-equivalent "single command produces the answer key for any TS repo"
+  story yet — the corpus root is a hand-supplied env var, and the edge format has not been
+  converted to whatever `oracle/csharp` emits.
+- The Vitest adapter's config-loading is a workaround (bundle the corpus's own `.ts` config with
+  its own esbuild, drop `test.projects`), not a general "extend any vitest workspace" story — a
+  corpus whose config chain is more than two files deep, or that needs its full multi-project
+  fanout instrumented at once (not just one package), would need more work here.
+- The intermittent ALS `Symbol(kResourceStore)` rejection on zod (`src/v3/types.ts`, see above) is
+  reported, not fixed or root-caused.
 - No precision/recall grading against a second oracle.
 - The known holes above are not fixed, only documented and (where they previously crashed the
   whole module) made to fail safely instead.
