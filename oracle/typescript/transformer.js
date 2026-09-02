@@ -128,6 +128,20 @@ function makeTransformer(ts, fileTag) {
 
       const visited = ts.visitEachChild(node, visit, context);
 
+      // FIX (2026-09-03): `static {}` class initialization blocks were not a handled node kind,
+      // so calls inside them folded straight to `<module>` (or whatever frame was active when the
+      // class was evaluated) instead of carrying their own frame. A static block is a BlockLike
+      // body with no name/params, so it wraps with the exact same als.run() strategy as every
+      // other callable here -- label uses the fixed tag '<static>' since there is nothing else to
+      // name it by (matches the label scheme's kindSuffix idea, just always-on rather than
+      // get/set-conditional).
+      if (ts.isClassStaticBlockDeclaration(visited)) {
+        counter++;
+        const label = labelFor(visited, '<static>');
+        const newBody = wrapBody(visited.body, label, false);
+        return factory.updateClassStaticBlockDeclaration(visited, newBody);
+      }
+
       // COVERAGE-SWEEP FIX: a generator body cannot be wrapped in a plain arrow (yield is
       // illegal inside a non-generator function) -- wrapping it produced a SyntaxError that
       // crashed the whole compiled module. Cheapest correct fix: skip instrumenting generator
