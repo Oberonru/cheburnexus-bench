@@ -63,6 +63,71 @@ function hasDirectSuperCall(ts, block) {
   return found;
 }
 
+// DEFAULT-PARAM FIX (2026-09-03): `function f(x = g())` records `g()`'s call edge one frame too
+// shallow -- `g()` runs during parameter binding, BEFORE `__stack.run("f", ...)` has been entered,
+// so the edge lands as caller->g instead of f->g. Fix: for each parameter that is a SIMPLE
+// identifier binding (no destructuring, no rest, no `this`-parameter, no accessibility/readonly
+// modifier -- i.e. not a TypeScript parameter property) with an initializer, strip the initializer
+// from the signature and emit `if (x === undefined) { x = <initializer>; }` as a statement at the
+// front of the wrapped body, so the call now happens inside the __stack.run() frame.
+// DELIBERATELY LEFT UNTOUCHED (initializer stays in the signature, eager, still misattributed):
+//   - destructuring parameters with defaults (`{a = 1} = {}`), nested or not -- param.name is not
+//     an Identifier there, no safe single-expression rewrite exists without a temp/rest-of-pattern
+//     dance.
+//   - `this` parameters -- never carry an initializer in valid TS, excluded naturally.
+//   - rest parameters -- cannot have an initializer in TS, excluded naturally (dotDotDotToken guard
+//     is defensive).
+//   - parameter properties (`constructor(private readonly x = f())`) -- rewriting would separate
+//     the `private`/`readonly` modifier from an initializer TypeScript uses to both bind the
+//     parameter AND assign `this.x`; moving the initializer into the body would require also
+//     synthesizing the `this.x = x;` assignment TS normally does implicitly. Left eager.
+// ORDERING CAVEAT (see README "Known holes"): a signature that MIXES a convertible identifier
+// default with a left-in-place complex default no longer preserves strict left-to-right source
+// order -- every left-in-place default still evaluates during binding, in its original position,
+// but every converted default now runs AFTER ALL parameters are bound (at the top of the wrapped
+// body), not interleaved at its original position. Only observable if two defaults with side
+// effects are mixed in one signature; not exercised by class-validator in the scale run.
+function hoistDefaultParams(ts, factory, parameters) {
+  const hoistStatements = [];
+  const newParams = parameters.map((param) => {
+    if (
+      param.initializer &&
+      ts.isIdentifier(param.name) &&
+      (!param.modifiers || param.modifiers.length === 0) &&
+      !param.dotDotDotToken
+    ) {
+      const paramName = param.name.text;
+      hoistStatements.push(
+        factory.createIfStatement(
+          factory.createBinaryExpression(
+            factory.createIdentifier(paramName),
+            factory.createToken(ts.SyntaxKind.EqualsEqualsEqualsToken),
+            factory.createIdentifier('undefined')
+          ),
+          factory.createBlock(
+            [
+              factory.createExpressionStatement(
+                factory.createBinaryExpression(
+                  factory.createIdentifier(paramName),
+                  factory.createToken(ts.SyntaxKind.EqualsToken),
+                  param.initializer
+                )
+              ),
+            ],
+            true
+          )
+        )
+      );
+      return factory.updateParameterDeclaration(
+        param, param.modifiers, param.dotDotDotToken, param.name,
+        param.questionToken, param.type, undefined
+      );
+    }
+    return param;
+  });
+  return { newParams, hoistStatements };
+}
+
 function isAsyncNode(ts, node) {
   const mods = node.modifiers;
   if (!mods) return false;
@@ -190,29 +255,33 @@ function makeTransformer(ts, fileTag) {
           ? '(set)'
           : '';
         const label = labelFor(visited, name, kindSuffix);
-        const newBody = wrapBody(visited.body, label, isAsyncNode(ts, visited));
+        const { newParams, hoistStatements } = hoistDefaultParams(ts, factory, visited.parameters);
+        const bodyWithDefaults = hoistStatements.length
+          ? factory.createBlock([...hoistStatements, ...visited.body.statements], true)
+          : visited.body;
+        const newBody = wrapBody(bodyWithDefaults, label, isAsyncNode(ts, visited));
         if (ts.isFunctionDeclaration(visited)) {
           return factory.updateFunctionDeclaration(
             visited, visited.modifiers, visited.asteriskToken, visited.name,
-            visited.typeParameters, visited.parameters, visited.type, newBody
+            visited.typeParameters, newParams, visited.type, newBody
           );
         } else if (ts.isMethodDeclaration(visited)) {
           return factory.updateMethodDeclaration(
             visited, visited.modifiers, visited.asteriskToken, visited.name,
-            visited.questionToken, visited.typeParameters, visited.parameters,
+            visited.questionToken, visited.typeParameters, newParams,
             visited.type, newBody
           );
         } else if (ts.isConstructorDeclaration(visited)) {
           return factory.updateConstructorDeclaration(
-            visited, visited.modifiers, visited.parameters, newBody
+            visited, visited.modifiers, newParams, newBody
           );
         } else if (ts.isGetAccessorDeclaration(visited)) {
           return factory.updateGetAccessorDeclaration(
-            visited, visited.modifiers, visited.name, visited.parameters, visited.type, newBody
+            visited, visited.modifiers, visited.name, newParams, visited.type, newBody
           );
         } else {
           return factory.updateSetAccessorDeclaration(
-            visited, visited.modifiers, visited.name, visited.parameters, newBody
+            visited, visited.modifiers, visited.name, newParams, newBody
           );
         }
       }
@@ -227,19 +296,27 @@ function makeTransformer(ts, fileTag) {
         counter++;
         const name = nameOf(ts, visited, `anonFnExpr${counter}`);
         const label = labelFor(visited, name);
-        const newBody = wrapBody(visited.body, label, isAsyncNode(ts, visited));
+        const { newParams, hoistStatements } = hoistDefaultParams(ts, factory, visited.parameters);
+        const bodyWithDefaults = hoistStatements.length
+          ? factory.createBlock([...hoistStatements, ...visited.body.statements], true)
+          : visited.body;
+        const newBody = wrapBody(bodyWithDefaults, label, isAsyncNode(ts, visited));
         return factory.updateFunctionExpression(
           visited, visited.modifiers, visited.asteriskToken, visited.name,
-          visited.typeParameters, visited.parameters, visited.type, newBody
+          visited.typeParameters, newParams, visited.type, newBody
         );
       }
 
       if (ts.isArrowFunction(visited) && visited.body && ts.isBlock(visited.body)) {
         counter++;
         const label = labelFor(visited, `arrow${counter}`);
-        const newBody = wrapBody(visited.body, label, isAsyncNode(ts, visited));
+        const { newParams, hoistStatements } = hoistDefaultParams(ts, factory, visited.parameters);
+        const bodyWithDefaults = hoistStatements.length
+          ? factory.createBlock([...hoistStatements, ...visited.body.statements], true)
+          : visited.body;
+        const newBody = wrapBody(bodyWithDefaults, label, isAsyncNode(ts, visited));
         return factory.updateArrowFunction(
-          visited, visited.modifiers, visited.typeParameters, visited.parameters,
+          visited, visited.modifiers, visited.typeParameters, newParams,
           visited.type, visited.equalsGreaterThanToken, newBody
         );
       }
