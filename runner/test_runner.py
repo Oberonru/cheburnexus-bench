@@ -195,7 +195,7 @@ def check_with_tests_refuses_a_fake_cell(tmp: Path) -> list[str]:
     grep precision "fell" from 0.259 to 0.044 — a real-looking number produced entirely by the
     harness comparing a grown output against an unchanged key.
     """
-    from run import CellNotMeasurable, build_oracle
+    from run import CellNotMeasurable, build_oracle_csharp
 
     failures = []
     checkout = tmp / "fake"
@@ -210,7 +210,7 @@ def check_with_tests_refuses_a_fake_cell(tmp: Path) -> list[str]:
         "test_assemblies": ["test/App.Tests/bin/Release/net8.0/App.Tests.dll"],
     }
     try:
-        build_oracle(entry, checkout, "with-tests", tmp / "oracle-out")
+        build_oracle_csharp(entry, checkout, "with-tests", tmp / "oracle-out")
         failures.append("with-tests was accepted although no test assembly exists — the cell would "
                         "publish a number produced by the harness rather than by any tool")
     except CellNotMeasurable:
@@ -230,7 +230,7 @@ def check_test_scope_guard(tmp: Path) -> list[str]:
     call with a caller in one of them was junk by construction: the compiler recorded it, nobody put
     it in the key, and the arm was charged for reporting it correctly (e8, 2026-08-28).
     """
-    from run import CellNotMeasurable, build_oracle, unmatched_test_scope_projects
+    from run import CellNotMeasurable, build_oracle_csharp, unmatched_test_scope_projects
 
     failures = []
 
@@ -271,7 +271,7 @@ def check_test_scope_guard(tmp: Path) -> list[str]:
         target.write_bytes(b"")
     entry = dict(mismatched, product_assemblies=[])
     try:
-        build_oracle(entry, checkout, "with-tests", tmp / "oracle-out-mismatched")
+        build_oracle_csharp(entry, checkout, "with-tests", tmp / "oracle-out-mismatched")
         failures.append("build_oracle accepted a scope mismatch instead of refusing it")
     except CellNotMeasurable as why:
         message = str(why)
@@ -302,7 +302,7 @@ def check_test_scope_guard(tmp: Path) -> list[str]:
         product_assemblies=["src/App/bin/Release/net8.0/App.dll"],
     )
     try:
-        build_oracle(empty_test_assemblies, checkout_empty, "with-tests", tmp / "oracle-out-empty")
+        build_oracle_csharp(empty_test_assemblies, checkout_empty, "with-tests", tmp / "oracle-out-empty")
         failures.append("build_oracle accepted a with-tests cell with no test assembly at all")
     except CellNotMeasurable as why:
         if "no test assembly was found on disk" not in str(why):
@@ -314,8 +314,52 @@ def check_test_scope_guard(tmp: Path) -> list[str]:
     return failures
 
 
+# ── language axis, seam 2: corpus.json's `language` field must route to the right oracle, default
+# to csharp when absent, and fail loudly (never a silent skip) for a language nobody registered ──
+
+def check_oracle_builder_routing() -> list[str]:
+    """`oracle_builder_for` is the one place `main()` decides which oracle answers a corpus.json
+    entry. Exercised directly rather than through `main()` so this test needs no real checkout, no
+    dotnet, and no grader."""
+    from run import DEFAULT_LANGUAGE, ORACLE_BUILDERS, build_oracle_csharp, oracle_builder_for
+
+    failures = []
+
+    if DEFAULT_LANGUAGE != "csharp":
+        failures.append(f"DEFAULT_LANGUAGE must be 'csharp' (every entry predating the language "
+                        f"axis is a C# repo), got {DEFAULT_LANGUAGE!r}")
+
+    explicit = oracle_builder_for({"name": "x/x", "language": "csharp"})
+    if explicit is not build_oracle_csharp:
+        failures.append("an entry that explicitly says language: csharp must route to "
+                        "build_oracle_csharp")
+
+    defaulted = oracle_builder_for({"name": "x/x"})
+    if defaulted is not build_oracle_csharp:
+        failures.append("an entry with no language field at all must default to csharp, not be "
+                        "refused — every pre-existing corpus.json entry has no other language to "
+                        "fall back to")
+
+    try:
+        oracle_builder_for({"name": "x/x", "language": "cobol"})
+        failures.append("an unregistered language must raise SystemExit, not silently pick a "
+                        "builder or return None — a corpus.json typo must not be swallowed into "
+                        "CellNotMeasurable, which is reserved for a genuinely unmeasurable cell")
+    except SystemExit as why:
+        if "cobol" not in str(why) or "x/x" not in str(why):
+            failures.append(f"the SystemExit message must name both the bad language and the "
+                            f"repository so a config mistake is findable, got: {why}")
+
+    if set(ORACLE_BUILDERS) != {"csharp"}:
+        failures.append(f"ORACLE_BUILDERS should register exactly 'csharp' until a second "
+                        f"language's oracle exists, got {sorted(ORACLE_BUILDERS)}")
+
+    return failures
+
+
 def main() -> int:
     failures: list[str] = check_framework_selection()
+    failures += check_oracle_builder_routing()
     with tempfile.TemporaryDirectory() as raw:
         tmp = Path(raw)
         failures += check_assembly_selection(tmp)

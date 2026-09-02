@@ -214,8 +214,15 @@ def in_scope(path: Path, repo_root: Path, cell: str) -> bool:
     return in_declared_scope(path, repo_root, corpus_scope_dirs(repo_root, cell))
 
 
-def source_files(repo_root: Path, cell: str, suffix: str = ".cs") -> Iterator[Path]:
+def source_files(
+    repo_root: Path, cell: str, suffix: str | Iterable[str] = ".cs"
+) -> Iterator[Path]:
     """Every source file this cell should see, in a stable order.
+
+    `suffix` is a single extension (the C# arms' `".cs"` default) or an iterable of them, so a
+    future TS/JS arm can ask for `(".ts", ".tsx", ".js", ".jsx")` in one call instead of walking
+    the checkout once per extension itself. A single string is still glob-ed exactly as before —
+    this is additive, not a reshape of the existing call.
 
     Sorted, because an arm that walks the filesystem in directory order produces different output
     on different machines, and a diff between two runs must mean a real change.
@@ -223,7 +230,13 @@ def source_files(repo_root: Path, cell: str, suffix: str = ".cs") -> Iterator[Pa
     if cell not in CELLS:
         raise ValueError(f"unknown cell {cell!r}; expected one of {CELLS}")
 
-    for path in sorted(repo_root.rglob(f"*{suffix}")):
+    suffixes = (suffix,) if isinstance(suffix, str) else tuple(suffix)
+    matches: dict[Path, None] = {}  # de-duplicated, insertion order irrelevant — sorted below
+    for one in suffixes:
+        for path in repo_root.rglob(f"*{one}"):
+            matches[path] = None
+
+    for path in sorted(matches):
         parts = {p.lower() for p in path.parts}
         if "obj" in parts or "bin" in parts or ".git" in parts:
             continue

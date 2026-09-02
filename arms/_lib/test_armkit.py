@@ -220,6 +220,51 @@ def check_source_files_integration() -> list[str]:
     return failures
 
 
+# ── language axis, seam 1: source_files() must also accept a set of extensions, not just one
+# string, so a future TS/JS arm can ask for (".ts", ".tsx", ".js", ".jsx") in a single call ────────
+
+def check_source_files_multi_suffix() -> list[str]:
+    """The single-string default must keep working byte-identically; a tuple of extensions must
+    return the union, still sorted, still deduplicated, still respecting the without-tests/
+    with-tests split. No corpus.json entry is consulted (no `product_projects` for this fake repo
+    name), so scope is unconstrained and only the extension/test-dir behaviour is under test."""
+    failures: list[str] = []
+    tmp = Path(tempfile.mkdtemp(prefix="armkit_suffix_test_"))
+    try:
+        files = ["src/Foo.cs", "src/Bar.ts", "src/Baz.tsx", "src/Qux.js", "test/FooTests.cs"]
+        for relative in files:
+            full = tmp / relative
+            full.parent.mkdir(parents=True, exist_ok=True)
+            full.write_text("// fixture\n", encoding="utf-8")
+
+        single = {p.relative_to(tmp).as_posix() for p in armkit.source_files(tmp, "without-tests")}
+        if single != {"src/Foo.cs"}:
+            failures.append(
+                f"source_files with the default single-string suffix must still see only .cs "
+                f"files, got {single} — the multi-suffix change must not touch the existing call"
+            )
+
+        multi = {p.relative_to(tmp).as_posix()
+                 for p in armkit.source_files(tmp, "without-tests", (".ts", ".tsx", ".js"))}
+        if multi != {"src/Bar.ts", "src/Baz.tsx", "src/Qux.js"}:
+            failures.append(
+                f"source_files with a tuple of suffixes must return the union of all of them "
+                f"(no .cs, since it was not asked for), got {multi}"
+            )
+
+        with_tests_multi = {p.relative_to(tmp).as_posix()
+                             for p in armkit.source_files(tmp, "with-tests", (".cs",))}
+        if with_tests_multi != {"src/Foo.cs", "test/FooTests.cs"}:
+            failures.append(
+                f"source_files with a one-element tuple must behave like the string form and "
+                f"still respect the with-tests cell split, got {with_tests_multi}"
+            )
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    return failures
+
+
 def main() -> int:
     failures: list[str] = []
     for relative, expect_test, why in CASES:
@@ -236,6 +281,7 @@ def main() -> int:
 
     failures.extend(check_entry())
     failures.extend(check_source_files_integration())
+    failures.extend(check_source_files_multi_suffix())
 
     if failures:
         print("FAILED:")

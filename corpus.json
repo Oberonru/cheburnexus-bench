@@ -1,6 +1,7 @@
 [
  {
   "name": "serilog/serilog",
+  "language": "csharp",
   "url": "https://github.com/serilog/serilog.git",
   "pinned_ref": "tag v2234 (not tip-of-main; see note)",
   "note": "Tip of main (commit 49b5339, 2026-07-31) requires the unreleased .NET 10 SDK: global.json pins sdk.version=10.0.100 and src/Serilog/Serilog.csproj multi-targets net10.0, and LogContext.cs uses the C# 13 'params collections' preview feature, which errors under our installed SDK 8.0.421 even after stripping net10.0/net9.0 from TargetFrameworks. Fell back to the latest published release tag, v2234, which targets net8.0;net6.0;netstandard2.0 and needs no source/config changes.",
@@ -57,6 +58,7 @@
  },
  {
   "name": "App-vNext/Polly",
+  "language": "csharp",
   "url": "https://github.com/App-vNext/Polly.git",
   "pinned_ref": "main HEAD at clone time",
   "sha": "173d6d1d2e28a4697f1ac1d22da68f77ff19a0c9",
@@ -124,6 +126,7 @@
  },
  {
   "name": "FluentValidation/FluentValidation",
+  "language": "csharp",
   "url": "https://github.com/FluentValidation/FluentValidation.git",
   "pinned_ref": "main HEAD at clone time",
   "sha": "daa00b795450881c233253488e3ddeb362f59f56",
@@ -171,6 +174,7 @@
  },
  {
   "name": "jbogard/MediatR",
+  "language": "csharp",
   "url": "https://github.com/jbogard/MediatR",
   "pinned_ref": "main HEAD at clone time",
   "sha": "916ef1b3d68ccdc96db8f914eaf1b32fc7db52c5",
@@ -220,6 +224,7 @@
  },
  {
   "name": "AutoMapper/AutoMapper",
+  "language": "csharp",
   "url": "https://github.com/AutoMapper/AutoMapper",
   "pinned_ref": "main HEAD at clone time",
   "sha": "dfa6dd587c5854b4beee5934beb39ba6e9569b84",
@@ -271,6 +276,7 @@
  },
  {
   "name": "Humanizr/Humanizer",
+  "language": "csharp",
   "url": "https://github.com/Humanizr/Humanizer",
   "pinned_ref": "main HEAD at clone time",
   "sha": "ffc2b77c0f30d2fb176875841424379319d0ae9b",

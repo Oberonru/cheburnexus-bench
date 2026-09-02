@@ -23,6 +23,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Callable
 
 ROOT = Path(__file__).resolve().parent.parent
 ORACLE_PROJECT = ROOT / "oracle" / "csharp"
@@ -30,6 +31,7 @@ GRADER = ROOT / "grader" / "grade.py"
 PUBLISHED = ROOT / "results" / "published"
 BLOCKED_EXIT = 3  # armkit.EXIT_BLOCKED — the arm ran but was refused the data
 CELLS = ("without-tests", "with-tests")
+DEFAULT_LANGUAGE = "csharp"  # corpus.json entries written before the language axis existed
 
 sys.path.insert(0, str(ROOT / "arms" / "_lib"))
 import armkit  # noqa: E402  (path inserted above, matching the existing _lib/__pycache__ convention)
@@ -140,8 +142,9 @@ def unmatched_test_scope_projects(entry: dict, cell: str) -> list[str]:
     return sorted(unmatched)
 
 
-def build_oracle(entry: dict, checkout: Path, cell: str, out_dir: Path) -> tuple[Path, Path, list[str]] | None:
-    """Extract the answer key for one repository and cell. Returns (edges, overrides, first_party)."""
+def build_oracle_csharp(entry: dict, checkout: Path, cell: str, out_dir: Path) -> tuple[Path, Path, list[str]] | None:
+    """Extract the answer key for one repository and cell, via the C#/IL oracle. Returns
+    (edges, overrides, first_party). Registered in ORACLE_BUILDERS as the "csharp" language."""
     assemblies = assemblies_for(entry, checkout, cell)
     if not assemblies:
         return None
@@ -195,6 +198,33 @@ def build_oracle(entry: dict, checkout: Path, cell: str, out_dir: Path) -> tuple
     (out_dir / "oracle.stderr.txt").write_text(result.stderr, encoding="utf-8")
     first_party = sorted({a.stem for a in assemblies})
     return edges, overrides, first_party
+
+
+# Which oracle builds the answer key for a corpus.json `language`. One entry today —
+# `build_oracle_csharp` is exactly the old, unconditional `build_oracle` — but routing through this
+# registry rather than a hardcoded `dotnet run --project oracle/csharp` is what lets a second
+# language add itself (`oracle/typescript` -> `build_oracle_typescript`) without touching this
+# dispatch again. An unregistered language must fail loudly, not silently skip the cell — see
+# its use in main() below.
+ORACLE_BUILDERS: dict[str, Callable[[dict, Path, str, Path], tuple[Path, Path, list[str]] | None]] = {
+    "csharp": build_oracle_csharp,
+}
+
+
+def oracle_builder_for(entry: dict) -> Callable[[dict, Path, str, Path], tuple[Path, Path, list[str]] | None]:
+    """The oracle builder for a corpus.json entry's `language`, defaulting to csharp when the
+    field is absent (every entry written before the language axis existed). Raises SystemExit —
+    loudly, never a silent skip — for a language nothing is registered for: that is a config
+    mistake in corpus.json, not a legitimately-unmeasurable cell, and must not be folded into
+    CellNotMeasurable."""
+    language = entry.get("language", DEFAULT_LANGUAGE)
+    builder = ORACLE_BUILDERS.get(language)
+    if builder is None:
+        raise SystemExit(
+            f"{entry['name']}: unknown language {language!r} in corpus.json — no oracle "
+            f"registered for it (known: {sorted(ORACLE_BUILDERS)})"
+        )
+    return builder
 
 
 def run_arm(name: str, checkout: Path, cell: str, out_dir: Path, repo_key: str) -> ArmRun:
@@ -327,10 +357,12 @@ def main() -> int:
                                  f"no checkout at {checkout} — clone it from corpus.json", {}))
             continue
 
+        builder = oracle_builder_for(entry)
+
         for cell in args.cells:
             cell_dir = out_root / repo_key / cell
             try:
-                built = build_oracle(entry, checkout, cell, cell_dir / "_oracle")
+                built = builder(entry, checkout, cell, cell_dir / "_oracle")
             except CellNotMeasurable as why:
                 for arm_name in args.arms:
                     rows.append((repo_key, cell, arm_name, "not-measurable", None, str(why), {}))
