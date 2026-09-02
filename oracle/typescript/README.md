@@ -98,20 +98,56 @@ before/after edge diffs):
   `coverage.ts`'s own `COMPUTED_KEY` case is an identifier reference, so it is unaffected by this
   fix and correctly stays `<computed>`.
 
+**Fixed 2026-09-03 (second pass)** (each reproduced against `coverage.ts` before the fix landed,
+matching prediction #38 for the default-param case; see the commit messages for the before/after
+edges):
+
+- ~~Default-parameter initializer calls are attributed one level too shallow~~ — PARTIALLY FIXED.
+  For a SIMPLE identifier parameter with an initializer (`function f(x = g())`), the initializer is
+  hoisted out of the signature into `if (x === undefined) { x = g(); }` as the first statement
+  inside the `__stack.run()`-wrapped body, so `g()` is now correctly attributed to `f`, not `f`'s
+  caller. `coverage.ts`'s `withDefault()` now records `withDefault -> defaultParamSource` (was
+  `main -> defaultParamSource`). Deliberately left eager/unfixed (initializer stays in the
+  signature, still misattributed one level shallow):
+  - destructuring parameters with defaults (`{a = 1} = {}`, nested or not) — `param.name` is not a
+    plain identifier, no safe single-expression rewrite.
+  - `this` parameters and rest parameters — neither can carry an initializer in valid TypeScript,
+    excluded naturally.
+  - parameter properties (`constructor(private readonly x = f())`) — the initializer also drives an
+    implicit `this.x = x` assignment TS synthesizes for the accessibility modifier; moving it would
+    require reproducing that assignment by hand. Left as-is.
+  - expression-bodied arrows (`(x = g()) => x`) — hoisting requires a statement position, i.e.
+    converting the arrow from expression-bodied to block-bodied, an observable shape change the
+    transformer deliberately avoids elsewhere. Not attempted; the shallow-attribution residual
+    stands for these.
+  - **Ordering caveat**: a signature that mixes a convertible identifier default with a
+    left-in-place complex one no longer preserves strict source order — the left-in-place default
+    still evaluates during binding at its original position, but every converted default now runs
+    AFTER ALL parameters are bound (top of the wrapped body), not interleaved at its original spot.
+    Only observable with side-effecting defaults mixed in one signature; not hit in the
+    class-validator scale run.
+- ~~Derived-class constructors containing `super()` are skipped entirely~~ — PARTIALLY FIXED. When
+  `super(...)` is a DIRECT top-level statement of the constructor's own block (the common shape),
+  the constructor now gets its own frame: `super(...)` and everything before it stay literal
+  top-level statements (moving `super()` into a closure is illegal — V8 rejects it), and everything
+  AFTER `super(...)` is wrapped with the same `wrapBody`/`als.run()` strategy as every other
+  callable. Verified with an ad hoc probe (not checked in): `this` is preserved (an arrow closes
+  over it lexically, doesn't rebind it) and an early `return;` inside the wrapped tail still
+  behaves — a `bail`-branch constructor returned `[1, -1]` correctly and only the non-bail branch's
+  trailing call reached its own callee frame. Still open, unchanged from before:
+  - a `super()` call NESTED inside the constructor's own control flow (e.g.
+    `if (cond) { super(a); } else { super(b); }`) has no single unambiguous "everything after"
+    range across branches — those constructors are still skipped entirely, exactly as before
+    (regression-checked against `bug_probe.ts`'s branching-super case: no crash, no new frame).
+  - calls made in `super(...)`'s OWN ARGUMENT EXPRESSIONS (`super(f())`) still fold to the caller
+    even in the now-fixed direct case — they execute before the wrapped tail begins.
+
 **Still open:**
 
 - **Generator and async-generator bodies** (`function*`, both declarations/methods/accessors and
   function expressions) cannot be wrapped in a plain arrow — `yield` is illegal there — so they are
   skipped rather than instrumented. Calls made from inside a generator body fold to whatever frame
-  was active when `.next()` was invoked.
-- **Derived-class constructors whose `super()` call is not reachable at all** are not a hole (a
-  `super()` anywhere in the constructor's own control flow, not inside a nested function/class, is
-  detected and the constructor is skipped rather than emit illegal JS) — but the skip itself means
-  a derived constructor's own frame, and everything it calls before/after `super()`, folds to the
-  caller.
-- **Default-parameter initializer calls** (`function f(x = source())`) are attributed one level too
-  shallow: the transformer only wraps the body block, not the parameter list, so `source()` runs
-  before `__stack.run` for `f` has been entered.
+  was active when `.next()` was invoked. Left open by decision, not attempted.
 - **`new Function(...)` and `eval(...)`** are a permanent, accepted blind spot: code compiled from a
   runtime string never passes through the TS-source transformer at all. Not attempted, not
   attemptable without a completely different mechanism (e.g. runtime instrumentation).
@@ -148,6 +184,20 @@ repo):
     ORACLE_TS_CORPUS_ROOT=<path to corpus> \
       EDGE_OUT=<path to append edges to> \
       npx jest --config oracle/typescript/jest.instrumented.config.js --runInBand --no-cache
+
+**Non-obvious invocation detail (cost a whole session to rediscover, so it's spelled out here):**
+`npx jest` pulls whatever jest resolves on the CALLER'S path, which can be a different/wrong jest
+than the one this repo's `node_modules` pins, and ts-jest resolves `tsconfig.spec.json` relative to
+the shell's CWD — so running from the bench repo root silently picks up the wrong config or the
+wrong jest binary. Run THIS REPO'S OWN jest binary with the shell's working directory set to the
+CORPUS ROOT, not the bench root:
+
+    cd <path to corpus, e.g. D:\DEV\TsTest\class-validator>
+    ORACLE_TS_CORPUS_ROOT=<path to corpus> \
+      EDGE_OUT=<path to append edges to, a NEW file> \
+      node <path to this repo>/oracle/typescript/node_modules/jest/bin/jest.js \
+      --config <path to this repo>/oracle/typescript/jest.instrumented.config.js \
+      --runInBand --no-cache
 
 ## Two silent no-ops this harness now guards against
 
