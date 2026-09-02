@@ -47,11 +47,29 @@ without waiting for a second implementation to compare against.
 ## Known holes
 
 These are accepted, not accidental — each was found by running the mechanism against
-`coverage.ts` and comparing to `coverage_expected.md`, not guessed from reading the code:
+`coverage.ts` and comparing to `coverage_expected.md`, not guessed from reading the code.
 
-- **Expression-bodied, curried, and class-field arrow functions** (`const f = () => expr`) are
-  invisible: the transformer only rewrites arrows whose body is `ts.isBlock(...)`. Calls made
-  inside them silently fold to whichever frame was active at the call site, one level too shallow.
+**Fixed 2026-09-03** (see `coverage_expected.md` § "Results after fixes 2026-09-03" for the
+before/after edge diffs):
+
+- ~~Expression-bodied, curried, and class-field arrow functions are invisible~~ — FIXED. Arrows
+  with a non-`ts.isBlock` body now wrap the body EXPRESSION itself (`__stack.run(label, () =>
+  (expr))`), not a converted block, so the expression-bodied shape is preserved. Covers curried
+  arrows (both levels) and class-field arrow initializers.
+- ~~`static {}` class initialization blocks are not a handled node kind~~ — FIXED.
+  `ts.isClassStaticBlockDeclaration` is now wrapped with the same `wrapBody`+`als.run` strategy as
+  every other callable, labeled `file:Class.<static>:line`.
+- ~~Computed member names get a degraded `<computed>` label~~ — PARTIALLY FIXED, syntax-only (no
+  type checker, per this file's header). `nameOf()` now resolves the computed expression when it is
+  a `StringLiteral` or `NumericLiteral` literal (e.g. `['name']() {}` → label `Class.name`).
+  Genuinely dynamic keys (`Symbol.iterator`, call expressions, **identifier references to a
+  `const`**, computed via a variable) are still `<computed>` — a syntax-only rewriter cannot resolve
+  those without the type checker/constant folding, and this file deliberately stays checker-free.
+  `coverage.ts`'s own `COMPUTED_KEY` case is an identifier reference, so it is unaffected by this
+  fix and correctly stays `<computed>`.
+
+**Still open:**
+
 - **Generator and async-generator bodies** (`function*`, both declarations/methods/accessors and
   function expressions) cannot be wrapped in a plain arrow — `yield` is illegal there — so they are
   skipped rather than instrumented. Calls made from inside a generator body fold to whatever frame
@@ -64,11 +82,6 @@ These are accepted, not accidental — each was found by running the mechanism a
 - **Default-parameter initializer calls** (`function f(x = source())`) are attributed one level too
   shallow: the transformer only wraps the body block, not the parameter list, so `source()` runs
   before `__stack.run` for `f` has been entered.
-- **`static {}` class initialization blocks** are not a handled node kind; calls inside them fold
-  directly to `<module>`.
-- **Computed member names** (`[SOME_KEY]() {}`) get a real edge but a degraded label — the
-  transformer's `nameOf()` falls back to the literal string `<computed>` rather than resolving the
-  computed expression.
 - **`new Function(...)` and `eval(...)`** are a permanent, accepted blind spot: code compiled from a
   runtime string never passes through the TS-source transformer at all. Not attempted, not
   attemptable without a completely different mechanism (e.g. runtime instrumentation).

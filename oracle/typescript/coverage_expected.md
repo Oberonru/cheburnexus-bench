@@ -97,3 +97,48 @@ main() body, in call order:
   object-stored-method: predicted CORRECT (all have real block bodies and are handled node kinds).
 - Default-parameter call (#38): predicted PRESENT but WRONG CALLER (attributed one level too shallow).
 - `new Function` / `eval` (#39/#40): predicted FUNDAMENTAL holes, by design, not fixable.
+
+## Results after fixes 2026-09-03
+
+Three holes fixed this session, in order: computed-member label resolution (literal keys only),
+`static {}` blocks, expression-bodied/curried/field arrows. Verdicts against the pre-registered
+predictions above, run against the CURRENT `coverage.ts` (edges captured before/after each fix,
+diffed with `node run_coverage.js`):
+
+- **#7/#8 (static block)** — prediction HELD, then FIXED. Before: block-level frame absent, call
+  folded directly as `<module> -> coverage:staticBlockBody:74`. After: `<module> ->
+  coverage:Widget.<static>:42 -> coverage:staticBlockBody:74`, exactly as predicted for the
+  "if fixed" branch of #7/#8.
+- **#9 (expression-bodied arrow `exprArrow`)** — prediction HELD, then FIXED. Before: no edge for
+  `exprArrow`, call invisible. After: `coverage:main:114 -> coverage:arrow1:7`.
+- **#10/#11 (curried arrows, both levels)** — prediction HELD, then FIXED, but the recorded shape
+  is subtler than "both levels missing -> both levels present as a caller/callee chain". Before:
+  both levels missing entirely. After: `coverage:main:114 -> coverage:arrow3:10` (outer call,
+  `curried(1)`) AND `coverage:main:114 -> coverage:arrow2:10` (inner call, `(...)(2)`) BOTH appear
+  as direct children of `main`, NOT as `arrow3 -> arrow2`. This is correct given the
+  als.run()-per-call model, not a residual shallow-attribution bug: `curried(1)` evaluates and
+  RETURNS the inner arrow value without invoking it — the outer call's `als.run()` frame has
+  already exited by the time `(...)(2)` actually invokes the inner arrow from `main`'s own
+  call-site expression `curried(1)(2)`.
+- **#23/#24 (computed method name label)** — prediction HELD, UNCHANGED (not exercised by the
+  fix). `coverage.ts`'s `COMPUTED_KEY` is an identifier reference to a `const`, not an inline
+  string/numeric literal, so `nameOf()` correctly still returns `<computed>` for it — this is
+  correct behavior for a syntax-only rewriter, not a residual bug. The fix was verified instead
+  against a standalone probe fixture with an inline literal computed key (`['literalName']()`),
+  where the label now resolves to `Class.literalName` instead of `Class.<computed>`; a
+  `Symbol.iterator` computed key in the same probe correctly stayed `<computed>`.
+- **#25/#26 (class-field arrow initializer `fieldArrow`)** — prediction HELD, then FIXED. Before:
+  folded to `coverage:main:114 -> coverage:fieldArrowBody:75` directly (per the predicted "only if
+  #25 survives... expect MISSING" branch). After: `coverage:main:114 ->
+  coverage:Widget.arrow13:48 -> coverage:fieldArrowBody:75` — the field-arrow now gets its own
+  frame.
+- **All other predictions (#12-22, #27-42)** — unaffected by these three fixes, not re-verified
+  beyond the regression checks (`run_collision.js`, `bug_probe.ts`) which showed no change.
+
+No prediction in the pre-registered list above was WRONG; all three fixed holes matched their
+predicted "MISSING, expect X if fixed" shape exactly once fixed. The one prediction worth flagging
+as easy to over-read is #23/#24: the fix for computed-member labels is real and verified, but
+`coverage.ts` itself does not exercise it (the fixture's computed key is an identifier, which is
+correctly outside a syntax-only rewriter's reach) — a naive re-run diff alone would show zero
+change there and could be misread as "fix didn't work," when actually the fixture just doesn't hit
+the fixed code path.
