@@ -128,6 +128,43 @@ function hoistDefaultParams(ts, factory, parameters) {
   return { newParams, hoistStatements };
 }
 
+// SUPER-CALL FIX (2026-09-03): a derived-class constructor was skipped ENTIRELY whenever it
+// contained a super() call anywhere in its own control flow -- its own frame, and everything it
+// calls (including before AND after super()), folded to the caller. `super(...)` cannot be moved
+// into a nested closure (illegal: "Must call super constructor in derived class before accessing
+// 'this'"), so the whole body can't be wrapBody()'d the way every other callable is. Fix: handle
+// only the common, safe shape -- super(...) as a DIRECT top-level statement in the constructor's
+// own block (not nested inside if/try/etc, where "the statement range after it" is ambiguous
+// across branches) -- and wrap only the STATEMENTS AFTER IT via the existing wrapBody/als.run
+// strategy, leaving super(...) (and anything before it) as literal top-level statements. An arrow
+// function closes over `this` lexically (does not rebind it), so `this` inside the wrapped
+// tail is identical to `this` in the original constructor body; an early `return;` inside the
+// tail still works exactly as before since it now returns from the wrapping arrow, and
+// wrapBody()'s own `return __stack.run(...)` forwards whatever the arrow returns as the
+// constructor's return value (undefined unless a value was explicitly returned) -- constructors
+// with no return use in JS/TS anyway obey the same "ignore the return value unless it's an
+// object" spec rule regardless of how deep the return sits.
+// RESIDUAL (documented in README, not attempted here): a super() call NESTED inside the
+// constructor's own control flow (e.g. inside `if (cond) { super(a); } else { super(b); }`) has
+// no single unambiguous "everything after" range across both branches, so those constructors
+// still fall back to being skipped entirely (previous behavior, unchanged) -- their own frame and
+// every call they make, before and after super(), still folds to the caller. Calls made in
+// super()'s OWN ARGUMENT EXPRESSIONS (`super(f())`) also still fold to the caller in the fixed
+// case too -- they run before the wrapped tail begins, same residual as before.
+function findDirectSuperStatementIndex(ts, statements) {
+  for (let i = 0; i < statements.length; i++) {
+    const stmt = statements[i];
+    if (
+      ts.isExpressionStatement(stmt) &&
+      ts.isCallExpression(stmt.expression) &&
+      stmt.expression.expression.kind === ts.SyntaxKind.SuperKeyword
+    ) {
+      return i;
+    }
+  }
+  return -1;
+}
+
 function isAsyncNode(ts, node) {
   const mods = node.modifiers;
   if (!mods) return false;
@@ -238,6 +275,26 @@ function makeTransformer(ts, fileTag) {
       // folding to whatever frame was active when .next() was invoked) but it no longer corrupts
       // the whole file. A full fix (push/pop around each yield instead of wrap-the-whole-body)
       // is a bigger change, not attempted here.
+      if (
+        ts.isConstructorDeclaration(visited) &&
+        visited.body &&
+        hasDirectSuperCall(ts, visited.body) &&
+        findDirectSuperStatementIndex(ts, visited.body.statements) !== -1
+      ) {
+        counter++;
+        const label = labelFor(visited, 'constructor');
+        const { newParams, hoistStatements } = hoistDefaultParams(ts, factory, visited.parameters);
+        const superIdx = findDirectSuperStatementIndex(ts, visited.body.statements);
+        const beforeAndSuper = visited.body.statements.slice(0, superIdx + 1);
+        const afterBlock = factory.createBlock(visited.body.statements.slice(superIdx + 1), true);
+        const wrappedAfter = wrapBody(afterBlock, label, isAsyncNode(ts, visited));
+        const newBody = factory.createBlock(
+          [...hoistStatements, ...beforeAndSuper, ...wrappedAfter.statements],
+          true
+        );
+        return factory.updateConstructorDeclaration(visited, visited.modifiers, newParams, newBody);
+      }
+
       if (
         (ts.isFunctionDeclaration(visited) || ts.isMethodDeclaration(visited) ||
          ts.isConstructorDeclaration(visited) || ts.isGetAccessorDeclaration(visited) ||
