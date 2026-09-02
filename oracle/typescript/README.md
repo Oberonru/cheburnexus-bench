@@ -38,6 +38,36 @@ hand-picked allowlist), via `jest.instrumented.config.js`:
   hand-written fixtures.
 - Roughly 2x the plain test-suite wall time.
 
+**Re-verified 2026-09-03 after the computed-name / `static {}` / expression-bodied-and-curried-arrow
+fixes** (`9b7c329`, `119d64c`, `9b1a017`), same corpus, same command:
+
+- 806/806 tests still pass instrumented (both runs).
+- 3255 unique call edges (was 2772, +483), 1852 unique nodes (was 1376, +476). 1880 function
+  bodies wrapped this run (measured with a temporary counter log, reverted — not committed).
+- Two full runs, byte-identical after sorting (`edges_r1_v2.txt` vs `edges_r2_v2.txt`, `diff` on
+  the sorted files is empty): determinism holds after the fixes, not just before them.
+- Wall time ~16.7s instrumented vs ~3.8s for the same suite uninstrumented on this run (~4.4x, not
+  the ~2x noted above — that older ratio came from a smaller/different measurement; take the ~4.4x
+  as the current number, not a regression, since no like-for-like 2x figure from this exact
+  environment exists to compare against).
+- **The label scheme means a raw diff against the 2772/1376 baseline is not a clean recall
+  measurement.** The anonymous-arrow label (`arrowN`) is assigned per file in AST visit order;
+  adding a new wrappable-arrow branch shifts that counter for every later anonymous callable in
+  the same file, so many "different" edges are the same call site under a renumbered label, not a
+  new fact. To separate the two: normalizing every label by stripping the trailing `:line` and
+  collapsing `arrowN` to `arrow*`, then comparing the coarse edge sets — 594 coarse edges appear
+  only in the new run and 120 only in the old run. Spot-checking the new-only set shows the
+  expected shape from the fix: expression-bodied validator arrows now appear as their own frame
+  (e.g. `IsIn.ts:isIn -> IsIn.ts:arrow*:10` and the reverse call back out of that arrow), which
+  were invisible/misattributed before. This is evidence of genuinely new call frames, not proof of
+  their exact count — the coarse normalization can itself still merge or split edges in ways not
+  fully audited. The raw per-line edge count going from 130,844 to 594,079 (4.5x) is far larger
+  than a relabeling could produce on its own and is consistent with new arrow bodies now
+  contributing their own call volume across the many repeated test invocations, but this was not
+  independently decomposed further — reported as an observation, not a proven mechanism.
+- The zero-wrap guard was confirmed to still gate correctly: the run exits non-zero only when 0
+  bodies are wrapped, and this run wrapped 1880 (nonzero, exit 0).
+
 Nothing beyond this corpus has been measured. No precision/recall number exists yet because there
 is no second, independent oracle for TypeScript to grade this one against — that is the whole
 reason the fixtures below (`coverage.ts` + `coverage_expected.md`) exist: hand-derived expected
