@@ -1,18 +1,16 @@
-// ALS-based shadow stack runtime, shared by the real class-validator probe.
-const { AsyncLocalStorage } = require('async_hooks');
-const als = new AsyncLocalStorage();
+// In-memory sink: collects deduplicated edges for the small fixture runners.
+// The mechanism lives in shadow_stack.js and is not duplicated here.
+const { installShadowStack } = require('./shadow_stack');
+
 const edgeList = [];
 const edges = new Set();
 
-global.__stack = {
-  run(label, fn) {
-    const store = als.getStore();
-    const parentStack = store ? store.stack : ['<module>'];
-    const caller = parentStack[parentStack.length - 1];
-    const key = `${caller} -> ${label}`;
-    if (!edges.has(key)) { edges.add(key); edgeList.push(key); }
-    const newStack = parentStack.concat([label]);
-    return als.run({ stack: newStack }, fn);
-  },
-};
+installShadowStack((caller, callee) => {
+  const key = `${caller} -> ${callee}`;
+  if (!edges.has(key)) {
+    edges.add(key);
+    edgeList.push(key);
+  }
+});
+
 global.__edgeList = edgeList;

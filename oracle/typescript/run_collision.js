@@ -1,19 +1,10 @@
-const { AsyncLocalStorage } = require('async_hooks');
-const als = new AsyncLocalStorage();
-const edges = new Set(); const edgeList = [];
-global.__stack = {
-  run(label, fn) {
-    const store = als.getStore();
-    const parentStack = store ? store.stack : ['<module>'];
-    const caller = parentStack[parentStack.length - 1];
-    const key = `${caller} -> ${label}`;
-    if (!edges.has(key)) { edges.add(key); edgeList.push(key); }
-    const newStack = parentStack.concat([label]);
-    return als.run({ stack: newStack }, fn);
-  },
-};
+// Fixture runner. The mechanism and the in-memory sink live in als_stack.js /
+// shadow_stack.js -- this file must never carry its own copy of them.
+require('./als_stack');
+const edgeList = global.__edgeList;
+
 (async () => {
-  await als.run({ stack: ['<module>'] }, () => require('./collision.compiled.js').main());
+  await require('./collision.compiled.js').main();
   console.log('--- EDGES ---');
   for (const e of edgeList) console.log(e);
 })();

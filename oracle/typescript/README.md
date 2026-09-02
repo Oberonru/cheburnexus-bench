@@ -102,15 +102,34 @@ These are accepted, not accidental — each was found by running the mechanism a
 Against an external corpus (e.g. class-validator checked out separately — it is not part of this
 repo):
 
-    ORACLE_TS_CORPUS_ROOT=<path to corpus> ORACLE_TS_SRC_ROOT=<path to corpus>/src \
+    ORACLE_TS_CORPUS_ROOT=<path to corpus> \
       EDGE_OUT=<path to append edges to> \
-      npx jest --config oracle/typescript/jest.instrumented.config.js --runInBand
+      npx jest --config oracle/typescript/jest.instrumented.config.js --runInBand --no-cache
+
+## Two silent no-ops this harness now guards against
+
+Both of these made the whole suite run GREEN while instrumenting NOTHING, producing no edge file
+at all. A ruler that reports success without measuring is worse than one that fails, so each is
+now either impossible to hit or fails loudly.
+
+- **Two TypeScript instances.** `ts.isFunctionDeclaration()` and friends compare `node.kind`
+  against `SyntaxKind`, a NUMERIC enum whose values shift between versions (5.4.5:
+  FunctionDeclaration=262, 5.9.3: 263). The transformer used to `require("typescript")` itself
+  while inspecting nodes built by the corpus own copy, so every type guard returned false and zero
+  bodies were wrapped. The `ts` instance is now INJECTED and resolved from the corpus.
+- **ts-jest config in the wrong place.** ts-jest 29 still reads `globals["ts-jest"]` (warning only),
+  but `astTransformers` never reach the transformer from there; and the `ts-jest` preset adds a
+  second .ts transform entry that can win the match uninstrumented. The transform is now declared
+  explicitly and the preset dropped.
+
+On top of that, the adapter counts the bodies it wraps and **exits non-zero if a whole run wrapped
+zero of them**.
 
 ## Not done here
 
 - Not wired into `runner/run.py` / `ORACLE_BUILDERS`. There is no `.sln`/`csproj`-equivalent
-  "single command produces the answer key for any TS repo" story yet — the corpus root and src
-  root are hand-supplied env vars, and the edge format has not been converted to whatever
+  "single command produces the answer key for any TS repo" story yet — the corpus root is a
+  hand-supplied env var, and the edge format has not been converted to whatever
   `oracle/csharp` emits.
 - No precision/recall grading against a second oracle.
 - The known holes above are not fixed, only documented and (where they previously crashed the

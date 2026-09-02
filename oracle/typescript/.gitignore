@@ -2,3 +2,4 @@ node_modules/
 *.compiled.js
 edges_*.txt
 run*.log
+package-lock.json

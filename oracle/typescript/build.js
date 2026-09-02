@@ -14,7 +14,7 @@ const result = ts.transpileModule(src, {
     useDefineForClassFields: false,
   },
   transformers: {
-    before: [makeTransformer(tag)],
+    before: [makeTransformer(ts, tag).transform],
   },
   fileName: srcFile,
 });

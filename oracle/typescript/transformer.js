@@ -3,9 +3,16 @@
 //   __stack.push("<file>:<name>"); try { ...body... } finally { __stack.pop(); }
 // into every function declaration, function expression, arrow function (with a block body),
 // method, and constructor.
-const ts = require('typescript');
 
-function nameOf(node, fallback) {
+// IMPORTANT: the TypeScript instance is INJECTED, never required here.
+// ts.isFunctionDeclaration() and friends compare node.kind against SyntaxKind, which is a
+// NUMERIC enum whose values SHIFT BETWEEN TYPESCRIPT VERSIONS (5.4.5: FunctionDeclaration=262,
+// 5.9.3: 263). Requiring our own copy while inspecting nodes built by the corpus's copy makes
+// every type guard silently return false: zero functions get wrapped, the suite still passes,
+// and the run produces an EMPTY answer key while reporting success. Always hand this module the
+// same ts that produced the nodes.
+
+function nameOf(ts, node, fallback) {
   if (node.name && ts.isIdentifier(node.name)) return node.name.text;
   if (node.name && ts.isPrivateIdentifier(node.name)) return node.name.text;
   if (node.name && ts.isComputedPropertyName(node.name)) return '<computed>';
@@ -26,7 +33,7 @@ function nameOf(node, fallback) {
 // "Must call super constructor..."). Walk the whole constructor body looking for any super(...)
 // call, but do NOT descend into nested functions, arrow functions, or nested class declarations/
 // expressions -- a super() there belongs to THAT function/class, not this constructor.
-function hasDirectSuperCall(block) {
+function hasDirectSuperCall(ts, block) {
   let found = false;
   function walk(node) {
     if (found) return;
@@ -52,7 +59,7 @@ function hasDirectSuperCall(block) {
   return found;
 }
 
-function isAsyncNode(node) {
+function isAsyncNode(ts, node) {
   const mods = node.modifiers;
   if (!mods) return false;
   return mods.some((m) => m.kind === ts.SyntaxKind.AsyncKeyword);
@@ -66,8 +73,9 @@ function isAsyncNode(node) {
 // carries its 1-based source line (the required, minimal part -- unique per node by construction,
 // since two declarations cannot start on the same line) plus, cheaply available at the same
 // point, the enclosing class name and a getter/setter tag for accessors.
-function makeTransformer(fileTag) {
-  return (context) => (sourceFile) => {
+function makeTransformer(ts, fileTag) {
+  let wrappedInFile = 0;
+  const transform = (context) => (sourceFile) => {
     const { factory } = context;
     let counter = 0;
     const classStack = [];
@@ -129,19 +137,19 @@ function makeTransformer(fileTag) {
          ts.isConstructorDeclaration(visited) || ts.isGetAccessorDeclaration(visited) ||
          ts.isSetAccessorDeclaration(visited)) &&
         visited.body && !visited.asteriskToken &&
-        !(ts.isConstructorDeclaration(visited) && hasDirectSuperCall(visited.body))
+        !(ts.isConstructorDeclaration(visited) && hasDirectSuperCall(ts, visited.body))
       ) {
         counter++;
         const name = ts.isConstructorDeclaration(visited)
           ? 'constructor'
-          : nameOf(visited, `anon${counter}`);
+          : nameOf(ts, visited, `anon${counter}`);
         const kindSuffix = ts.isGetAccessorDeclaration(visited)
           ? '(get)'
           : ts.isSetAccessorDeclaration(visited)
           ? '(set)'
           : '';
         const label = labelFor(visited, name, kindSuffix);
-        const newBody = wrapBody(visited.body, label, isAsyncNode(visited));
+        const newBody = wrapBody(visited.body, label, isAsyncNode(ts, visited));
         if (ts.isFunctionDeclaration(visited)) {
           return factory.updateFunctionDeclaration(
             visited, visited.modifiers, visited.asteriskToken, visited.name,
@@ -176,9 +184,9 @@ function makeTransformer(fileTag) {
       // module no longer crashes.
       if (ts.isFunctionExpression(visited) && visited.body && !visited.asteriskToken) {
         counter++;
-        const name = nameOf(visited, `anonFnExpr${counter}`);
+        const name = nameOf(ts, visited, `anonFnExpr${counter}`);
         const label = labelFor(visited, name);
-        const newBody = wrapBody(visited.body, label, isAsyncNode(visited));
+        const newBody = wrapBody(visited.body, label, isAsyncNode(ts, visited));
         return factory.updateFunctionExpression(
           visited, visited.modifiers, visited.asteriskToken, visited.name,
           visited.typeParameters, visited.parameters, visited.type, newBody
@@ -188,7 +196,7 @@ function makeTransformer(fileTag) {
       if (ts.isArrowFunction(visited) && visited.body && ts.isBlock(visited.body)) {
         counter++;
         const label = labelFor(visited, `arrow${counter}`);
-        const newBody = wrapBody(visited.body, label, isAsyncNode(visited));
+        const newBody = wrapBody(visited.body, label, isAsyncNode(ts, visited));
         return factory.updateArrowFunction(
           visited, visited.modifiers, visited.typeParameters, visited.parameters,
           visited.type, visited.equalsGreaterThanToken, newBody
@@ -198,8 +206,14 @@ function makeTransformer(fileTag) {
       return visited;
     }
 
-    return ts.visitNode(sourceFile, visit);
+    const outSf = ts.visitNode(sourceFile, visit);
+    wrappedInFile += counter;
+    return outSf;
   };
+
+  // wrapped() reports how many function bodies this transformer actually rewrote; a caller that
+  // sees zero across a whole run must fail loudly rather than publish an empty answer key.
+  return { transform, wrapped: () => wrappedInFile };
 }
 
 module.exports = { makeTransformer };
