@@ -134,6 +134,18 @@ def scope_dirs_from_entry(entry: dict, cell: str) -> list[str] | None:
     guess: `product_projects` absent (or present but empty) means the caller must say so and fall
     back to unscoped, not silently narrow a repository nobody described.
     """
+    # TypeScript entries declare their surface as one directory, not as .csproj files: the
+    # runtime oracle is produced by running the test harness with `--root <typescript_project_dir>`
+    # (runner/run.py's build_oracle_typescript), so the answer key can only ever contain calls whose
+    # CALLER lives under that directory. An arm left unscoped on a MONOREPO therefore reports
+    # perfectly real edges from sibling packages the key never looked at, and every one of them
+    # scores as a false positive -- the same defect the C# side hit as the Humanizer ProjectReference
+    # leak, in a different spelling. Measured on zod before this existed: the arm emitted edges from
+    # packages/bench, packages/mini and friends against a key covering packages/zod alone.
+    ts_dir = entry.get("typescript_project_dir")
+    if ts_dir:
+        return [ts_dir]
+
     product = entry.get("product_projects") or None
     if not product:
         return None

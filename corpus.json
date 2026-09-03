@@ -330,5 +330,16 @@
     "commit_date": "2026-02-26T09:26:01+02:00",
     "license": "MIT",
     "note": "TS oracle verification corpus for the shadow-stack runtime key (oracle/typescript). Whole-repo instrumentation, own test suite (ts-jest), 806 tests. See oracle/typescript/README.md."
+  },
+  {
+    "name": "colinhacks/zod",
+    "language": "typescript",
+    "typescript_harness": "vitest",
+    "typescript_project_dir": "packages/zod",
+    "url": "https://github.com/colinhacks/zod.git",
+    "sha": "7a00236683c79000dbab0d92f6faf0b7fba39f59",
+    "commit_date": "2026-09-02T13:45:59-07:00",
+    "license": "MIT",
+    "note": "Second TS corpus, added 2026-09-03 to test whether the class-validator numbers are a property of the PRODUCT or of one narrow code shape (decorators + reflect-metadata + Jest callbacks). pnpm monorepo; scope is the single workspace package packages/zod (docs, bench, integration, mini, treeshake, resolution are NOT run). CHECKOUT LIVES OUTSIDE corpus/: run it as `--checkouts D:\\DEV\\TsTest --only zod`, where `pnpm install` has already been done. A junction at corpus/zod was TRIED and does NOT work: Vite/Node resolve every module through realpath, so the files come back spelled under the junction TARGET while the plugin's corpusRoot filter still holds the junction path -- nothing matches and the run instruments ZERO functions (caught only because the plugin's zero-wrap guard exits non-zero; the suite itself stays green). Verified standalone before wiring: 8253 bodies wrapped, 25766 edges, two runs byte-identical. See oracle/typescript/README.md for the Vitest adapter and its three permanent side effects."
   }
 ]

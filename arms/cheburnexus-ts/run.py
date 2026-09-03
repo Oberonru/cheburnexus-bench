@@ -447,19 +447,25 @@ class Translator:
             return None
         line = entry["Line"]
 
-        if closure_owner is not None:
-            anon_name = _anon_join_name(name)
-            if anon_name is not None:
-                # Line-contract self-check: the line embedded in TsAnalyzer's own tag must equal
-                # the line `architecture.methods.json` recorded for this exact raw key — both are
-                # ts-morph's `getStartLineNumber()` on the same node, so they MUST agree; if they
-                # ever don't, something upstream is inconsistent and must be surfaced, not papered
-                # over by silently trusting one of the two numbers.
-                tag_line = int(_ANON_LABEL_RE.match(name).group(2))
-                if tag_line != line:
-                    self._drop("anonymous-closure-tag-line-mismatch")
-                    return None
-                name = anon_name
+        # NOT gated on `closure_owner`: an anonymous callable declared at MODULE level (or anywhere
+        # else _parse_raw_key sees no owning method) carries the same `<anon:L..>`/`<iife:L..>` tag
+        # and needs the same rewrite. Gating this on closure_owner was a real, measured defect —
+        # class-validator never exposed it (its anonymous arrows all sit inside a function), zod did:
+        # 3481 of 5989 arm edges left the arm still spelled `<anon:L37>`, and grade.py's C#-inherited
+        # "a `<` in the key means compiler-generated garbage" rule then dropped every one of them as
+        # unattributable. Third time that C# `<` rule has silently eaten a real TypeScript fact.
+        anon_name = _anon_join_name(name)
+        if anon_name is not None:
+            # Line-contract self-check: the line embedded in TsAnalyzer's own tag must equal the
+            # line `architecture.methods.json` recorded for this exact raw key — both are
+            # ts-morph's `getStartLineNumber()` on the same node, so they MUST agree; if they ever
+            # don't, something upstream is inconsistent and must be surfaced, not papered over by
+            # silently trusting one of the two numbers.
+            tag_line = int(_ANON_LABEL_RE.match(name).group(2))
+            if tag_line != line:
+                self._drop("anonymous-closure-tag-line-mismatch")
+                return None
+            name = anon_name
 
         info = self.types.kind_name.get(owner_fqn)
         if info is None:
@@ -546,12 +552,13 @@ def collect(repo_root: Path, cell: str) -> tuple[list[armkit.Edge], armkit.Cover
 
     total_calls = sum(len(e.get("Calls") or []) for e in calls_data.values())
 
-    # Scope: corpus.json's typestack/class-validator entry declares no product_projects/
-    # test_assemblies_projects (that field only exists for the C# corpora today), so
-    # armkit.in_scope is unscoped (whole checkout) for every TS entry — armkit.py's own
-    # corpus_scope_dirs() prints one stderr note about this per repo, which is correct: nothing here
-    # invents a scope corpus.json never declared. is_test_path (TEST_DIR_MARKERS) still applies for
-    # the without-tests cell.
+    # Scope: a TS corpus entry declares its surface as `typescript_project_dir` — the same
+    # directory runner/run.py hands the harness as the oracle's `--root`, so it is exactly the
+    # slice the answer key can contain (armkit.scope_dirs_from_entry reads it). An entry without
+    # that field (class-validator: whole repo IS the corpus) stays unscoped, as before, and
+    # armkit's corpus_scope_dirs() prints its one stderr note. Nothing here invents a scope
+    # corpus.json never declared. is_test_path (TEST_DIR_MARKERS) still applies for the
+    # without-tests cell.
     edges = [e for e in edges
              if e.caller_file is None or armkit.in_scope(repo_root / e.caller_file, repo_root, cell)]
     if cell == "without-tests":

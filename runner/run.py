@@ -490,7 +490,10 @@ def main() -> int:
     args = parser.parse_args()
 
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H%M%SZ")
-    out_root = args.out or (ROOT / "results" / stamp)
+    # ABSOLUTE for the same reason as `checkout` below: the TS oracle passes EDGE_OUT into a
+    # test process whose cwd is the CHECKOUT, so a relative --out resolved there and every
+    # append threw ENOENT inside the suite -- the run finished 'successfully' with no key.
+    out_root = (args.out or (ROOT / "results" / stamp)).absolute()
 
     corpus = load_corpus(args.corpus)
     if args.only:
@@ -504,7 +507,14 @@ def main() -> int:
 
     for entry in corpus:
         repo_key = repo_dir_name(entry)
-        checkout = args.checkouts / repo_key
+        # ABSOLUTE, always: the TS oracle hands this path to a Vitest config that resolves it
+        # with a different cwd than ours, so a relative --checkouts (the documented usage,
+        # `--checkouts corpus`) silently looked for the corpus config under the wrong root and
+        # the harness produced zero edges. `.absolute()` and not `.resolve()` on purpose: a
+        # checkout may be a junction/symlink to where the working tree really lives, and the
+        # oracle and the arm must agree on ONE spelling of the root or every repo-relative key
+        # they emit stops joining.
+        checkout = (args.checkouts / repo_key).absolute()
         if not checkout.is_dir():
             for cell in args.cells:
                 for arm_name in args.arms:
