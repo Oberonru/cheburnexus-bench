@@ -498,6 +498,18 @@ def collect(repo_root: Path, cell: str) -> tuple[list[armkit.Edge], armkit.Cover
     translator = Translator(methods_data, types, repo_root)
     edges = list(_edges_from_calls(calls_data, translator, repo_root))
 
+    # Same-line-collision guard (see Translator.__init__): drop, never fuzz-pick, any edge whose
+    # caller or callee is a translated key that TWO OR MORE distinct named closures produced.
+    collision_dropped = 0
+    if translator.closure_collision_keys:
+        kept = []
+        for e in edges:
+            if e.caller in translator.closure_collision_keys or e.callee in translator.closure_collision_keys:
+                collision_dropped += 1
+                continue
+            kept.append(e)
+        edges = kept
+
     total_calls = sum(len(e.get("Calls") or []) for e in calls_data.values())
 
     # Scope: corpus.json's typestack/class-validator entry declares no product_projects/
@@ -518,8 +530,15 @@ def collect(repo_root: Path, cell: str) -> tuple[list[armkit.Edge], armkit.Cover
     # surfaced here) — it is "this arm's oracle-key TRANSLATION failed for a call TsAnalyzer DID
     # resolve". Distinct fact, reported honestly as its own count rather than folded into the other.
     breakdown = ", ".join(f"{k}={v}" for k, v in translator.drops.items() if v)
+    collision_note = (f"; {len(translator.closure_collision_keys)} same-line named-closure key "
+                       f"collision(s) found (2+ distinct closures translating to the identical key), "
+                       f"{collision_dropped} edge(s) touching a colliding key dropped rather than "
+                       f"guessed"
+                       if translator.closure_collision_keys else
+                       "; 0 same-line named-closure key collisions found")
     note = (f"TsAnalyzer resolved {total_calls} call sites; {translator.ok} key(s) translated "
-            f"successfully, {dropped_calls} raw key lookups failed translation ({breakdown or 'none'}) "
+            f"successfully, {dropped_calls} raw key lookups failed translation ({breakdown or 'none'})"
+            f"{collision_note} "
             f"-- see this arm's run.py header for what each reason means. Named nested functions and "
             f"named inline closures now get their own call-graph node and translate like any other "
             f"member (engine commit 2a2014e1); ANONYMOUS/IIFE closures get a node too but their key "
