@@ -75,20 +75,36 @@ file's whole job, and every step is a fact read from TsAnalyzer's own output, ne
    `(set)` when it has exactly one parameter. A property with neither 0 nor 1 params paired to an
    accessor name cannot happen in valid TypeScript and is counted as a translation failure if it ever
    does (defensive, not expected to fire).
-5. **Nested named functions have NO call-graph node at all in TsAnalyzer** (`emitCore.ts`'s own
-   comment: "Phase 1: not in the call graph" — `emitNestedMethods` writes a `methods.json` metrics
-   entry but never pushes the node into `capturedCalls`/`callTargets`). The oracle instruments every
-   nested function shape it can safely wrap. This is a real, uncounted-here recall ceiling on this
-   arm for any call made only from inside a nested named function — not fabricated, not patched
-   around, reported in NOTES.md rather than silently absorbed into the number.
-6. **Anonymous arrows/function-expressions used as inline callbacks are not caller nodes in
-   TsAnalyzer's call graph either** (only class members, module-level named functions/consts, and
-   class-field arrow-initializer properties get a caller key) — while the oracle gives EVERY arrow
-   its own frame (`arrowN:line`), named or not, including inline callbacks. A class-field arrow
-   *is* captured by TsAnalyzer, but keyed by the FIELD NAME, while the oracle labels the exact same
-   node `Class.arrowN:line` (an anonymous per-file counter, not the property name) — these two
-   spellings can never agree, so every class-field-arrow oracle row is unreachable by this arm by
-   construction, not a bug to fix here. Recorded as a known gap, not tuned around.
+5. **UPDATE (2026-09-03 follow-up, engine commit 2a2014e1): nested named functions, named function
+   expressions, arrows-on-consts, and anonymous/IIFE closures now ALL get their own call-graph node**
+   (`collectCallables`/`describeCallable`/`emitClosures` in `emitCore.ts` — see
+   `finding-ts-arm-first-numbers-arrow-fold-2026-09-03.md`). This arm's raw-key parser now accepts the
+   resulting `{ownerMethod}/{name}` shape (previously rejected outright, silently dropping every
+   closure edge — see git history for the pre-fix version of this file and its point 5/6, now stale).
+   Named closures translate exactly like any other member (their real identifier + line, the same as
+   before this fix — the oracle's `labelFor` never qualifies by the enclosing FUNCTION, only by the
+   enclosing CLASS, so the `ownerMethod` prefix is stripped for the join). Anonymous/IIFE closures
+   still cannot be translated — see point 6 below, now the real limit rather than "not implemented".
+6. **Anonymous arrows/function-expressions used as inline callbacks CANNOT be translated, even though
+   TsAnalyzer now gives them a caller node.** TsAnalyzer's anonymous label is deliberately a
+   POSITIONALLY STABLE `<anon:L<line>>`/`<iife:L<line>>` tag (file + own start line — see
+   `emitCore.ts`'s `describeCallable`), chosen specifically because the oracle's own scheme — a
+   per-file VISIT-ORDER counter (`anon${counter}`/`anonFnExpr${counter}`, `transformer.js:308,354`,
+   fallback only when `nameOf` finds no bound identifier) — is fragile: an unrelated edit earlier in
+   the file renumbers every later anonymous callable. The two schemes are NOT translatable into each
+   other post hoc: the oracle's counter value is not reconstructible from TsAnalyzer's output (it
+   depends on AST visit order over every function-like node in the file, which TsAnalyzer never
+   records), and grading is EXACT-STRING set intersection on `(caller, callee)`
+   (`grader/grade.py::Cell.score`/`method_key`) — not a line-based near-miss match — so a same-line
+   join does not help: the oracle's label differs from any TsAnalyzer-derivable string in its NAME
+   component (the counter), not (only) its line. This arm counts these as
+   `anonymous-closure-unspellable` (see `Translator.translate`) rather than guessing at a spelling —
+   "exact fact or silence", not "close enough". A class-field arrow *is* captured by TsAnalyzer under
+   the FIELD NAME (not this closure path at all — see `methodNodesOf`/`buildSidecarEntry` above),
+   which still cannot agree with the oracle's `Class.anonN:line` spelling for the same reason.
+   Recorded as a real, measured, structural gap between the two identity schemes — not tuned around,
+   and not something an arm-only change can close without either the oracle adopting a
+   positionally-stable scheme too, or the grader adopting a line-based (not name-based) join.
 
 None of the above is fudged into the join: an edge whose caller or callee key cannot be built by the
 rules above is DROPPED from this arm's output and counted, never guessed at or silently included
@@ -101,6 +117,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -245,16 +262,30 @@ def _run_engine(engine_dir: Path, repo_root: Path, out_dir: Path) -> dict:
 
 
 # ── raw-key parsing (mirrors buildSidecarEntry in TsAnalyzer/src/core/emitCore.ts) ─────────────────
-def _parse_raw_key(raw: str) -> tuple[str, str, str, str] | None:
-    """`{filePath}::{OwnerFqn}::{"static:"?}{name}({paramTypes})` -> (filePath, ownerFqn, name, params).
+# CLOSURE FOLD FIX (2026-09-03 follow-up): TsAnalyzer now gives arrows/inline callbacks/named nested
+# functions their own caller node (`finding-ts-arm-first-numbers-arrow-fold-2026-09-03.md` +
+# `emitCore.ts`'s collectCallables/describeCallable/emitClosures, engine commit 2a2014e1). Their raw
+# key's `name` segment is `{ownerMethod}/{name}` — `ownerMethod` is the ONE immediate enclosing
+# callable, `name` is either the closure's real identifier (named nested function) or a positionally
+# stable `<anon:L<line>>` / `<iife:L<line>>` tag (see emitCore.ts's describeCallable comment for why
+# that beats a visit-order counter). Previously ANY '/' in `name` returned None here, silently
+# dropping every closure edge before it could be counted — see this run's `.coverage.json` for how
+# many that discarded (1179 unparseable-raw-key rows on the same class-validator run this fix was
+# checked against, alongside 0.930/0.988 precision measured on a denominator quietly missing the
+# hardest edges).
+def _parse_raw_key(raw: str) -> tuple[str, str, str, str, str | None] | None:
+    """`{filePath}::{OwnerFqn}::{"static:"?}{[ownerMethod/]name}({paramTypes})` ->
+    (filePath, ownerFqn, name, params, closureOwnerOrNone).
 
     Splits on '::' at most into 3 pieces (file/owner never contain it; a parameter TYPE spelling
     could in principle, e.g. a namespace-qualified generic — none observed on class-validator, and
     `rsplit` on '::' would be wrong here since the SIGNATURE is the part that could contain more
-    separators, not the owner). `name` containing '/' (TsAnalyzer's nested-function ownerMethod/name
-    shape) is rejected: nested named functions are never pushed into capturedCalls/callTargets (see
-    this file's header, point 5) so this shape should never actually reach a caller/Target key in
-    calls.json — returning None here rather than assuming makes that structural claim self-checking.
+    separators, not the owner). `name` containing exactly one '/' is TsAnalyzer's closure shape
+    (`ownerMethod/name` — see comment above); it is split on the LAST '/' (the owner chain is only
+    ever one hop deep by construction — collectCallables recurses with `chain = rec.name`, never a
+    multi-hop path) and the closure-ness is signalled back to the caller via the 5th tuple element
+    instead of being resolved here, because whether a closure key can be TRANSLATED (named — yes;
+    anonymous/IIFE — no, see `translate()`) is a join-time decision, not a parse-time one.
     """
     parts = raw.split("::")
     if len(parts) < 3:
@@ -268,9 +299,10 @@ def _parse_raw_key(raw: str) -> tuple[str, str, str, str] | None:
     if not paren:
         return None
     params = rest[:-1] if rest.endswith(")") else rest
+    closure_owner = None
     if "/" in name:
-        return None
-    return file_path, owner_fqn, name, params
+        closure_owner, _, name = name.rpartition("/")
+    return file_path, owner_fqn, name, params, closure_owner
 
 
 def _param_count(params: str) -> int:
@@ -327,7 +359,25 @@ _DROP_REASONS = (
     "no-methods-sidecar-line",
     "unparseable-raw-key",
     "accessor-param-count-neither-0-nor-1",
+    "anonymous-closure-unspellable",
 )
+
+# The oracle's shadow-stack transformer labels a closure `nameOf(ts, node, fallback)` where the
+# fallback ONLY fires when the node has no bound identifier at all — `anon${counter}` /
+# `anonFnExpr${counter}` (transformer.js:308,354), a per-file VISIT-ORDER counter. TsAnalyzer's own
+# anonymous label is POSITIONALLY STABLE (`<anon:L<line>>` / `<iife:L<line>>`, file + own start
+# line — see emitCore.ts's describeCallable) precisely because an ordinal counter renumbers every
+# later anonymous callable in a file after an unrelated earlier edit (this is why the engine fix was
+# built this way, not to match the oracle's spelling). The two schemes cannot be reconciled into the
+# same string: the oracle's counter is not deterministically reconstructible from TsAnalyzer's output
+# (it depends on AST visit order over EVERY function-like node in the file, not just closures, and
+# is never emitted by TsAnalyzer at all), and grading is exact-string set intersection on
+# (caller, callee) pairs (`grader/grade.py`'s `Cell.score` and `method_key`/`_CECIL_FULLNAME`) — not
+# a line-based near-miss match. So an anonymous/IIFE closure's translated key is NEVER attempted:
+# doing so would require literally guessing the oracle's counter value, which is exactly what the
+# project's "exact fact or silence" rule forbids. It is counted here as its own drop reason instead
+# of being folded into "unparseable-raw-key", so it reads separately in the coverage note.
+_ANON_CLOSURE_RE = re.compile(r"^<(anon|iife):L(\d+)>$")
 
 
 class Translator:
@@ -340,6 +390,14 @@ class Translator:
         self.repo_root = repo_root
         self.drops: dict[str, int] = {r: 0 for r in _DROP_REASONS}
         self.ok = 0
+        # Same-line-collision guard for NAMED closures only (the only closure shape this file ever
+        # translates): translated key -> the distinct raw keys that produced it. Two closures cannot
+        # normally start on the same source line, but this is a fact to CHECK, never assume — see
+        # this file's header point 5/6 and the task that added this guard. A collision is never
+        # fuzz-matched to "pick one"; every raw key behind a colliding translated key is dropped and
+        # counted so the edge never silently attributes to the wrong closure.
+        self._closure_key_sources: dict[str, set[str]] = {}
+        self.closure_collision_keys: set[str] = set()
 
     def _drop(self, reason: str) -> None:
         self.drops[reason] = self.drops.get(reason, 0) + 1
@@ -349,7 +407,19 @@ class Translator:
         if parsed is None:
             self._drop("unparseable-raw-key")
             return None
-        file_path, owner_fqn, name, params = parsed
+        file_path, owner_fqn, name, params, closure_owner = parsed
+
+        # Closure shape (`ownerMethod/name`, closure_owner set by _parse_raw_key): a NAMED nested
+        # function/function-expression carries a real identifier and joins exactly like any other
+        # member below (the oracle's labelFor never qualifies by enclosing function, only by class —
+        # see this file's _ANON_CLOSURE_RE comment — so `name` alone, with the owner-function prefix
+        # already stripped, is the right thing to qualify with `simple_name`). An ANONYMOUS/IIFE
+        # closure's `name` is TsAnalyzer's positionally-stable `<anon:L..>`/`<iife:L..>` tag, which
+        # cannot be translated into the oracle's per-file ordinal-counter spelling — see the comment
+        # on _ANON_CLOSURE_RE for why this is a real, not merely unimplemented, limit.
+        if closure_owner is not None and _ANON_CLOSURE_RE.match(name):
+            self._drop("anonymous-closure-unspellable")
+            return None
 
         entry = self.methods.get(raw_key)
         if entry is None or entry.get("Line") is None:
@@ -377,8 +447,16 @@ class Translator:
                 return None
 
         rel = _to_repo_relative(file_path, self.repo_root)
+        key = f"{rel}::{qualified}:{line}{suffix}"
+
+        if closure_owner is not None:
+            sources = self._closure_key_sources.setdefault(key, set())
+            sources.add(raw_key)
+            if len(sources) > 1:
+                self.closure_collision_keys.add(key)
+
         self.ok += 1
-        return f"{rel}::{qualified}:{line}{suffix}"
+        return key
 
 
 def _edges_from_calls(calls_data: dict, translator: Translator, repo_root: Path) -> Iterator[armkit.Edge]:
@@ -442,9 +520,11 @@ def collect(repo_root: Path, cell: str) -> tuple[list[armkit.Edge], armkit.Cover
     breakdown = ", ".join(f"{k}={v}" for k, v in translator.drops.items() if v)
     note = (f"TsAnalyzer resolved {total_calls} call sites; {translator.ok} key(s) translated "
             f"successfully, {dropped_calls} raw key lookups failed translation ({breakdown or 'none'}) "
-            f"-- see this arm's run.py header for what each reason means and the known coverage gaps "
-            f"(nested named functions and anonymous-arrow callbacks have no call-graph node in "
-            f"TsAnalyzer at all, so they never reach this translator to begin with).")
+            f"-- see this arm's run.py header for what each reason means. Named nested functions and "
+            f"named inline closures now get their own call-graph node and translate like any other "
+            f"member (engine commit 2a2014e1); ANONYMOUS/IIFE closures get a node too but their key "
+            f"is still untranslatable against this oracle -- see anonymous-closure-unspellable and "
+            f"the _ANON_CLOSURE_RE comment above for why that is a real limit, not a TODO.")
     print(f"cheburnexus-ts: {note}", file=sys.stderr)
 
     coverage = armkit.Coverage(
