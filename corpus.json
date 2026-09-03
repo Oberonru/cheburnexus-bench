@@ -1,324 +1,334 @@
 [
- {
-  "name": "serilog/serilog",
-  "language": "csharp",
-  "url": "https://github.com/serilog/serilog.git",
-  "pinned_ref": "tag v2234 (not tip-of-main; see note)",
-  "note": "Tip of main (commit 49b5339, 2026-07-31) requires the unreleased .NET 10 SDK: global.json pins sdk.version=10.0.100 and src/Serilog/Serilog.csproj multi-targets net10.0, and LogContext.cs uses the C# 13 'params collections' preview feature, which errors under our installed SDK 8.0.421 even after stripping net10.0/net9.0 from TargetFrameworks. Fell back to the latest published release tag, v2234, which targets net8.0;net6.0;netstandard2.0 and needs no source/config changes.",
-  "sha": "4c9a312bc72e335897553472d0a2e91819bc51b1",
-  "commit_date": "2024-09-29T07:21:01+10:00",
-  "clone_date_utc": "2026-08-23T15:22:10Z",
-  "license": "Apache-2.0",
-  "license_file": "LICENSE",
-  "build_command": "dotnet build Serilog.sln -c Release && dotnet build test/AotTestApp/AotTestApp.csproj -c Release",
-  "build_modifications": "none (global.json in this tag already pins sdk 8.0.100 with rollForward=latestFeature)",
-  "target_frameworks_produced": [
-   "net8.0",
-   "net6.0",
-   "netstandard2.0"
-  ],
-  "target_framework_probed": "net8.0",
-  "product_assemblies": [
-   "src/Serilog/bin/Release/net8.0/Serilog.dll",
-   "src/Serilog/bin/Release/net6.0/Serilog.dll",
-   "src/Serilog/bin/Release/netstandard2.0/Serilog.dll"
-  ],
-  "product_projects": [
-   "src/Serilog/Serilog.csproj"
-  ],
-  "test_assemblies": [
-   "test/Serilog.ApprovalTests/bin/Release/net8.0/Serilog.ApprovalTests.dll",
-   "test/Serilog.Tests/bin/Release/net8.0/Serilog.Tests.dll",
-   "test/Serilog.PerformanceTests/bin/Release/net8.0/Serilog.PerformanceTests.dll",
-   "test/AotTestApp/bin/Release/net8.0/AotTestApp.dll"
-  ],
-  "test_detection_rule": "projects living under top-level test/ directory; the actual assertion suites (Serilog.Tests, Serilog.ApprovalTests, Serilog.PerformanceTests) reference Microsoft.NET.Test.Sdk/xunit; product code lives only under src/Serilog",
-  "sizes": {
-   "checkout_disk": "5.9M",
-   "build_output_disk_net8.0_project": "1.7M",
-   "cs_file_count_src_only": 204,
-   "loc_src_only": 23639
+  {
+    "name": "serilog/serilog",
+    "language": "csharp",
+    "url": "https://github.com/serilog/serilog.git",
+    "pinned_ref": "tag v2234 (not tip-of-main; see note)",
+    "note": "Tip of main (commit 49b5339, 2026-07-31) requires the unreleased .NET 10 SDK: global.json pins sdk.version=10.0.100 and src/Serilog/Serilog.csproj multi-targets net10.0, and LogContext.cs uses the C# 13 'params collections' preview feature, which errors under our installed SDK 8.0.421 even after stripping net10.0/net9.0 from TargetFrameworks. Fell back to the latest published release tag, v2234, which targets net8.0;net6.0;netstandard2.0 and needs no source/config changes.",
+    "sha": "4c9a312bc72e335897553472d0a2e91819bc51b1",
+    "commit_date": "2024-09-29T07:21:01+10:00",
+    "clone_date_utc": "2026-08-23T15:22:10Z",
+    "license": "Apache-2.0",
+    "license_file": "LICENSE",
+    "build_command": "dotnet build Serilog.sln -c Release && dotnet build test/AotTestApp/AotTestApp.csproj -c Release",
+    "build_modifications": "none (global.json in this tag already pins sdk 8.0.100 with rollForward=latestFeature)",
+    "target_frameworks_produced": [
+      "net8.0",
+      "net6.0",
+      "netstandard2.0"
+    ],
+    "target_framework_probed": "net8.0",
+    "product_assemblies": [
+      "src/Serilog/bin/Release/net8.0/Serilog.dll",
+      "src/Serilog/bin/Release/net6.0/Serilog.dll",
+      "src/Serilog/bin/Release/netstandard2.0/Serilog.dll"
+    ],
+    "product_projects": [
+      "src/Serilog/Serilog.csproj"
+    ],
+    "test_assemblies": [
+      "test/Serilog.ApprovalTests/bin/Release/net8.0/Serilog.ApprovalTests.dll",
+      "test/Serilog.Tests/bin/Release/net8.0/Serilog.Tests.dll",
+      "test/Serilog.PerformanceTests/bin/Release/net8.0/Serilog.PerformanceTests.dll",
+      "test/AotTestApp/bin/Release/net8.0/AotTestApp.dll"
+    ],
+    "test_detection_rule": "projects living under top-level test/ directory; the actual assertion suites (Serilog.Tests, Serilog.ApprovalTests, Serilog.PerformanceTests) reference Microsoft.NET.Test.Sdk/xunit; product code lives only under src/Serilog",
+    "sizes": {
+      "checkout_disk": "5.9M",
+      "build_output_disk_net8.0_project": "1.7M",
+      "cs_file_count_src_only": 204,
+      "loc_src_only": 23639
+    },
+    "oracle_probe": {
+      "dll": "src/Serilog/bin/Release/net8.0/Serilog.dll",
+      "edges": 3138,
+      "no_debug_pct": 6.1,
+      "caller_cgen_pct": 16.3,
+      "spot_check_rows_verified": 3,
+      "spot_check_notes": "Guard.cs:20 and ILogger.cs:53 both verified to contain the exact call sites reported"
+    },
+    "test_assemblies_projects": [
+      "test/Serilog.Tests/Serilog.Tests.csproj",
+      "test/Serilog.ApprovalTests/Serilog.ApprovalTests.csproj",
+      "test/Serilog.PerformanceTests/Serilog.PerformanceTests.csproj",
+      "test/AotTestApp/AotTestApp.csproj (AOT smoke-test app, not itself a suite)"
+    ],
+    "test_assemblies_note": "Built assemblies, not project files. The pin originally listed .csproj paths here, which the runner could never treat as an answer-key input \u2014 the with-tests cell was refused for all three repositories until this was corrected on 2026-08-24. Serilog.PerformanceTests and AotTestApp joined this list on 2026-08-28 to match test_assemblies_projects, which already scoped the arms to read them (see e8 preregistration). test/TestDummies/TestDummies.csproj was dropped from test_assemblies_projects the same day: it targets netstandard2.0;net462 and produces no net8.0 assembly, so it cannot join test_assemblies for the net8.0-probed cell, and runner/run.py:assemblies_for's framework filter must not be weakened to admit it \u2014 that filter exists to stop one method counting twice from two target frameworks. Its calls into Serilog are still made by the compiler and still visible to any arm that reads the checkout unscoped, but this corpus entry no longer claims them as in-scope for with-tests.",
+    "with_tests_cell": "available: test assemblies built with the pinned SDK"
   },
-  "oracle_probe": {
-   "dll": "src/Serilog/bin/Release/net8.0/Serilog.dll",
-   "edges": 3138,
-   "no_debug_pct": 6.1,
-   "caller_cgen_pct": 16.3,
-   "spot_check_rows_verified": 3,
-   "spot_check_notes": "Guard.cs:20 and ILogger.cs:53 both verified to contain the exact call sites reported"
+  {
+    "name": "App-vNext/Polly",
+    "language": "csharp",
+    "url": "https://github.com/App-vNext/Polly.git",
+    "pinned_ref": "main HEAD at clone time",
+    "sha": "173d6d1d2e28a4697f1ac1d22da68f77ff19a0c9",
+    "commit_date": "2026-08-21T17:09:52Z",
+    "clone_date_utc": "2026-08-23T15:24:00Z",
+    "license": "BSD-3-Clause",
+    "license_file": "LICENSE",
+    "build_command": "dotnet build src/Polly.Core/Polly.Core.csproj -c Release",
+    "build_modifications": "global.json sdk.version changed from 10.0.400 (unavailable) to 8.0.100 with rollForward=latestFeature added, so the local SDK 8.0.421 is selected. Plus the src/Snippets retarget recorded in restore_modifications below \u2014 see corpus-patches/Polly.patch for both hunks.",
+    "build_caveat": "The legacy src/Polly/Polly.csproj (the older, pre-Polly.Core API surface) does NOT build under our SDK: Context.Dictionary.cs uses the C# 13 'field' keyword (auto-property backing field access), which requires the .NET 10 SDK/compiler. This project was excluded from the corpus; Polly.Core (the actively developed, modern API) and its satellite packages (Polly.Extensions, Polly.RateLimiting, Polly.Testing) all build cleanly and were probed/verified.",
+    "restore_command": "dotnet restore src/Snippets/Snippets.csproj",
+    "restore_modifications": "The without-tests cell's project discovery is path-based over the whole checkout (arms/_lib/armkit.py's is_test_path), not corpus.json's product_projects \u2014 so it always finds all 6 non-test .csproj under src/ (Polly.Core, Polly.Extensions, Polly.RateLimiting, Polly.Testing, the legacy Polly, and Snippets), regardless of which of those are graded. src/Snippets/Snippets.csproj is a code-samples project (xunit-referencing but not under test/, so classified as product) hardcoded to <TargetFramework>net10.0</TargetFramework>, which the pinned SDK 8.0.421 cannot even restore (NETSDK1045 \u2014 this is a restore-time TFM check, not a build-time one). Left unrestored, the engine's own coverage guard correctly refuses the whole without-tests cell: 'Refusing to analyze: at least one project has no restore output'. Fixed 2026-08-24 by retargeting Snippets.csproj to net8.0 (matching the TFM every other src/ project already builds for) \u2014 see corpus-patches/Polly.patch. This makes 'dotnet restore' succeed for all 6 discovered projects so the guard is satisfied honestly rather than relaxed. Snippets is still NOT in product_assemblies/product_projects and is NOT one of the oracle_assemblies below \u2014 nothing about it is graded; its .dll is never fed to the oracle. It is restored (and consequently analyzed by our arm, since the arm runs per-discovered-project) solely so the guard can pass on genuinely complete restore state; any edges the arm emits with a caller in src/Snippets/ were checked against the grader's cell_of() classification after the 2026-08-24 rerun and must land outside the primary comparable cell (see results notes for that run) or the corpus fix would silently contaminate the measured cell.",
+    "target_frameworks_produced": [
+      "net8.0",
+      "net6.0",
+      "netstandard2.0",
+      "net472",
+      "net462"
+    ],
+    "target_framework_probed": "net8.0",
+    "product_assemblies": [
+      "artifacts/bin/Polly.Core/release_net8.0/Polly.Core.dll",
+      "artifacts/bin/Polly.Extensions/release_net8.0/Polly.Extensions.dll",
+      "artifacts/bin/Polly.RateLimiting/release_net8.0/Polly.RateLimiting.dll",
+      "artifacts/bin/Polly.Testing/release_net8.0/Polly.Testing.dll"
+    ],
+    "product_assemblies_excluded": [
+      "artifacts/bin/Polly/release_net6.0/Polly.dll (legacy API, does not build under SDK 8 \u2014 see build_caveat)"
+    ],
+    "product_projects": [
+      "src/Polly.Core/Polly.Core.csproj",
+      "src/Polly.Extensions/Polly.Extensions.csproj",
+      "src/Polly.RateLimiting/Polly.RateLimiting.csproj",
+      "src/Polly.Testing/Polly.Testing.csproj"
+    ],
+    "test_assemblies": [],
+    "test_detection_rule": "projects living under top-level test/ directory, and each test csproj sets <ProjectType>Test</ProjectType>; naming suffix .Tests/.Specs; product code lives only under src/",
+    "sizes": {
+      "checkout_disk": "33M",
+      "build_output_disk_all_projects": "12M",
+      "cs_file_count_src_all_projects": 416,
+      "loc_src_all_projects": 39008,
+      "cs_file_count_polly_core_only": 174,
+      "loc_polly_core_only": 9742
+    },
+    "oracle_probe": {
+      "dll": "artifacts/bin/Polly.Core/release_net8.0/Polly.Core.dll",
+      "edges": 3611,
+      "no_debug_pct": 21.1,
+      "caller_cgen_pct": 52.3,
+      "spot_check_rows_verified": 3,
+      "spot_check_notes": "CircuitBreakerResiliencePipelineBuilderExtensions.cs:68, PredicateBuilder.Operators.cs:42, ResiliencePipeline.Async.cs:101 all verified"
+    },
+    "test_assemblies_projects": [
+      "test/Polly.Core.Tests/Polly.Core.Tests.csproj",
+      "test/Polly.Extensions.Tests/Polly.Extensions.Tests.csproj",
+      "test/Polly.RateLimiting.Tests/Polly.RateLimiting.Tests.csproj",
+      "test/Polly.Specs/Polly.Specs.csproj",
+      "test/Polly.Testing.Tests/Polly.Testing.Tests.csproj",
+      "test/Polly.TestUtils/Polly.TestUtils.csproj (test helper, not itself a suite)",
+      "test/Polly.AotTest/Polly.AotTest.csproj (AOT smoke-test app)"
+    ],
+    "test_assemblies_note": "Built assemblies, not project files. The pin originally listed .csproj paths here, which the runner could never treat as an answer-key input \u2014 the with-tests cell was refused for all three repositories until this was corrected on 2026-08-24.",
+    "with_tests_cell": "unavailable: the test projects target net10.0 and do not build on the pinned SDK 8.0.421 (NETSDK1045). Recorded rather than silently skipped \u2014 the cell is missing, not zero."
   },
-  "test_assemblies_projects": [
-   "test/Serilog.Tests/Serilog.Tests.csproj",
-   "test/Serilog.ApprovalTests/Serilog.ApprovalTests.csproj",
-   "test/Serilog.PerformanceTests/Serilog.PerformanceTests.csproj",
-   "test/AotTestApp/AotTestApp.csproj (AOT smoke-test app, not itself a suite)"
-  ],
-  "test_assemblies_note": "Built assemblies, not project files. The pin originally listed .csproj paths here, which the runner could never treat as an answer-key input — the with-tests cell was refused for all three repositories until this was corrected on 2026-08-24. Serilog.PerformanceTests and AotTestApp joined this list on 2026-08-28 to match test_assemblies_projects, which already scoped the arms to read them (see e8 preregistration). test/TestDummies/TestDummies.csproj was dropped from test_assemblies_projects the same day: it targets netstandard2.0;net462 and produces no net8.0 assembly, so it cannot join test_assemblies for the net8.0-probed cell, and runner/run.py:assemblies_for's framework filter must not be weakened to admit it — that filter exists to stop one method counting twice from two target frameworks. Its calls into Serilog are still made by the compiler and still visible to any arm that reads the checkout unscoped, but this corpus entry no longer claims them as in-scope for with-tests.",
-  "with_tests_cell": "available: test assemblies built with the pinned SDK"
- },
- {
-  "name": "App-vNext/Polly",
-  "language": "csharp",
-  "url": "https://github.com/App-vNext/Polly.git",
-  "pinned_ref": "main HEAD at clone time",
-  "sha": "173d6d1d2e28a4697f1ac1d22da68f77ff19a0c9",
-  "commit_date": "2026-08-21T17:09:52Z",
-  "clone_date_utc": "2026-08-23T15:24:00Z",
-  "license": "BSD-3-Clause",
-  "license_file": "LICENSE",
-  "build_command": "dotnet build src/Polly.Core/Polly.Core.csproj -c Release",
-  "build_modifications": "global.json sdk.version changed from 10.0.400 (unavailable) to 8.0.100 with rollForward=latestFeature added, so the local SDK 8.0.421 is selected. Plus the src/Snippets retarget recorded in restore_modifications below — see corpus-patches/Polly.patch for both hunks.",
-  "build_caveat": "The legacy src/Polly/Polly.csproj (the older, pre-Polly.Core API surface) does NOT build under our SDK: Context.Dictionary.cs uses the C# 13 'field' keyword (auto-property backing field access), which requires the .NET 10 SDK/compiler. This project was excluded from the corpus; Polly.Core (the actively developed, modern API) and its satellite packages (Polly.Extensions, Polly.RateLimiting, Polly.Testing) all build cleanly and were probed/verified.",
-  "restore_command": "dotnet restore src/Snippets/Snippets.csproj",
-  "restore_modifications": "The without-tests cell's project discovery is path-based over the whole checkout (arms/_lib/armkit.py's is_test_path), not corpus.json's product_projects — so it always finds all 6 non-test .csproj under src/ (Polly.Core, Polly.Extensions, Polly.RateLimiting, Polly.Testing, the legacy Polly, and Snippets), regardless of which of those are graded. src/Snippets/Snippets.csproj is a code-samples project (xunit-referencing but not under test/, so classified as product) hardcoded to <TargetFramework>net10.0</TargetFramework>, which the pinned SDK 8.0.421 cannot even restore (NETSDK1045 — this is a restore-time TFM check, not a build-time one). Left unrestored, the engine's own coverage guard correctly refuses the whole without-tests cell: 'Refusing to analyze: at least one project has no restore output'. Fixed 2026-08-24 by retargeting Snippets.csproj to net8.0 (matching the TFM every other src/ project already builds for) — see corpus-patches/Polly.patch. This makes 'dotnet restore' succeed for all 6 discovered projects so the guard is satisfied honestly rather than relaxed. Snippets is still NOT in product_assemblies/product_projects and is NOT one of the oracle_assemblies below — nothing about it is graded; its .dll is never fed to the oracle. It is restored (and consequently analyzed by our arm, since the arm runs per-discovered-project) solely so the guard can pass on genuinely complete restore state; any edges the arm emits with a caller in src/Snippets/ were checked against the grader's cell_of() classification after the 2026-08-24 rerun and must land outside the primary comparable cell (see results notes for that run) or the corpus fix would silently contaminate the measured cell.",
-  "target_frameworks_produced": [
-   "net8.0",
-   "net6.0",
-   "netstandard2.0",
-   "net472",
-   "net462"
-  ],
-  "target_framework_probed": "net8.0",
-  "product_assemblies": [
-   "artifacts/bin/Polly.Core/release_net8.0/Polly.Core.dll",
-   "artifacts/bin/Polly.Extensions/release_net8.0/Polly.Extensions.dll",
-   "artifacts/bin/Polly.RateLimiting/release_net8.0/Polly.RateLimiting.dll",
-   "artifacts/bin/Polly.Testing/release_net8.0/Polly.Testing.dll"
-  ],
-  "product_assemblies_excluded": [
-   "artifacts/bin/Polly/release_net6.0/Polly.dll (legacy API, does not build under SDK 8 — see build_caveat)"
-  ],
-  "product_projects": [
-   "src/Polly.Core/Polly.Core.csproj",
-   "src/Polly.Extensions/Polly.Extensions.csproj",
-   "src/Polly.RateLimiting/Polly.RateLimiting.csproj",
-   "src/Polly.Testing/Polly.Testing.csproj"
-  ],
-  "test_assemblies": [],
-  "test_detection_rule": "projects living under top-level test/ directory, and each test csproj sets <ProjectType>Test</ProjectType>; naming suffix .Tests/.Specs; product code lives only under src/",
-  "sizes": {
-   "checkout_disk": "33M",
-   "build_output_disk_all_projects": "12M",
-   "cs_file_count_src_all_projects": 416,
-   "loc_src_all_projects": 39008,
-   "cs_file_count_polly_core_only": 174,
-   "loc_polly_core_only": 9742
+  {
+    "name": "FluentValidation/FluentValidation",
+    "language": "csharp",
+    "url": "https://github.com/FluentValidation/FluentValidation.git",
+    "pinned_ref": "main HEAD at clone time",
+    "sha": "daa00b795450881c233253488e3ddeb362f59f56",
+    "commit_date": "2026-08-12T13:15:34+01:00",
+    "clone_date_utc": "2026-08-23T15:27:00Z",
+    "license": "Apache-2.0",
+    "license_file": "License.txt",
+    "build_command": "dotnet build src/FluentValidation/FluentValidation.csproj -c Release -p:DebugType=portable -p:ContinuousIntegrationBuild=false",
+    "build_modifications": "global.json sdk.version changed from 10.0.0 (unavailable) to 8.0.100 (rollForward=latestFeature already present). Two MSBuild property overrides were required at build time, NOT source edits: (1) -p:DebugType=portable \u2014 Directory.Build.props sets <DebugType>embedded</DebugType>, which embeds the PDB inside the DLL with no sibling .pdb file at all, so the oracle tool (which reads a separate .pdb) saw 100% no-debug-info until this was overridden; (2) -p:ContinuousIntegrationBuild=false \u2014 the csproj sets ContinuousIntegrationBuild=true for Release config, which triggers deterministic source-path remapping so the PDB's CallerFile values are prefixed '/_/' instead of being the real repo-relative path; overriding this makes CallerFile values resolve directly against the repo root.",
+    "build_caveat": "About 5.3% of edges with a non-null CallerFile point into src/FluentValidation/obj/.../System.Text.RegularExpressions.Generator/RegexGenerator.g.cs \u2014 a Regex source-generator's virtual output file. The PDB records this path but the generator does not persist it to disk (EmitCompilerGeneratedFiles is off), so those specific rows will not resolve to a real file even though NoDebugInfo=false for them. This is a legitimate generated-code category, not a broken build; spot-checks were done on genuine first-party rows instead.",
+    "target_frameworks_produced": [
+      "net8.0"
+    ],
+    "target_framework_probed": "net8.0",
+    "product_assemblies": [
+      "src/FluentValidation/bin/Release/net8.0/FluentValidation.dll",
+      "src/FluentValidation.DependencyInjectionExtensions/bin/Release/net8.0/FluentValidation.DependencyInjectionExtensions.dll"
+    ],
+    "product_projects": [
+      "src/FluentValidation/FluentValidation.csproj",
+      "src/FluentValidation.DependencyInjectionExtensions/FluentValidation.DependencyInjectionExtensions.csproj"
+    ],
+    "test_assemblies": [],
+    "test_detection_rule": "naming suffix .Tests / .Tests.Benchmarks; FluentValidation.Tests.csproj references Microsoft.NET.Test.Sdk + xunit; all product and test projects live side by side under src/, distinguished by name only (no separate test/ directory)",
+    "sizes": {
+      "checkout_disk": "5.4M",
+      "build_output_disk_both_product_projects": "1.6M",
+      "cs_file_count_FluentValidation_only": 141,
+      "loc_FluentValidation_only": 13328
+    },
+    "oracle_probe": {
+      "dll": "src/FluentValidation/bin/Release/net8.0/FluentValidation.dll",
+      "edges": 6262,
+      "no_debug_pct": 8.0,
+      "caller_cgen_pct": 17.7,
+      "spot_check_rows_verified": 3,
+      "spot_check_notes": "AbstractValidator.cs:80, AbstractValidator.cs:226, AssemblyScanner.cs:72 all verified"
+    },
+    "test_assemblies_projects": [
+      "src/FluentValidation.Tests/FluentValidation.Tests.csproj",
+      "src/FluentValidation.Tests.Benchmarks/FluentValidation.Tests.Benchmarks.csproj"
+    ],
+    "test_assemblies_note": "Built assemblies, not project files. The pin originally listed .csproj paths here, which the runner could never treat as an answer-key input \u2014 the with-tests cell was refused for all three repositories until this was corrected on 2026-08-24.",
+    "with_tests_cell": "unavailable: the test projects target net10.0 and do not build on the pinned SDK 8.0.421 (NETSDK1045). Recorded rather than silently skipped \u2014 the cell is missing, not zero."
   },
-  "oracle_probe": {
-   "dll": "artifacts/bin/Polly.Core/release_net8.0/Polly.Core.dll",
-   "edges": 3611,
-   "no_debug_pct": 21.1,
-   "caller_cgen_pct": 52.3,
-   "spot_check_rows_verified": 3,
-   "spot_check_notes": "CircuitBreakerResiliencePipelineBuilderExtensions.cs:68, PredicateBuilder.Operators.cs:42, ResiliencePipeline.Async.cs:101 all verified"
+  {
+    "name": "jbogard/MediatR",
+    "language": "csharp",
+    "url": "https://github.com/jbogard/MediatR",
+    "pinned_ref": "main HEAD at clone time",
+    "sha": "916ef1b3d68ccdc96db8f914eaf1b32fc7db52c5",
+    "commit_date": "2026-07-02T08:34:20-05:00",
+    "clone_date_utc": "2026-09-01T00:00:00Z",
+    "license": "RPL-1.5",
+    "license_file": "LICENSE.md",
+    "build_command": "dotnet build src/MediatR/MediatR.csproj -c Release -f net8.0 -p:DebugType=portable -p:ContinuousIntegrationBuild=false",
+    "build_modifications": "none. No global.json in this checkout (local SDK 10.0.400 is picked up directly); LangVersion=13.0 in Directory.Build.props built cleanly. A `git log -1 --format=%cI` EmbedBuildDate MSBuild target fails under Git Bash's pretty-format quoting (harmless, non-fatal \u2014 falls back to DateTime.UtcNow) and is unrelated to the -f/-p flags.",
+    "target_frameworks_produced": [
+      "netstandard2.0",
+      "net8.0",
+      "net9.0",
+      "net10.0",
+      "net462 (Windows only)"
+    ],
+    "target_framework_probed": "net8.0",
+    "product_assemblies": [
+      "src/MediatR/bin/Release/net8.0/MediatR.dll"
+    ],
+    "product_projects": [
+      "src/MediatR/MediatR.csproj"
+    ],
+    "test_assemblies": [],
+    "test_detection_rule": "projects living under top-level test/ directory (MediatR.Tests, MediatR.DependencyInjectionTests, MediatR.Benchmarks); product code lives only under src/MediatR",
+    "sizes": {
+      "checkout_disk": "8.0M",
+      "build_output_disk_net8.0_project": "188K",
+      "cs_file_count_src_only": 42,
+      "loc_src_only": 2859
+    },
+    "oracle_probe": {
+      "dll": "src/MediatR/bin/Release/net8.0/MediatR.dll",
+      "edges": 1936,
+      "no_debug_pct": 14.3,
+      "caller_cgen_pct": 38.1,
+      "spot_check_rows_verified": 3,
+      "spot_check_notes": "MediatRServiceCollectionExtensions.cs:33, :35, :37 all verified"
+    },
+    "test_assemblies_projects": [
+      "test/MediatR.Tests/MediatR.Tests.csproj",
+      "test/MediatR.DependencyInjectionTests/MediatR.DependencyInjectionTests.csproj",
+      "test/MediatR.Benchmarks/MediatR.Benchmarks.csproj"
+    ],
+    "test_assemblies_note": "All three test projects target net10.0 only (MediatR.Tests also adds net462 on Windows) \u2014 none produce a net8.0 assembly, so none can join test_assemblies for the net8.0-probed cell.",
+    "with_tests_cell": "unavailable: test projects target net10.0 (no net8.0 output at the probed framework)."
   },
-  "test_assemblies_projects": [
-   "test/Polly.Core.Tests/Polly.Core.Tests.csproj",
-   "test/Polly.Extensions.Tests/Polly.Extensions.Tests.csproj",
-   "test/Polly.RateLimiting.Tests/Polly.RateLimiting.Tests.csproj",
-   "test/Polly.Specs/Polly.Specs.csproj",
-   "test/Polly.Testing.Tests/Polly.Testing.Tests.csproj",
-   "test/Polly.TestUtils/Polly.TestUtils.csproj (test helper, not itself a suite)",
-   "test/Polly.AotTest/Polly.AotTest.csproj (AOT smoke-test app)"
-  ],
-  "test_assemblies_note": "Built assemblies, not project files. The pin originally listed .csproj paths here, which the runner could never treat as an answer-key input — the with-tests cell was refused for all three repositories until this was corrected on 2026-08-24.",
-  "with_tests_cell": "unavailable: the test projects target net10.0 and do not build on the pinned SDK 8.0.421 (NETSDK1045). Recorded rather than silently skipped — the cell is missing, not zero."
- },
- {
-  "name": "FluentValidation/FluentValidation",
-  "language": "csharp",
-  "url": "https://github.com/FluentValidation/FluentValidation.git",
-  "pinned_ref": "main HEAD at clone time",
-  "sha": "daa00b795450881c233253488e3ddeb362f59f56",
-  "commit_date": "2026-08-12T13:15:34+01:00",
-  "clone_date_utc": "2026-08-23T15:27:00Z",
-  "license": "Apache-2.0",
-  "license_file": "License.txt",
-  "build_command": "dotnet build src/FluentValidation/FluentValidation.csproj -c Release -p:DebugType=portable -p:ContinuousIntegrationBuild=false",
-  "build_modifications": "global.json sdk.version changed from 10.0.0 (unavailable) to 8.0.100 (rollForward=latestFeature already present). Two MSBuild property overrides were required at build time, NOT source edits: (1) -p:DebugType=portable — Directory.Build.props sets <DebugType>embedded</DebugType>, which embeds the PDB inside the DLL with no sibling .pdb file at all, so the oracle tool (which reads a separate .pdb) saw 100% no-debug-info until this was overridden; (2) -p:ContinuousIntegrationBuild=false — the csproj sets ContinuousIntegrationBuild=true for Release config, which triggers deterministic source-path remapping so the PDB's CallerFile values are prefixed '/_/' instead of being the real repo-relative path; overriding this makes CallerFile values resolve directly against the repo root.",
-  "build_caveat": "About 5.3% of edges with a non-null CallerFile point into src/FluentValidation/obj/.../System.Text.RegularExpressions.Generator/RegexGenerator.g.cs — a Regex source-generator's virtual output file. The PDB records this path but the generator does not persist it to disk (EmitCompilerGeneratedFiles is off), so those specific rows will not resolve to a real file even though NoDebugInfo=false for them. This is a legitimate generated-code category, not a broken build; spot-checks were done on genuine first-party rows instead.",
-  "target_frameworks_produced": [
-   "net8.0"
-  ],
-  "target_framework_probed": "net8.0",
-  "product_assemblies": [
-   "src/FluentValidation/bin/Release/net8.0/FluentValidation.dll",
-   "src/FluentValidation.DependencyInjectionExtensions/bin/Release/net8.0/FluentValidation.DependencyInjectionExtensions.dll"
-  ],
-  "product_projects": [
-   "src/FluentValidation/FluentValidation.csproj",
-   "src/FluentValidation.DependencyInjectionExtensions/FluentValidation.DependencyInjectionExtensions.csproj"
-  ],
-  "test_assemblies": [],
-  "test_detection_rule": "naming suffix .Tests / .Tests.Benchmarks; FluentValidation.Tests.csproj references Microsoft.NET.Test.Sdk + xunit; all product and test projects live side by side under src/, distinguished by name only (no separate test/ directory)",
-  "sizes": {
-   "checkout_disk": "5.4M",
-   "build_output_disk_both_product_projects": "1.6M",
-   "cs_file_count_FluentValidation_only": 141,
-   "loc_FluentValidation_only": 13328
+  {
+    "name": "AutoMapper/AutoMapper",
+    "language": "csharp",
+    "url": "https://github.com/AutoMapper/AutoMapper",
+    "pinned_ref": "main HEAD at clone time",
+    "sha": "dfa6dd587c5854b4beee5934beb39ba6e9569b84",
+    "commit_date": "2026-07-01T08:13:43-05:00",
+    "clone_date_utc": "2026-09-01T00:00:00Z",
+    "license": "RPL-1.5",
+    "license_file": "LICENSE.md",
+    "build_command": "dotnet build src/AutoMapper/AutoMapper.csproj -c Release -f net8.0 -p:DebugType=portable -p:ContinuousIntegrationBuild=false",
+    "build_modifications": "none. No global.json in this checkout (local SDK 10.0.400 is picked up directly); LangVersion=14.0 in the product csproj built cleanly with no preview-feature errors. Same harmless EmbedBuildDate git-log-format failure as MediatR (falls back to DateTime.UtcNow).",
+    "target_frameworks_produced": [
+      "netstandard2.0",
+      "net8.0",
+      "net9.0",
+      "net10.0",
+      "net471 (Windows only)"
+    ],
+    "target_framework_probed": "net8.0",
+    "product_assemblies": [
+      "src/AutoMapper/bin/Release/net8.0/AutoMapper.dll"
+    ],
+    "product_projects": [
+      "src/AutoMapper/AutoMapper.csproj"
+    ],
+    "test_assemblies": [],
+    "test_detection_rule": "projects living side by side under src/ but named by suffix (AutoMapper.UnitTests, AutoMapper.IntegrationTests, AutoMapper.DI.Tests, Benchmark, TestApp), distinguished from the product project (src/AutoMapper) by name only \u2014 no separate test/ directory",
+    "sizes": {
+      "checkout_disk": "136M",
+      "build_output_disk_net8.0_project": "520K",
+      "cs_file_count_src_only": 89,
+      "loc_src_only": 9804
+    },
+    "oracle_probe": {
+      "dll": "src/AutoMapper/bin/Release/net8.0/AutoMapper.dll",
+      "edges": 7744,
+      "no_debug_pct": 13.4,
+      "caller_cgen_pct": 27.6,
+      "spot_check_rows_verified": 3,
+      "spot_check_notes": "ServiceCollectionExtensions.cs:29 verified (three call sites inside the lambda body: ctor, Action.Invoke, AddAutoMapperClasses)"
+    },
+    "test_assemblies_projects": [
+      "src/UnitTests/AutoMapper.UnitTests.csproj",
+      "src/IntegrationTests/AutoMapper.IntegrationTests.csproj",
+      "src/AutoMapper.DI.Tests/AutoMapper.DI.Tests.csproj",
+      "src/Benchmark/Benchmark.csproj (benchmark harness, not itself a suite)",
+      "src/TestApp/TestApp.csproj (smoke-test app, not itself a suite)"
+    ],
+    "test_assemblies_note": "All test/benchmark projects target net10.0 only (UnitTests also adds net471 on Windows) \u2014 none produce a net8.0 assembly, so none can join test_assemblies for the net8.0-probed cell.",
+    "with_tests_cell": "unavailable: test projects target net10.0 (no net8.0 output at the probed framework)."
   },
-  "oracle_probe": {
-   "dll": "src/FluentValidation/bin/Release/net8.0/FluentValidation.dll",
-   "edges": 6262,
-   "no_debug_pct": 8.0,
-   "caller_cgen_pct": 17.7,
-   "spot_check_rows_verified": 3,
-   "spot_check_notes": "AbstractValidator.cs:80, AbstractValidator.cs:226, AssemblyScanner.cs:72 all verified"
+  {
+    "name": "Humanizr/Humanizer",
+    "language": "csharp",
+    "url": "https://github.com/Humanizr/Humanizer",
+    "pinned_ref": "main HEAD at clone time",
+    "sha": "ffc2b77c0f30d2fb176875841424379319d0ae9b",
+    "commit_date": "2026-08-05T22:42:38Z",
+    "clone_date_utc": "2026-09-01T00:00:00Z",
+    "license": "MIT",
+    "license_file": "license.txt",
+    "build_command": "dotnet build src/Humanizer/Humanizer.csproj -c Release -p:TargetFrameworks=net8.0 -p:DebugType=portable -p:ContinuousIntegrationBuild=false",
+    "build_modifications": "global.json sdk.version changed from 11.0.100-preview.6.26359.118 (unavailable) to 10.0.400 (rollForward=latestFeature and allowPrerelease=true left as-is) \u2014 see corpus-patches/Humanizer.patch. Additionally, -f net8.0 alone is not enough: Microsoft.NET.TargetFrameworkInference.targets validates the FULL multi-target list (netstandard2.0;net8.0;net48;net10.0;net11.0) against the installed SDK before framework selection even for a single -f build, and fails NETSDK1045 on the net11.0 entry regardless. Overriding the TargetFrameworks property itself with -p:TargetFrameworks=net8.0 (build_command above) sidesteps that check entirely. Directory.Build.props sets DebugType=embedded by default (same PDB trap as FluentValidation), hence -p:DebugType=portable. LangVersion=preview in Directory.Build.props built cleanly under SDK 10.0.400 with no preview-only C# syntax errors.",
+    "build_caveat": "This project uses UseArtifactsOutput=true (Arcade-style layout), so build output lands under artifacts/bin/<Project>/<config>_<tfm>/, not the conventional src/<Project>/bin/<config>/<tfm>/ path.",
+    "target_frameworks_produced": [
+      "net11.0",
+      "net10.0",
+      "net8.0",
+      "net48",
+      "netstandard2.0"
+    ],
+    "target_framework_probed": "net8.0",
+    "product_assemblies": [
+      "artifacts/bin/Humanizer/release_net8.0/Humanizer.dll"
+    ],
+    "product_projects": [
+      "src/Humanizer/Humanizer.csproj"
+    ],
+    "test_assemblies": [],
+    "test_detection_rule": "projects living under top-level tests/ directory (Humanizer.Tests, Humanizer.Analyzers.Tests.*, Humanizer.SourceGenerators.Tests); product code lives only under src/Humanizer",
+    "sizes": {
+      "checkout_disk": "129M",
+      "build_output_disk_net8.0_project": "6.5M",
+      "cs_file_count_src_only": 212,
+      "loc_src_only": 48284
+    },
+    "oracle_probe": {
+      "dll": "artifacts/bin/Humanizer/release_net8.0/Humanizer.dll",
+      "edges": 110340,
+      "no_debug_pct": 5.7,
+      "caller_cgen_pct": 6.9,
+      "spot_check_rows_verified": 3,
+      "spot_check_notes": "ArticlePrefixSort.cs:17 verified; artifacts/obj/Humanizer/release_net8.0/Humanizer.Version.cs:29-30 are a legitimate MSBuild ThisAssembly source-generator output (a real file on disk under artifacts/obj/, unlike FluentValidation's virtual regex-generator rows), not a broken build"
+    },
+    "test_assemblies_projects": [],
+    "test_assemblies_note": "Humanizer.Tests.csproj's TargetFrameworks list uniquely includes net8.0 alongside net10.0/net11.0/net48 (Windows) even though the product project no longer ships net8.0 as its primary target, and it DOES build for net8.0 with the same TargetFrameworks-override trick as the product project: `dotnet build tests/Humanizer.Tests/Humanizer.Tests.csproj -c Release -p:TargetFrameworks=net8.0 -p:DebugType=portable -p:ContinuousIntegrationBuild=false` \u2014 the DLL lands at artifacts/bin/Humanizer.Tests/release_net8.0/Humanizer.Tests.dll, confirmed present on disk (2026-09-01). The cell is still unmeasurable, for a different reason: this project uses the Arcade UseArtifactsOutput layout, so its built assembly sits under artifacts/bin/Humanizer.Tests/release_net8.0/, never under tests/Humanizer.Tests/ itself \u2014 and runner/run.py's unmatched_test_scope_projects (armkit._project_dir + a path-COMPONENT-prefix match) can only ever recognize a test_assemblies entry that lives somewhere under its test_assemblies_projects entry's own directory. No Arcade-output entry can ever satisfy that check, built or not, so listing this project/assembly pair here always trips runner.py's own disagree-refusal (CellNotMeasurable) rather than grading. Fixing that would mean teaching the runner's project-to-assembly matcher about Arcade layouts, a runner change out of this corpus fix's scope \u2014 so test_assemblies and test_assemblies_projects are left empty here rather than left mismatched, and the cell is reported honestly as unavailable.",
+    "with_tests_cell": "unavailable: Humanizer.Tests.dll builds fine for net8.0 (confirmed on disk), but its Arcade-layout output path (artifacts/bin/Humanizer.Tests/release_net8.0/) never sits under its project's own directory (tests/Humanizer.Tests/), which is what runner.py's test_assemblies_projects/test_assemblies coverage check requires to accept a with-tests cell as measurable \u2014 see test_assemblies_note. Recorded rather than silently skipped: the cell is missing, not zero."
   },
-  "test_assemblies_projects": [
-   "src/FluentValidation.Tests/FluentValidation.Tests.csproj",
-   "src/FluentValidation.Tests.Benchmarks/FluentValidation.Tests.Benchmarks.csproj"
-  ],
-  "test_assemblies_note": "Built assemblies, not project files. The pin originally listed .csproj paths here, which the runner could never treat as an answer-key input — the with-tests cell was refused for all three repositories until this was corrected on 2026-08-24.",
-  "with_tests_cell": "unavailable: the test projects target net10.0 and do not build on the pinned SDK 8.0.421 (NETSDK1045). Recorded rather than silently skipped — the cell is missing, not zero."
- },
- {
-  "name": "jbogard/MediatR",
-  "language": "csharp",
-  "url": "https://github.com/jbogard/MediatR",
-  "pinned_ref": "main HEAD at clone time",
-  "sha": "916ef1b3d68ccdc96db8f914eaf1b32fc7db52c5",
-  "commit_date": "2026-07-02T08:34:20-05:00",
-  "clone_date_utc": "2026-09-01T00:00:00Z",
-  "license": "RPL-1.5",
-  "license_file": "LICENSE.md",
-  "build_command": "dotnet build src/MediatR/MediatR.csproj -c Release -f net8.0 -p:DebugType=portable -p:ContinuousIntegrationBuild=false",
-  "build_modifications": "none. No global.json in this checkout (local SDK 10.0.400 is picked up directly); LangVersion=13.0 in Directory.Build.props built cleanly. A `git log -1 --format=%cI` EmbedBuildDate MSBuild target fails under Git Bash's pretty-format quoting (harmless, non-fatal — falls back to DateTime.UtcNow) and is unrelated to the -f/-p flags.",
-  "target_frameworks_produced": [
-   "netstandard2.0",
-   "net8.0",
-   "net9.0",
-   "net10.0",
-   "net462 (Windows only)"
-  ],
-  "target_framework_probed": "net8.0",
-  "product_assemblies": [
-   "src/MediatR/bin/Release/net8.0/MediatR.dll"
-  ],
-  "product_projects": [
-   "src/MediatR/MediatR.csproj"
-  ],
-  "test_assemblies": [],
-  "test_detection_rule": "projects living under top-level test/ directory (MediatR.Tests, MediatR.DependencyInjectionTests, MediatR.Benchmarks); product code lives only under src/MediatR",
-  "sizes": {
-   "checkout_disk": "8.0M",
-   "build_output_disk_net8.0_project": "188K",
-   "cs_file_count_src_only": 42,
-   "loc_src_only": 2859
-  },
-  "oracle_probe": {
-   "dll": "src/MediatR/bin/Release/net8.0/MediatR.dll",
-   "edges": 1936,
-   "no_debug_pct": 14.3,
-   "caller_cgen_pct": 38.1,
-   "spot_check_rows_verified": 3,
-   "spot_check_notes": "MediatRServiceCollectionExtensions.cs:33, :35, :37 all verified"
-  },
-  "test_assemblies_projects": [
-   "test/MediatR.Tests/MediatR.Tests.csproj",
-   "test/MediatR.DependencyInjectionTests/MediatR.DependencyInjectionTests.csproj",
-   "test/MediatR.Benchmarks/MediatR.Benchmarks.csproj"
-  ],
-  "test_assemblies_note": "All three test projects target net10.0 only (MediatR.Tests also adds net462 on Windows) — none produce a net8.0 assembly, so none can join test_assemblies for the net8.0-probed cell.",
-  "with_tests_cell": "unavailable: test projects target net10.0 (no net8.0 output at the probed framework)."
- },
- {
-  "name": "AutoMapper/AutoMapper",
-  "language": "csharp",
-  "url": "https://github.com/AutoMapper/AutoMapper",
-  "pinned_ref": "main HEAD at clone time",
-  "sha": "dfa6dd587c5854b4beee5934beb39ba6e9569b84",
-  "commit_date": "2026-07-01T08:13:43-05:00",
-  "clone_date_utc": "2026-09-01T00:00:00Z",
-  "license": "RPL-1.5",
-  "license_file": "LICENSE.md",
-  "build_command": "dotnet build src/AutoMapper/AutoMapper.csproj -c Release -f net8.0 -p:DebugType=portable -p:ContinuousIntegrationBuild=false",
-  "build_modifications": "none. No global.json in this checkout (local SDK 10.0.400 is picked up directly); LangVersion=14.0 in the product csproj built cleanly with no preview-feature errors. Same harmless EmbedBuildDate git-log-format failure as MediatR (falls back to DateTime.UtcNow).",
-  "target_frameworks_produced": [
-   "netstandard2.0",
-   "net8.0",
-   "net9.0",
-   "net10.0",
-   "net471 (Windows only)"
-  ],
-  "target_framework_probed": "net8.0",
-  "product_assemblies": [
-   "src/AutoMapper/bin/Release/net8.0/AutoMapper.dll"
-  ],
-  "product_projects": [
-   "src/AutoMapper/AutoMapper.csproj"
-  ],
-  "test_assemblies": [],
-  "test_detection_rule": "projects living side by side under src/ but named by suffix (AutoMapper.UnitTests, AutoMapper.IntegrationTests, AutoMapper.DI.Tests, Benchmark, TestApp), distinguished from the product project (src/AutoMapper) by name only — no separate test/ directory",
-  "sizes": {
-   "checkout_disk": "136M",
-   "build_output_disk_net8.0_project": "520K",
-   "cs_file_count_src_only": 89,
-   "loc_src_only": 9804
-  },
-  "oracle_probe": {
-   "dll": "src/AutoMapper/bin/Release/net8.0/AutoMapper.dll",
-   "edges": 7744,
-   "no_debug_pct": 13.4,
-   "caller_cgen_pct": 27.6,
-   "spot_check_rows_verified": 3,
-   "spot_check_notes": "ServiceCollectionExtensions.cs:29 verified (three call sites inside the lambda body: ctor, Action.Invoke, AddAutoMapperClasses)"
-  },
-  "test_assemblies_projects": [
-   "src/UnitTests/AutoMapper.UnitTests.csproj",
-   "src/IntegrationTests/AutoMapper.IntegrationTests.csproj",
-   "src/AutoMapper.DI.Tests/AutoMapper.DI.Tests.csproj",
-   "src/Benchmark/Benchmark.csproj (benchmark harness, not itself a suite)",
-   "src/TestApp/TestApp.csproj (smoke-test app, not itself a suite)"
-  ],
-  "test_assemblies_note": "All test/benchmark projects target net10.0 only (UnitTests also adds net471 on Windows) — none produce a net8.0 assembly, so none can join test_assemblies for the net8.0-probed cell.",
-  "with_tests_cell": "unavailable: test projects target net10.0 (no net8.0 output at the probed framework)."
- },
- {
-  "name": "Humanizr/Humanizer",
-  "language": "csharp",
-  "url": "https://github.com/Humanizr/Humanizer",
-  "pinned_ref": "main HEAD at clone time",
-  "sha": "ffc2b77c0f30d2fb176875841424379319d0ae9b",
-  "commit_date": "2026-08-05T22:42:38Z",
-  "clone_date_utc": "2026-09-01T00:00:00Z",
-  "license": "MIT",
-  "license_file": "license.txt",
-  "build_command": "dotnet build src/Humanizer/Humanizer.csproj -c Release -p:TargetFrameworks=net8.0 -p:DebugType=portable -p:ContinuousIntegrationBuild=false",
-  "build_modifications": "global.json sdk.version changed from 11.0.100-preview.6.26359.118 (unavailable) to 10.0.400 (rollForward=latestFeature and allowPrerelease=true left as-is) — see corpus-patches/Humanizer.patch. Additionally, -f net8.0 alone is not enough: Microsoft.NET.TargetFrameworkInference.targets validates the FULL multi-target list (netstandard2.0;net8.0;net48;net10.0;net11.0) against the installed SDK before framework selection even for a single -f build, and fails NETSDK1045 on the net11.0 entry regardless. Overriding the TargetFrameworks property itself with -p:TargetFrameworks=net8.0 (build_command above) sidesteps that check entirely. Directory.Build.props sets DebugType=embedded by default (same PDB trap as FluentValidation), hence -p:DebugType=portable. LangVersion=preview in Directory.Build.props built cleanly under SDK 10.0.400 with no preview-only C# syntax errors.",
-  "build_caveat": "This project uses UseArtifactsOutput=true (Arcade-style layout), so build output lands under artifacts/bin/<Project>/<config>_<tfm>/, not the conventional src/<Project>/bin/<config>/<tfm>/ path.",
-  "target_frameworks_produced": [
-   "net11.0",
-   "net10.0",
-   "net8.0",
-   "net48",
-   "netstandard2.0"
-  ],
-  "target_framework_probed": "net8.0",
-  "product_assemblies": [
-   "artifacts/bin/Humanizer/release_net8.0/Humanizer.dll"
-  ],
-  "product_projects": [
-   "src/Humanizer/Humanizer.csproj"
-  ],
-  "test_assemblies": [],
-  "test_detection_rule": "projects living under top-level tests/ directory (Humanizer.Tests, Humanizer.Analyzers.Tests.*, Humanizer.SourceGenerators.Tests); product code lives only under src/Humanizer",
-  "sizes": {
-   "checkout_disk": "129M",
-   "build_output_disk_net8.0_project": "6.5M",
-   "cs_file_count_src_only": 212,
-   "loc_src_only": 48284
-  },
-  "oracle_probe": {
-   "dll": "artifacts/bin/Humanizer/release_net8.0/Humanizer.dll",
-   "edges": 110340,
-   "no_debug_pct": 5.7,
-   "caller_cgen_pct": 6.9,
-   "spot_check_rows_verified": 3,
-   "spot_check_notes": "ArticlePrefixSort.cs:17 verified; artifacts/obj/Humanizer/release_net8.0/Humanizer.Version.cs:29-30 are a legitimate MSBuild ThisAssembly source-generator output (a real file on disk under artifacts/obj/, unlike FluentValidation's virtual regex-generator rows), not a broken build"
-  },
-  "test_assemblies_projects": [],
-  "test_assemblies_note": "Humanizer.Tests.csproj's TargetFrameworks list uniquely includes net8.0 alongside net10.0/net11.0/net48 (Windows) even though the product project no longer ships net8.0 as its primary target, and it DOES build for net8.0 with the same TargetFrameworks-override trick as the product project: `dotnet build tests/Humanizer.Tests/Humanizer.Tests.csproj -c Release -p:TargetFrameworks=net8.0 -p:DebugType=portable -p:ContinuousIntegrationBuild=false` — the DLL lands at artifacts/bin/Humanizer.Tests/release_net8.0/Humanizer.Tests.dll, confirmed present on disk (2026-09-01). The cell is still unmeasurable, for a different reason: this project uses the Arcade UseArtifactsOutput layout, so its built assembly sits under artifacts/bin/Humanizer.Tests/release_net8.0/, never under tests/Humanizer.Tests/ itself — and runner/run.py's unmatched_test_scope_projects (armkit._project_dir + a path-COMPONENT-prefix match) can only ever recognize a test_assemblies entry that lives somewhere under its test_assemblies_projects entry's own directory. No Arcade-output entry can ever satisfy that check, built or not, so listing this project/assembly pair here always trips runner.py's own disagree-refusal (CellNotMeasurable) rather than grading. Fixing that would mean teaching the runner's project-to-assembly matcher about Arcade layouts, a runner change out of this corpus fix's scope — so test_assemblies and test_assemblies_projects are left empty here rather than left mismatched, and the cell is reported honestly as unavailable.",
-  "with_tests_cell": "unavailable: Humanizer.Tests.dll builds fine for net8.0 (confirmed on disk), but its Arcade-layout output path (artifacts/bin/Humanizer.Tests/release_net8.0/) never sits under its project's own directory (tests/Humanizer.Tests/), which is what runner.py's test_assemblies_projects/test_assemblies coverage check requires to accept a with-tests cell as measurable — see test_assemblies_note. Recorded rather than silently skipped: the cell is missing, not zero."
- }
+  {
+    "name": "typestack/class-validator",
+    "language": "typescript",
+    "typescript_harness": "ts-jest",
+    "url": "https://github.com/typestack/class-validator.git",
+    "sha": "2e1a5c27dbd65b80e27fe96b49bd6e6641fa3603",
+    "commit_date": "2026-02-26T09:26:01+02:00",
+    "license": "MIT",
+    "note": "TS oracle verification corpus for the shadow-stack runtime key (oracle/typescript). Whole-repo instrumentation, own test suite (ts-jest), 806 tests. See oracle/typescript/README.md."
+  }
 ]

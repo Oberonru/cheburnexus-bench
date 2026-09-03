@@ -200,14 +200,169 @@ def build_oracle_csharp(entry: dict, checkout: Path, cell: str, out_dir: Path) -
     return edges, overrides, first_party
 
 
-# Which oracle builds the answer key for a corpus.json `language`. One entry today —
-# `build_oracle_csharp` is exactly the old, unconditional `build_oracle` — but routing through this
-# registry rather than a hardcoded `dotnet run --project oracle/csharp` is what lets a second
-# language add itself (`oracle/typescript` -> `build_oracle_typescript`) without touching this
-# dispatch again. An unregistered language must fail loudly, not silently skip the cell — see
-# its use in main() below.
+ORACLE_TS_DIR = ROOT / "oracle" / "typescript"
+
+
+def _ts_key(label: str) -> str:
+    """Translate a shadow-stack label (`file:Class.member:line`, or the root frame `<module>`)
+    into the `Type::Method` shape grade.py's `method_key()` already parses (built for Cecil's
+    `Ns.Type::Method` names, reused unmodified here — see build_oracle_typescript's docstring for
+    why this is safe rather than coincidental).
+
+    `<module>` — no wrapped function was on the shadow stack, i.e. the call came from code the
+    transformer never touched (top-level module evaluation, or a callable shape the transformer
+    still skips, e.g. a generator body per oracle/typescript/README.md "Still open") — becomes
+    `<module>::<entry>:0`. That string contains a literal `<`, so grade.py's own
+    `normalize_caller`/`enclosing_user_method` already treats it exactly like an unresolvable
+    compiler-mangled C# caller: dropped, counted in `unremappable_caller`, charged to nobody. No
+    grader change needed — this reuses an existing rule instead of adding a new one.
+    """
+    label = label.strip()
+    if label == "<module>":
+        return "<module>::<entry>:0"
+    if ":" not in label:
+        # Defensive only — every real label the transformer emits has a file prefix. A future
+        # label shape change would land here instead of crashing the whole oracle build.
+        return f"<unknown>::{label}:0"
+    file_part, rest = label.split(":", 1)
+    return f"{file_part}::{rest}"
+
+
+def build_oracle_typescript(entry: dict, checkout: Path, cell: str, out_dir: Path) -> tuple[Path, Path, list[str]] | None:
+    """Extract the answer key for one TypeScript repository, via the shadow-stack RUNTIME oracle
+    in `oracle/typescript/` (see its README.md for the mechanism). Registered in ORACLE_BUILDERS
+    as the "typescript" language.
+
+    ── Why this can only ever be a with-tests oracle ──────────────────────────────────────────
+    The key is deliberately a RUNTIME trace, not tsc/ts-morph static analysis: our own arm
+    (`TsAnalyzer`) IS ts-morph, so a static-analysis key would grade the arm against a copy of
+    itself. A runtime key only exists while code is actually running, so there is no such thing as
+    a TypeScript answer key that was not produced by running the test suite — `without-tests` is
+    not merely unbuilt, it is not a coherent concept for this oracle, so it is refused as
+    CellNotMeasurable exactly like the C# `with-tests` guards above refuse a cell whose assumptions
+    don't hold, just mirrored: there the risk was a stale/mismatched build silently reusing the
+    without-tests key; here the cell simply has no key-producing mechanism at all.
+
+    ── The recall caveat, represented in code, not just here ─────────────────────────────────
+    The oracle only records an edge for a callee that was actually ENTERED at least once. A real
+    call an arm reports into code the test suite never exercised has no corresponding oracle row —
+    not because it is wrong, but because this oracle cannot see it. That is a structural ceiling on
+    RECALL (recall is only meaningful on the executed slice, per the README), and it is written
+    into `manifest.json` via `oracle_coverage` (see main()) rather than left as a comment nobody
+    reads at grading time. It is NOT specially fenced out of the PRECISION denominator: doing that
+    would need a mechanism grade.py doesn't have (a "reachable but never executed" scope, distinct
+    from "outside the corpus" — CalleeAssembly-style first_party filtering is per-module, not
+    per-function, and the C# oracle has no analogous need since it enumerates every compiled call
+    site whether or not any test reaches it). Building that mechanism was judged out of scope for
+    this session; flagged here as a required follow-up rather than silently approximated.
+    """
+    if cell != "with-tests":
+        raise CellNotMeasurable(
+            "the TypeScript oracle is a runtime shadow stack: it only records an edge while the "
+            "code runs, so a 'without-tests' answer key is not a smaller version of the real one, "
+            "it is nothing — there is no way to produce it. Only 'with-tests' is measurable here."
+        )
+
+    harness = entry.get("typescript_harness")
+    if harness not in ("ts-jest", "vitest"):
+        raise SystemExit(
+            f"{entry['name']}: language: typescript entries need a typescript_harness field in "
+            f"corpus.json, either 'ts-jest' or 'vitest' (got {harness!r}) — harness selection is "
+            f"never auto-detected, see build_oracle_typescript's docstring"
+        )
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    raw = out_dir / "raw_edges.txt"
+    if raw.exists():
+        raw.unlink()
+
+    env = {**os.environ, "ORACLE_TS_CORPUS_ROOT": str(checkout), "EDGE_OUT": str(raw)}
+
+    if harness == "ts-jest":
+        jest_bin = ORACLE_TS_DIR / "node_modules" / "jest" / "bin" / "jest.js"
+        if not jest_bin.is_file():
+            raise SystemExit(f"{jest_bin} missing — run `npm install` in {ORACLE_TS_DIR}")
+        cmd = ["node", str(jest_bin),
+               "--config", str(ORACLE_TS_DIR / "jest.instrumented.config.js"),
+               "--runInBand", "--no-cache"]
+    else:
+        project_dir = checkout
+        rel = entry.get("typescript_project_dir")
+        if rel:
+            project_dir = checkout / rel
+        env["ORACLE_TS_PROJECT_DIR"] = str(project_dir)
+        npx = "npx.cmd" if os.name == "nt" else "npx"
+        cmd = [npx, "vitest", "run", "--root", str(project_dir),
+               "--config", str(ORACLE_TS_DIR / "vitest.instrumented.config.mts")]
+
+    result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(checkout), env=env)
+    (out_dir / "harness.stdout.txt").write_text(result.stdout, encoding="utf-8")
+    (out_dir / "harness.stderr.txt").write_text(result.stderr, encoding="utf-8")
+
+    # A config mistake (wrong `ts` instance, wrong tsconfig, wrong corpus root) must not look like
+    # a legitimate empty answer key — see oracle/typescript/README.md "Two silent no-ops".
+    if "instrumented 0 functions" in result.stderr:
+        raise SystemExit(
+            f"{entry['name']}: shadow-stack instrumented ZERO functions — a config mistake, not a "
+            f"real empty answer key. See {out_dir / 'harness.stderr.txt'}"
+        )
+    if not raw.is_file() or raw.stat().st_size == 0:
+        raise SystemExit(
+            f"{entry['name']}: TS harness produced no edges at all (exit {result.returncode}) — "
+            f"see {out_dir / 'harness.stdout.txt'} / harness.stderr.txt"
+        )
+    if result.returncode != 0:
+        # Real corpora have pre-existing red tests (class-validator/zod both do, per
+        # oracle/typescript/README.md). A nonzero exit alongside real recorded edges is a fact
+        # worth printing, not grounds to throw the run away — the zero-wrap guard above is what
+        # catches the actually-dangerous silent-no-op case.
+        print(f"note: {entry['name']} TS harness exited {result.returncode} (edges were recorded; "
+              f"likely some tests failed) — see {out_dir / 'harness.stderr.txt'}", file=sys.stderr)
+
+    module_id = repo_dir_name(entry)
+    edges_path = out_dir / "oracle.jsonl"
+    overrides_path = out_dir / "overrides.json"
+    # No override/virtual-dispatch concept exists for this oracle (that is a C#/IL notion — a
+    # declared interface/base-class target vs. the implementation an arm names). Empty, not
+    # absent: grade.py's --overrides flag expects a file.
+    overrides_path.write_text("{}", encoding="utf-8")
+
+    seen: set[tuple[str, str]] = set()
+    written = 0
+    with edges_path.open("w", encoding="utf-8") as out:
+        for line in raw.read_text(encoding="utf-8", errors="replace").splitlines():
+            if " -> " not in line:
+                continue
+            caller_label, callee_label = line.split(" -> ", 1)
+            caller_key, callee_key = _ts_key(caller_label), _ts_key(callee_label)
+            pair = (caller_key, callee_key)
+            if pair in seen:
+                continue  # grade.py loads the oracle into a set anyway; dedup here just shrinks the file
+            seen.add(pair)
+            out.write(json.dumps({
+                "Caller": caller_key,
+                "Callee": callee_key,
+                "Op": "call",  # the shadow stack does not distinguish call/callvirt/newobj/ldftn
+                "CalleeAssembly": module_id,
+                "CallerCompilerGenerated": False,
+                "CalleeCompilerGenerated": False,
+                "NoDebugInfo": False,
+            }) + "\n")
+            written += 1
+
+    if written == 0:
+        raise SystemExit(f"{entry['name']}: raw edges existed but none parsed into oracle.jsonl rows")
+
+    return edges_path, overrides_path, [module_id]
+
+
+# Which oracle builds the answer key for a corpus.json `language`. Routing through this registry
+# rather than a hardcoded `dotnet run --project oracle/csharp` is what lets a second language add
+# itself (`oracle/typescript` -> `build_oracle_typescript`) without touching this dispatch again.
+# An unregistered language must fail loudly, not silently skip the cell — see its use in main().
 ORACLE_BUILDERS: dict[str, Callable[[dict, Path, str, Path], tuple[Path, Path, list[str]] | None]] = {
     "csharp": build_oracle_csharp,
+    "typescript": build_oracle_typescript,
 }
 
 
@@ -392,6 +547,14 @@ def main() -> int:
                     "note": arm.note,
                     "seconds": arm.seconds,
                     "coverage_declared_by_arm": arm.coverage,
+                    # csharp: the answer key enumerates every compiled call site, run or not —
+                    # "exhaustive-static". typescript: the shadow-stack key only records a call
+                    # that actually executed — "executed-tests-only", a strict precision oracle and
+                    # a recall oracle only on the slice the test suite reached. See
+                    # build_oracle_typescript's docstring in this file.
+                    "oracle_coverage": ("executed-tests-only"
+                                        if entry.get("language", DEFAULT_LANGUAGE) == "typescript"
+                                        else "exhaustive-static"),
                     "first_party": first_party,
                     "oracle_assemblies": [str(a.relative_to(checkout))
                                           for a in assemblies_for(entry, checkout, cell)],

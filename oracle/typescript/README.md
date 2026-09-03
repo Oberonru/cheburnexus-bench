@@ -1,7 +1,13 @@
-# oracle/typescript — shadow-stack call-graph prototype
+# oracle/typescript — shadow-stack call-graph oracle
 
-**Status: prototype. Not wired into `runner/run.py` — there is no `build_oracle_typescript` entry
-in `ORACLE_BUILDERS`, and this does not yet produce a graded answer key.**
+**Status: wired into `runner/run.py` (2026-09-03) — `build_oracle_typescript`, registered in
+`ORACLE_BUILDERS["typescript"]`, produces a real `oracle.jsonl` end to end. Verified against
+`typestack/class-validator` (ts-jest): 3255 unique edges, grader consumes the file cleanly (see
+the corpus.json entry and `runner/test_runner.py`'s `check_typescript_key_and_guard`). The Vitest
+adapter is wired the same way but not re-verified through `run.py` this session — see "Not done
+here" below. No TypeScript arm exists yet, so no precision/recall NUMBER against a real arm has
+been published — see run.py's `build_oracle_typescript` docstring for the key contract (both ends)
+and the recall-scope caveat any future arm's grading must account for.**
 
 ## The mechanism
 
@@ -300,10 +306,17 @@ mechanism.
 
 ## Not done here
 
-- Not wired into `runner/run.py` / `ORACLE_BUILDERS` — neither the ts-jest nor the Vitest adapter.
-  There is no `.sln`/`csproj`-equivalent "single command produces the answer key for any TS repo"
-  story yet — the corpus root is a hand-supplied env var, and the edge format has not been
-  converted to whatever `oracle/csharp` emits.
+- **Wired for ts-jest, verified; wired for Vitest, unverified through run.py this session.**
+  `build_oracle_typescript` in `runner/run.py` drives either harness from corpus.json
+  (`typescript_harness: "ts-jest" | "vitest"`, plus `typescript_project_dir` to scope a Vitest
+  monorepo package). The ts-jest path was run end to end against class-validator through
+  `run.py`'s own `main()`; the Vitest path was not re-run through `run.py` this session — its
+  standalone adapter was verified separately (zod, see above), but the run.py-level plumbing
+  (env vars, cwd, npx resolution) is new code, untested on that path.
+- No TypeScript arm exists yet to grade against this oracle. `runner/run.py`'s `--arms` still only
+  names `grep`, `repowise`, `cheburnexus` — none of which understand TypeScript source, so a
+  live run against this oracle currently produces 0 arm edges / no precision number. Building a
+  TS arm (most obviously wrapping `TsAnalyzer`) is future work, out of this session's scope.
 - The Vitest adapter's config-loading is a workaround (bundle the corpus's own `.ts` config with
   its own esbuild, drop `test.projects`), not a general "extend any vitest workspace" story — a
   corpus whose config chain is more than two files deep, or that needs its full multi-project

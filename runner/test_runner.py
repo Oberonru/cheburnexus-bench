@@ -350,9 +350,61 @@ def check_oracle_builder_routing() -> list[str]:
             failures.append(f"the SystemExit message must name both the bad language and the "
                             f"repository so a config mistake is findable, got: {why}")
 
-    if set(ORACLE_BUILDERS) != {"csharp"}:
-        failures.append(f"ORACLE_BUILDERS should register exactly 'csharp' until a second "
-                        f"language's oracle exists, got {sorted(ORACLE_BUILDERS)}")
+    # A second language's oracle now exists (oracle/typescript, shadow-stack runtime trace) — see
+    # build_oracle_typescript in run.py. This assertion used to require exactly {"csharp"} "until a
+    # second language's oracle exists"; that day arrived 2026-09-03, so the set check moves to
+    # naming both known languages explicitly rather than being deleted outright.
+    if set(ORACLE_BUILDERS) != {"csharp", "typescript"}:
+        failures.append(f"ORACLE_BUILDERS should register exactly 'csharp' and 'typescript', "
+                        f"got {sorted(ORACLE_BUILDERS)}")
+
+    return failures
+
+
+# ── typescript oracle: key translation + the with-tests-only guard, no node/npm required ──────
+
+def check_typescript_key_and_guard() -> list[str]:
+    """`_ts_key` and the without-tests refusal are pure Python and testable without a real TS
+    corpus or any installed harness — the harness-invoking part of build_oracle_typescript is
+    verified separately, by an actual run (see the session report, not this file)."""
+    from run import CellNotMeasurable, ORACLE_BUILDERS, _ts_key, build_oracle_typescript
+
+    failures = []
+
+    if _ts_key("<module>") != "<module>::<entry>:0":
+        failures.append("_ts_key('<module>') must map the root frame to a key containing a "
+                        "literal '<' so grade.py's existing unresolvable-caller rule drops it")
+
+    got = _ts_key("src/decorator/decorators.ts:ValidationTypes.isIn:42")
+    want = "src/decorator/decorators.ts::ValidationTypes.isIn:42"
+    if got != want:
+        failures.append(f"_ts_key file:label:line -> Type::Method translation wrong: "
+                        f"got {got!r}, want {want!r}")
+
+    if "typescript" not in ORACLE_BUILDERS or ORACLE_BUILDERS["typescript"] is not build_oracle_typescript:
+        failures.append("ORACLE_BUILDERS['typescript'] must route to build_oracle_typescript")
+
+    try:
+        build_oracle_typescript({"name": "x/x", "language": "typescript"}, Path("."),
+                                 "without-tests", Path("."))
+        failures.append("build_oracle_typescript('without-tests') must raise CellNotMeasurable — "
+                        "a runtime oracle has no without-tests answer key to build")
+    except CellNotMeasurable:
+        pass
+    except Exception as unexpected:  # noqa: BLE001
+        failures.append(f"expected CellNotMeasurable for without-tests, got "
+                        f"{type(unexpected).__name__}: {unexpected}")
+
+    try:
+        build_oracle_typescript({"name": "x/x", "language": "typescript"}, Path("."),
+                                 "with-tests", Path("."))
+        failures.append("build_oracle_typescript with no typescript_harness field must raise "
+                        "SystemExit, not silently pick a default (harness is never auto-detected)")
+    except SystemExit:
+        pass
+    except CellNotMeasurable as wrong:
+        failures.append(f"missing typescript_harness is a config mistake (SystemExit), not an "
+                        f"unmeasurable cell: {wrong}")
 
     return failures
 
@@ -360,6 +412,7 @@ def check_oracle_builder_routing() -> list[str]:
 def main() -> int:
     failures: list[str] = check_framework_selection()
     failures += check_oracle_builder_routing()
+    failures += check_typescript_key_and_guard()
     with tempfile.TemporaryDirectory() as raw:
         tmp = Path(raw)
         failures += check_assembly_selection(tmp)
