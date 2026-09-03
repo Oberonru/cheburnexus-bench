@@ -85,26 +85,36 @@ file's whole job, and every step is a fact read from TsAnalyzer's own output, ne
    before this fix — the oracle's `labelFor` never qualifies by the enclosing FUNCTION, only by the
    enclosing CLASS, so the `ownerMethod` prefix is stripped for the join). Anonymous/IIFE closures
    still cannot be translated — see point 6 below, now the real limit rather than "not implemented".
-6. **Anonymous arrows/function-expressions used as inline callbacks CANNOT be translated, even though
-   TsAnalyzer now gives them a caller node.** TsAnalyzer's anonymous label is deliberately a
-   POSITIONALLY STABLE `<anon:L<line>>`/`<iife:L<line>>` tag (file + own start line — see
-   `emitCore.ts`'s `describeCallable`), chosen specifically because the oracle's own scheme — a
-   per-file VISIT-ORDER counter (`anon${counter}`/`anonFnExpr${counter}`, `transformer.js:308,354`,
-   fallback only when `nameOf` finds no bound identifier) — is fragile: an unrelated edit earlier in
-   the file renumbers every later anonymous callable. The two schemes are NOT translatable into each
-   other post hoc: the oracle's counter value is not reconstructible from TsAnalyzer's output (it
-   depends on AST visit order over every function-like node in the file, which TsAnalyzer never
-   records), and grading is EXACT-STRING set intersection on `(caller, callee)`
-   (`grader/grade.py::Cell.score`/`method_key`) — not a line-based near-miss match — so a same-line
-   join does not help: the oracle's label differs from any TsAnalyzer-derivable string in its NAME
-   component (the counter), not (only) its line. This arm counts these as
-   `anonymous-closure-unspellable` (see `Translator.translate`) rather than guessing at a spelling —
-   "exact fact or silence", not "close enough". A class-field arrow *is* captured by TsAnalyzer under
-   the FIELD NAME (not this closure path at all — see `methodNodesOf`/`buildSidecarEntry` above),
-   which still cannot agree with the oracle's `Class.anonN:line` spelling for the same reason.
-   Recorded as a real, measured, structural gap between the two identity schemes — not tuned around,
-   and not something an arm-only change can close without either the oracle adopting a
-   positionally-stable scheme too, or the grader adopting a line-based (not name-based) join.
+6. **UPDATE (2026-09-03, second follow-up): anonymous arrows/function-expressions/IIFEs now DO
+   translate.** The gap described below was real when first written (oracle labeled anonymous
+   callables with a per-file VISIT-ORDER counter — `anon${counter}`/`anonFnExpr${counter}`/
+   `arrow${counter}`, fragile the same way project memory already flagged for the shadow-stack edge
+   count: an unrelated earlier edit renumbers every later anonymous callable). Rather than leave that
+   fragile scheme in place and declare the join permanently impossible, the ORACLE side was changed
+   (`oracle/typescript/transformer.js`'s `anonLabel()`) to the SAME positionally-stable choice
+   TsAnalyzer's `describeCallable` already made: label by the callable's own start line, not by visit
+   order. `_anon_join_name` in this file now converts TsAnalyzer's raw `<anon:L<line>>`/
+   `<iife:L<line>>` tag to the oracle's `anonL<line>` spelling and lets it join exactly, through the
+   same machinery as every other member.
+   ⚠ MEASURED PITFALL, not merely theoretical: the first version of `anonLabel()` reused
+   TsAnalyzer's own bracketed spelling (`<anon:L<line>>`) verbatim for byte-for-byte match. That
+   made naive recall jump 0.095 -> 0.397 with `matched` STUCK at exactly 240 — the entire "gain" was
+   ~1900 oracle primary-cell rows silently vanishing into `grade.py`'s `normalize_caller`
+   "compiler-generated caller, drop it" rule (built for C#'s `<>c__DisplayClass` mangling, which
+   fires on ANY '<' in a caller key) — a shrunk denominator dressed up as recall, exactly the
+   "ruler that deletes the hard half of the exam" failure this project keeps catching. The
+   bracket-free `anonL<line>` spelling side-steps that rule entirely and gave the REAL number:
+   recall 0.511, naive precision 0.979, `matched` 1279 (up from 239 pre-engine-fix) — see git log
+   on this file and `oracle/typescript/transformer.js`'s `anonLabel()` comment for the full
+   before/after. Same-line collisions (two anonymous callables starting on the identical line) are
+   disambiguated on the oracle side by column (`anonL<line>C<col>` for the second-or-later one on a
+   line); this arm's join key never carries a column, so such a SECOND colliding closure is simply
+   unreachable by this arm (falls through unmatched, not fabricated) — measured at 0 occurrences on
+   class-validator (see `Translator`'s `closure_collision_keys` and the run's coverage note).
+   A class-field arrow initializer *is* still captured by TsAnalyzer under the FIELD NAME (a
+   different code path entirely — see `methodNodesOf`/`buildSidecarEntry` above, not this closure
+   path), which the oracle's `anonL<line>` label does not carry either — that specific shape remains
+   a real, separate, unaddressed gap (not measured how many edges it affects on this corpus).
 
 None of the above is fudged into the join: an edge whose caller or callee key cannot be built by the
 rules above is DROPPED from this arm's output and counted, never guessed at or silently included
@@ -359,25 +369,38 @@ _DROP_REASONS = (
     "no-methods-sidecar-line",
     "unparseable-raw-key",
     "accessor-param-count-neither-0-nor-1",
-    "anonymous-closure-unspellable",
+    "anonymous-closure-tag-line-mismatch",
 )
 
-# The oracle's shadow-stack transformer labels a closure `nameOf(ts, node, fallback)` where the
-# fallback ONLY fires when the node has no bound identifier at all — `anon${counter}` /
-# `anonFnExpr${counter}` (transformer.js:308,354), a per-file VISIT-ORDER counter. TsAnalyzer's own
-# anonymous label is POSITIONALLY STABLE (`<anon:L<line>>` / `<iife:L<line>>`, file + own start
-# line — see emitCore.ts's describeCallable) precisely because an ordinal counter renumbers every
-# later anonymous callable in a file after an unrelated earlier edit (this is why the engine fix was
-# built this way, not to match the oracle's spelling). The two schemes cannot be reconciled into the
-# same string: the oracle's counter is not deterministically reconstructible from TsAnalyzer's output
-# (it depends on AST visit order over EVERY function-like node in the file, not just closures, and
-# is never emitted by TsAnalyzer at all), and grading is exact-string set intersection on
-# (caller, callee) pairs (`grader/grade.py`'s `Cell.score` and `method_key`/`_CECIL_FULLNAME`) — not
-# a line-based near-miss match. So an anonymous/IIFE closure's translated key is NEVER attempted:
-# doing so would require literally guessing the oracle's counter value, which is exactly what the
-# project's "exact fact or silence" rule forbids. It is counted here as its own drop reason instead
-# of being folded into "unparseable-raw-key", so it reads separately in the coverage note.
-_ANON_CLOSURE_RE = re.compile(r"^<(anon|iife):L(\d+)>$")
+# UPDATE (2026-09-03, second follow-up): the oracle's shadow-stack transformer USED TO label an
+# anonymous closure with a per-file VISIT-ORDER counter (`anon${counter}`/`anonFnExpr${counter}`/
+# `arrow${counter}`, transformer.js:308/354/369/389) — not deterministically reconstructible from
+# TsAnalyzer's output, so this arm used to count every such closure as untranslatable
+# ("anonymous-closure-unspellable"). The oracle's `anonLabel()` now labels anonymous closures the
+# SAME way TsAnalyzer's `describeCallable` always did — positionally, by the callable's own start
+# line (`anonL<line>`, same-line collisions disambiguated by column, see that function's comment) —
+# so the two ends finally agree and this arm can build an EXACT join key instead of refusing to try.
+# `_ANON_LABEL_RE` recognizes TsAnalyzer's raw tag (`<anon:L<line>>`/`<iife:L<line>>`) and
+# `_anon_join_name` converts it to the oracle's bracket-free spelling — deliberately BRACKET-FREE,
+# not because TsAnalyzer's own `<...>` spelling is wrong (it is fine as an internal identifier), but
+# because grade.py's `normalize_caller` drops ANY caller key containing '<' as compiler-generated
+# noise (a rule built for C#'s `<>c__DisplayClass` mangling). Measured: translating straight to
+# `<anon:L<line>>` made recall jump 0.095 -> 0.397 with `matched` UNCHANGED at 240 — the entire
+# "gain" was ~1900 oracle primary-cell rows silently vanishing into "caller not remappable", a
+# shrunk denominator, not a real match. This bracket-free spelling avoids that trap entirely.
+_ANON_LABEL_RE = re.compile(r"^<(anon|iife):L(\d+)>$")
+
+
+def _anon_join_name(engine_name: str) -> str | None:
+    """TsAnalyzer's raw anonymous-closure tag -> the oracle's positionally-stable spelling for the
+    SAME node, or None if `engine_name` is not this shape (i.e. a NAMED closure, translated
+    unchanged by its caller). The iife/anon distinction is TsAnalyzer-internal bookkeeping the
+    oracle's transformer never makes at all (every anonymous shape gets the identical `anonL<line>`
+    scheme) — collapsed here on purpose: it was never observable from the oracle side to begin with,
+    so dropping it loses no fact either side could have joined on.
+    """
+    m = _ANON_LABEL_RE.match(engine_name)
+    return f"anonL{m.group(2)}" if m else None
 
 
 class Translator:
@@ -390,10 +413,11 @@ class Translator:
         self.repo_root = repo_root
         self.drops: dict[str, int] = {r: 0 for r in _DROP_REASONS}
         self.ok = 0
-        # Same-line-collision guard for NAMED closures only (the only closure shape this file ever
-        # translates): translated key -> the distinct raw keys that produced it. Two closures cannot
-        # normally start on the same source line, but this is a fact to CHECK, never assume — see
-        # this file's header point 5/6 and the task that added this guard. A collision is never
+        # Same-line-collision guard for EVERY closure shape (named or anonymous): translated key ->
+        # the distinct raw keys that produced it. Two closures starting on the same source line is
+        # rare but real (e.g. two named nested functions, or two arrows the oracle's OWN column
+        # disambiguation resolves but this arm's join key does not carry a column at all — see
+        # `_anon_join_name`), so this is a fact to CHECK, never assume. A collision is never
         # fuzz-matched to "pick one"; every raw key behind a colliding translated key is dropped and
         # counted so the edge never silently attributes to the wrong closure.
         self._closure_key_sources: dict[str, set[str]] = {}
@@ -411,21 +435,31 @@ class Translator:
 
         # Closure shape (`ownerMethod/name`, closure_owner set by _parse_raw_key): a NAMED nested
         # function/function-expression carries a real identifier and joins exactly like any other
-        # member below (the oracle's labelFor never qualifies by enclosing function, only by class —
-        # see this file's _ANON_CLOSURE_RE comment — so `name` alone, with the owner-function prefix
-        # already stripped, is the right thing to qualify with `simple_name`). An ANONYMOUS/IIFE
-        # closure's `name` is TsAnalyzer's positionally-stable `<anon:L..>`/`<iife:L..>` tag, which
-        # cannot be translated into the oracle's per-file ordinal-counter spelling — see the comment
-        # on _ANON_CLOSURE_RE for why this is a real, not merely unimplemented, limit.
-        if closure_owner is not None and _ANON_CLOSURE_RE.match(name):
-            self._drop("anonymous-closure-unspellable")
-            return None
-
+        # member below (the oracle's labelFor never qualifies by enclosing function, only by class,
+        # so `name` alone — the owner-function prefix already stripped — is the right thing to
+        # qualify with `simple_name`). An ANONYMOUS/IIFE closure's `name` is TsAnalyzer's raw
+        # `<anon:L..>`/`<iife:L..>` tag — rewritten to the oracle's `anonL<line>` spelling by
+        # `_anon_join_name` (see that function's comment) so it falls through the SAME machinery
+        # below as every other member, unchanged from here on.
         entry = self.methods.get(raw_key)
         if entry is None or entry.get("Line") is None:
             self._drop("no-methods-sidecar-line")
             return None
         line = entry["Line"]
+
+        if closure_owner is not None:
+            anon_name = _anon_join_name(name)
+            if anon_name is not None:
+                # Line-contract self-check: the line embedded in TsAnalyzer's own tag must equal
+                # the line `architecture.methods.json` recorded for this exact raw key — both are
+                # ts-morph's `getStartLineNumber()` on the same node, so they MUST agree; if they
+                # ever don't, something upstream is inconsistent and must be surfaced, not papered
+                # over by silently trusting one of the two numbers.
+                tag_line = int(_ANON_LABEL_RE.match(name).group(2))
+                if tag_line != line:
+                    self._drop("anonymous-closure-tag-line-mismatch")
+                    return None
+                name = anon_name
 
         info = self.types.kind_name.get(owner_fqn)
         if info is None:
@@ -539,11 +573,12 @@ def collect(repo_root: Path, cell: str) -> tuple[list[armkit.Edge], armkit.Cover
     note = (f"TsAnalyzer resolved {total_calls} call sites; {translator.ok} key(s) translated "
             f"successfully, {dropped_calls} raw key lookups failed translation ({breakdown or 'none'})"
             f"{collision_note} "
-            f"-- see this arm's run.py header for what each reason means. Named nested functions and "
-            f"named inline closures now get their own call-graph node and translate like any other "
-            f"member (engine commit 2a2014e1); ANONYMOUS/IIFE closures get a node too but their key "
-            f"is still untranslatable against this oracle -- see anonymous-closure-unspellable and "
-            f"the _ANON_CLOSURE_RE comment above for why that is a real limit, not a TODO.")
+            f"-- see this arm's run.py header for what each reason means. Named AND anonymous/IIFE "
+            f"closures all get their own call-graph node now (engine commit 2a2014e1) and all "
+            f"translate: named ones like any other member, anonymous ones via _anon_join_name against "
+            f"the oracle's own positionally-stable anonLabel() (oracle/typescript/transformer.js, "
+            f"2026-09-03 follow-up) -- residual drops are almost entirely no-methods-sidecar-line, "
+            f"not a structural closure-identity gap anymore.")
     print(f"cheburnexus-ts: {note}", file=sys.stderr)
 
     coverage = armkit.Coverage(
