@@ -190,6 +190,47 @@ function makeTransformer(ts, fileTag) {
       return sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
     }
 
+    // POSITIONALLY-STABLE ANONYMOUS LABEL (2026-09-03 follow-up): replaces the old visit-order
+    // `anon${counter}`/`anonFnExpr${counter}`/`arrow${counter}` fallback. That scheme was the one
+    // label component in this whole file that was NOT positionally stable — memory records it
+    // renumbering every later anonymous callable in a file after an unrelated earlier edit, which
+    // made a 2772->3255 shadow-stack comparison undecomposable and forced a "this delta is NOT
+    // recall" caveat (finding-shadow-stack-deterministic-but-fabricates-edges-2026-09-02.md). The
+    // engine side (TsAnalyzer's `describeCallable` in emitCore.ts) already made the deliberate
+    // choice to label an anonymous callable by its own start line instead — this brings the oracle
+    // to the SAME scheme so the two ends can join by an exact string, not a fuzzy one.
+    //
+    // Line alone is not always unique: two distinct anonymous callables CAN start on the same
+    // source line (`arr.map(() => f()).filter(() => g())`). Collapsing them onto one label would
+    // silently fabricate a merged identity for two different callables — the exact defect the
+    // 2026-09-02 class-qualified-label fix killed for named members, so it must not be reintroduced
+    // here for anonymous ones. `anonLineUsed` counts same-line occurrences (reset per file, same
+    // scope as `counter`/`classStack`) and the label for a SECOND-OR-LATER callable on an
+    // already-seen line gets a `:C<column>` suffix — the column is itself a real, deterministic,
+    // positionally-stable fact (two distinct nodes cannot start at the same line AND column), not a
+    // counter. A line with only one anonymous callable (the overwhelming majority) gets the plain
+    // `anonL<line>` form.
+    //
+    // NO ANGLE BRACKETS (measured, not a style choice): grade.py's `normalize_caller`/
+    // `enclosing_user_method` treats ANY caller key containing '<' as a compiler-generated,
+    // unattributable name (built for C#'s `<>c__DisplayClass` mangling) and drops the WHOLE oracle
+    // row out of the primary cell before it can ever be matched. Tried `<anon:L<line>>` first
+    // (matching TsAnalyzer's own raw spelling byte-for-byte) and measured the result: recall rose
+    // from 0.095 to a hollow 0.397, but `matched` stayed at exactly 240 either run — the "gain" was
+    // ~1900 oracle primary rows silently vanishing into "caller not remappable" (2665 vs 765
+    // before), not anything newly joined. TsAnalyzer's own raw label keeping its angle brackets is
+    // fine (`<anon:L<line>>`/`<iife:L<line>>` never reach the grader directly) — only THIS label,
+    // and this arm's translated key built to match it (see arms/cheburnexus-ts/run.py's
+    // `_ANON_LABEL_RE`/`_anon_join_name`), need to stay bracket-free.
+    const anonLineUsed = new Map();
+    function anonLabel(node) {
+      const line = lineOf(node);
+      const col = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).character + 1;
+      const seen = anonLineUsed.get(line) || 0;
+      anonLineUsed.set(line, seen + 1);
+      return seen === 0 ? `anonL${line}` : `anonL${line}C${col}`;
+    }
+
     function labelFor(node, name, kindSuffix) {
       const cls = classStack.length ? classStack[classStack.length - 1] : null;
       const qualifiedName = cls ? `${cls}.${name}` : name;
@@ -305,7 +346,9 @@ function makeTransformer(ts, fileTag) {
         counter++;
         const name = ts.isConstructorDeclaration(visited)
           ? 'constructor'
-          : nameOf(ts, visited, `anon${counter}`);
+          // nameOf(..., null) so a real bound name is never discarded after anonLabel() has
+          // already consumed a same-line collision slot for it -- see anonLabel's comment.
+          : (nameOf(ts, visited, null) ?? anonLabel(visited));
         const kindSuffix = ts.isGetAccessorDeclaration(visited)
           ? '(get)'
           : ts.isSetAccessorDeclaration(visited)
@@ -351,7 +394,7 @@ function makeTransformer(ts, fileTag) {
       // module no longer crashes.
       if (ts.isFunctionExpression(visited) && visited.body && !visited.asteriskToken) {
         counter++;
-        const name = nameOf(ts, visited, `anonFnExpr${counter}`);
+        const name = nameOf(ts, visited, null) ?? anonLabel(visited);
         const label = labelFor(visited, name);
         const { newParams, hoistStatements } = hoistDefaultParams(ts, factory, visited.parameters);
         const bodyWithDefaults = hoistStatements.length
@@ -366,7 +409,7 @@ function makeTransformer(ts, fileTag) {
 
       if (ts.isArrowFunction(visited) && visited.body && ts.isBlock(visited.body)) {
         counter++;
-        const label = labelFor(visited, `arrow${counter}`);
+        const label = labelFor(visited, anonLabel(visited));
         const { newParams, hoistStatements } = hoistDefaultParams(ts, factory, visited.parameters);
         const bodyWithDefaults = hoistStatements.length
           ? factory.createBlock([...hoistStatements, ...visited.body.statements], true)
@@ -386,7 +429,7 @@ function makeTransformer(ts, fileTag) {
       // shape and its async-ness.
       if (ts.isArrowFunction(visited) && visited.body && !ts.isBlock(visited.body)) {
         counter++;
-        const label = labelFor(visited, `arrow${counter}`);
+        const label = labelFor(visited, anonLabel(visited));
         const newBody = wrapExpr(visited.body, label, isAsyncNode(ts, visited));
         return factory.updateArrowFunction(
           visited, visited.modifiers, visited.typeParameters, visited.parameters,
