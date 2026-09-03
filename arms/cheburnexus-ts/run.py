@@ -237,6 +237,68 @@ def version() -> str:
     return f"{engine_identity(engine_dir)} (TsAnalyzer CLI, ts-morph syntactic+semantic front end)"
 
 
+# ── build-freshness gate — a HONEST identity string is not enough ──────────────────────────────
+# 2026-09-03: fixing engine_identity() to hash all of dist/core/*.js (above) only makes a stale
+# build DESCRIBABLE — a reader who compares two manifests by hand will notice the digest changed.
+# It does nothing on its own: a run against an unbuilt dist/ still exits 0 and writes edges that
+# look exactly as real as a fresh run's, because nothing here ever checked whether dist/ was built
+# from the src/ sitting on disk right now. That is the same failure shape as the five prior
+# "artifact older than the code" incidents (see gotcha-artifact-older-than-code-fails-silently.md
+# in the product repo) and the same fix pattern the TS ORACLE already uses for its own silent
+# no-op (the zero-wrap guard: don't describe the problem, refuse to run). So this checks build
+# freshness BEFORE the engine is invoked, and refuses — raises, not a printed note — if dist/core
+# does not look like it was built from the src/core currently on disk.
+#
+# The check: dist/core/*.ts's compiled counterpart is dist/core/*.js (1:1, see src/core's three
+# files vs dist/core's three files) — the newest mtime among src/core/*.ts must not be newer than
+# the OLDEST mtime among dist/core/*.js. If some source file was edited after the least-recently
+# rebuilt dist file, `npm run build` was not re-run since that edit — the exact scenario that let
+# 2026-09-03's emitCore.ts change ship unmeasured under the old main.js-only signature. Comparing
+# to the oldest dist file (not the newest) matters: a bundler can touch every dist file's mtime on
+# a build that only recompiled one of them, but it cannot make an untouched dist file's mtime run
+# AHEAD of a source edit made after that build finished.
+#
+# This is deliberately mtime-based, not a stored source hash: TsAnalyzer's build has no existing
+# step that records one, adding it would touch the product build (out of scope — "движок не
+# трогать"), and mtime is exactly what `npm run build` already produces as a side effect of doing
+# its job, so the gate costs nothing beyond the two directory listings it already needs for
+# engine_identity().
+def _stale_build_reason(engine_dir: Path) -> str | None:
+    """None if dist/core looks built from src/core as it is right now; else why it does not."""
+    src_dir = engine_dir / "src" / "core"
+    core_dir = engine_dir / "dist" / "core"
+    if not src_dir.is_dir():
+        return None  # no src/ shipped with this checkout (e.g. a packaged dist-only build) — can't check, don't guess
+    try:
+        src_files = sorted(src_dir.glob("*.ts"))
+        dist_files = sorted(core_dir.glob("*.js"))
+    except OSError as exc:
+        return f"could not list src/core or dist/core: {exc.strerror or exc}"
+    if not src_files:
+        return None
+    if not dist_files:
+        return f"dist/core has no .js files but src/core/*.ts exists — never built (run `npm run build` in {engine_dir})"
+    try:
+        # key=... by mtime explicitly — max()/min() over plain (Path, mtime) tuples compares the
+        # Path FIRST (alphabetically) and only falls back to mtime on a tie, which silently picks
+        # the wrong file whenever the alphabetically-last file isn't the most recently edited one.
+        # Caught by actually running this against a real edit (below), not by reading the code.
+        newest_src = max(((p, p.stat().st_mtime) for p in src_files), key=lambda t: t[1])
+        oldest_dist = min(((p, p.stat().st_mtime) for p in dist_files), key=lambda t: t[1])
+    except OSError as exc:
+        return f"could not stat src/core or dist/core: {exc.strerror or exc}"
+    src_path, src_mtime = newest_src
+    dist_path, dist_mtime = oldest_dist
+    if src_mtime > dist_mtime:
+        src_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(src_mtime))
+        dist_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(dist_mtime))
+        return (f"dist/core is STALE relative to src/core: {src_path.name} was edited {src_str} "
+                f"(newer than any run must trust) but {dist_path.name} was last built {dist_str} — "
+                f"run `npm run build` in {engine_dir} before measuring. Refusing to run rather than "
+                f"produce plausible-looking numbers from an old build (see run.py header).")
+    return None
+
+
 NODE_ENV = "CHEBURNEXUS_TS_NODE"
 
 
@@ -553,6 +615,9 @@ def collect(repo_root: Path, cell: str) -> tuple[list[armkit.Edge], armkit.Cover
     engine_dir = find_engine_dir()
     if engine_dir is None:
         raise RuntimeError(engine_missing_message())
+    stale = _stale_build_reason(engine_dir)
+    if stale is not None:
+        raise RuntimeError(f"cheburnexus-ts: refusing to measure with a stale build — {stale}")
 
     scratch = WORK_ROOT / repo_root.name / cell
     result = _run_engine(engine_dir, repo_root, scratch)
