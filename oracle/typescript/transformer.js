@@ -397,7 +397,90 @@ function makeTransformer(ts, fileTag) {
       return visited;
     }
 
-    const outSf = ts.visitNode(sourceFile, visit);
+    let outSf = ts.visitNode(sourceFile, visit);
+
+    // MODULE-FRAME FIX (2026-09-03): before this, EVERY call made directly at a file's true top
+    // level -- not inside any function -- was invisible to the shadow stack, because
+    // shadow_stack.js's ROOT_FRAME ('<module>') is one hardcoded, location-less sentinel used for
+    // TWO structurally different situations that collapsed onto the same string: (a) a real,
+    // deterministic, first-party call the corpus's own module-evaluation code makes (a decorator
+    // applied to a file-scope class, a top-level `describe(...)` registration call, a bootstrap
+    // IIFE, DI container registration at import time -- see finding-ts-no-caller-calls-counted-
+    // 2026-08-27.md), and (b) a callback Jest's own scheduler invokes later with no ALS context
+    // at all (an `it(...)`/`beforeEach(...)` body -- genuinely unattributable, no call expression
+    // in source ever names it). On class-validator this was measured, not assumed: 893 unique
+    // "<module> -> X" edges, of which 747 were it()/beforeEach() bodies (bucket (b), correctly
+    // unattributable) and 144 + 2 were real top-level `describe(...)` registrations and one
+    // decorator application (bucket (a), a real fact silently destroyed by the shared sentinel).
+    //
+    // Fix: give each file its OWN synthetic top-level frame, entered via the SAME als.run()-per-
+    // call strategy as every other callable (never enterWith -- same ban as everywhere else in
+    // this file), covering only statements SAFE to move into a nested closure without changing
+    // module semantics: plain top-level ExpressionStatements (side-effecting calls, assignments --
+    // no binding they introduce, so nesting them changes nothing observable). Left OUTSIDE any
+    // wrap, deliberately, because moving them would change TDZ/hoisting/live-binding/export
+    // semantics in ways that look like flaky tests, not like a call-graph fix:
+    //   - import/export declarations and anything carrying an `export` modifier
+    //   - class and function declarations (their OWN body is still instrumented normally by the
+    //     `visit` pass above -- only the file-scope BINDING/hoisting position is left alone)
+    //   - interface/type-alias/enum/module declarations (type-only or need their own hoisting)
+    //   - variable statements (`const`/`let`/`var`) -- wrapping would move the DECLARED BINDING
+    //     into the wrapper's own closure scope, invisible to any sibling top-level code that
+    //     references it by name; only bindings are risky, not use, so this is deliberately more
+    //     conservative than strictly necessary
+    //   - a leading directive prologue ("use strict", ...) -- an ExpressionStatement whose
+    //     expression is a plain string literal, syntactically identical to a real string-literal
+    //     expression statement, but nesting it inside a closure silently stops it being a
+    //     directive at all; excluded unconditionally rather than only when actually leading, since
+    //     telling the two apart needs full directive-prologue scanning for no real-world benefit
+    //     here (no corpus measured so far has a bare string-literal statement mid-file)
+    //
+    // KNOWN, ACCEPTED RESIDUAL: a decorator on a class declared at file scope (like this
+    // corpus's own reject-validation.spec.ts:5-9) still folds to the bare ROOT_FRAME, because the
+    // class declaration itself must not be wrapped -- its decorator list is evaluated as PART OF
+    // that (excluded) node, not as a separate statement this pass ever sees. Only the subset that
+    // syntactically IS a standalone top-level statement is fixed here.
+    function isWrappableTopLevelStatement(node) {
+      if (!ts.isExpressionStatement(node)) return false;
+      if (ts.isStringLiteralLike(node.expression)) return false; // possible directive prologue
+      return true;
+    }
+
+    const hasWrappableTopLevel = outSf.statements.some(isWrappableTopLevelStatement);
+    if (hasWrappableTopLevel) {
+      const fileLabel = `${fileTag}:module-scope:0`;
+      const newStatements = [];
+      let i = 0;
+      const stmts = outSf.statements;
+      while (i < stmts.length) {
+        if (!isWrappableTopLevelStatement(stmts[i])) {
+          newStatements.push(stmts[i]);
+          i++;
+          continue;
+        }
+        const run = [];
+        while (i < stmts.length && isWrappableTopLevelStatement(stmts[i])) {
+          run.push(stmts[i]);
+          i++;
+        }
+        counter++; // one wrap event per contiguous run, folded into the same zero-wrap guard
+        const runCall = factory.createCallExpression(
+          factory.createPropertyAccessExpression(factory.createIdentifier('__stack'), 'run'),
+          undefined,
+          [
+            factory.createStringLiteral(fileLabel),
+            factory.createArrowFunction(
+              undefined, undefined, [], undefined,
+              factory.createToken(ts.SyntaxKind.EqualsGreaterThanToken),
+              factory.createBlock(run, true)
+            ),
+          ]
+        );
+        newStatements.push(factory.createExpressionStatement(runCall));
+      }
+      outSf = factory.updateSourceFile(outSf, newStatements);
+    }
+
     wrappedInFile += counter;
     return outSf;
   };

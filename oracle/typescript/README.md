@@ -2,12 +2,76 @@
 
 **Status: wired into `runner/run.py` (2026-09-03) — `build_oracle_typescript`, registered in
 `ORACLE_BUILDERS["typescript"]`, produces a real `oracle.jsonl` end to end. Verified against
-`typestack/class-validator` (ts-jest): 3255 unique edges, grader consumes the file cleanly (see
-the corpus.json entry and `runner/test_runner.py`'s `check_typescript_key_and_guard`). The Vitest
-adapter is wired the same way but not re-verified through `run.py` this session — see "Not done
-here" below. No TypeScript arm exists yet, so no precision/recall NUMBER against a real arm has
-been published — see run.py's `build_oracle_typescript` docstring for the key contract (both ends)
-and the recall-scope caveat any future arm's grading must account for.**
+`typestack/class-validator` (ts-jest): 3270 unique edges (see "Module-scope frame" below — was
+3255 before that fix), grader consumes the file cleanly (see the corpus.json entry and
+`runner/test_runner.py`'s `check_typescript_key_and_guard`). The Vitest adapter is wired the same
+way but not re-verified through `run.py` this session — see "Not done here" below. No TypeScript
+arm exists yet, so no precision/recall NUMBER against a real arm has been published — see run.py's
+`build_oracle_typescript` docstring for the key contract (both ends) and the recall-scope caveat
+any future arm's grading must account for.**
+
+## Module-scope frame (2026-09-03)
+
+A coordinator review of the first `run.py` wiring caught a real gap the mechanism section below
+had not flagged: `shadow_stack.js`'s `ROOT_FRAME` (`'<module>'`) is one hardcoded, location-less
+sentinel, used as the caller for BOTH (a) a call the corpus's own module-evaluation code makes
+directly at file top level (a decorator on a file-scope class, a top-level `describe(...)`
+registration call, a bootstrap IIFE, DI container registration at import time) and (b) a callback
+Jest's own scheduler invokes later with no ALS context at all (`it(...)`/`beforeEach(...)` bodies —
+genuinely unattributable, no call expression in the corpus's source ever names them). Both
+collapsed onto the literal string `"<module>"`, and `runner/run.py`'s `_ts_key` mapped THAT to a
+key containing `<`, which `grade.py`'s existing compiler-mangled-caller rule then silently dropped
+— erasing bucket (a) as a side effect of correctly excluding bucket (b). Measured, not assumed: on
+class-validator this was 893 unique `<module> -> X` edges, of which 747 were `it`/`beforeEach`
+bodies (bucket (b), correctly unattributable) and 144 + 2 were real top-level `describe(...)`
+registrations and one decorator application (bucket (a), real facts silently destroyed by sharing
+bucket (b)'s sentinel) — see `finding-ts-no-caller-calls-counted-2026-08-27.md` in project memory,
+which had already flagged this exact class of TS module-level-call gap.
+
+**Fix**: `transformer.js` now gives each file its own synthetic top-level frame
+(`{file}:module-scope:0`, entered via the same `als.run()`-per-call strategy as every other
+callable — never `enterWith`), covering only plain top-level `ExpressionStatement`s (side-effecting
+calls/assignments — no binding they introduce, so nesting them changes nothing observable).
+Deliberately left OUTSIDE any wrap: import/export declarations and anything carrying an `export`
+modifier, class and function declarations (their own BODY is still instrumented normally — only
+the file-scope binding/hoisting position is left alone), interface/type-alias/enum/module
+declarations, variable statements (`const`/`let`/`var` — wrapping would move the declared BINDING
+into the wrapper's closure, invisible to sibling top-level code referencing it by name), and a
+leading directive prologue (`"use strict"` — syntactically a string-literal expression statement,
+but nesting one silently stops it being a directive).
+
+**Known, accepted residual**: a decorator on a class declared at file scope (class-validator's own
+`test/functional/reject-validation.spec.ts:5-9`) still folds to the bare root sentinel, because the
+class declaration itself must not be wrapped — its decorator list is evaluated as PART OF that
+excluded node, never as a separate statement this pass sees. Only the subset that syntactically IS
+a standalone top-level statement is fixed.
+
+**Re-measured on class-validator, ts-jest, whole run.py, two full runs**: 806/806 tests pass both
+runs; sorted-unique edge sets byte-identical (diff empty). 3255 → **3270** edges (+15), and the
+delta was decomposed exactly, not eyeballed: **144 edges are relabeled** (caller changed from the
+bare `<module>` sentinel to the file-qualified `{file}::module-scope:0` node, same callee — no new
+fact, a previously-erased attribution now correct) and **15 edges are brand-new**
+(`<module> -> {file}::module-scope:0`, one per file that has at least one wrappable top-level
+statement — the entry into that file's new frame). 0 edges are unexplained. Do not read "+15" as
+recall gained on arbitrary code; it is exactly these two effects, no more. Re-run through
+`runner/run.py`'s own `main()`: oracle.jsonl now has 3270 rows (0 unparsed), and the
+"caller not remappable" (bucket b, correctly dropped) count fell from 893 to **765** unique
+`<module>`-caller rows in the raw stream / **764** unique rows in the deduplicated `oracle.jsonl`
+(747 it/beforeEach bodies, unchanged + 17 "other": the 15 new module-scope entry edges themselves
+plus the 2 documented class-decorator residual rows) — describe()-callback rows in this bucket:
+**zero**, down from 144, exactly as intended.
+
+**Also re-measured on zod, Vitest, `packages/zod` scope, two full runs**: bodies wrapped 8253 (was
+7972 — the new module-scope wraps), nonzero both runs. Sorted-unique edge sets byte-identical
+across both runs: 25766 unique edges both times, diff empty. Failing-test counts: 15 (run 1) / 16
+(run 2) of 2744, both within the previously-recorded ceiling (4 baseline + 10 perf-threshold + 2
+stack-text + 1 readonly = 17) — same categories as documented below (treeshake/polyfill-collision
+baseline, `to-json-schema`/`compile-differential`/etc. perf-threshold flake, the stack-frame-text
+pair, the intermittent `readonly.test.ts` ALS rejection), plus one perf-shaped test name
+(`parses a factory-built recursive schema through every object builder`) that only failed on run 2
+— consistent with the already-documented performance-threshold flakiness under instrumentation
+overhead, not a new failure class. No regression: same edge-set determinism claim as before, scoped
+to the SET of distinct call edges, not raw call volume or per-run test outcome.
 
 ## The mechanism
 
