@@ -171,29 +171,62 @@ def engine_missing_message() -> str:
     )
 
 
-_IDENTITY_CACHE: dict[tuple[str, int, int], str] = {}
+_IDENTITY_CACHE: dict[str, str] = {}
 
 
 def engine_identity(engine_dir: Path) -> str:
-    """Build date + content hash of dist/core/main.js — the compiled artifact actually run, not a
-    package.json version string that can go stale without the dist/ being rebuilt. Same reasoning
-    as arms/cheburnexus/run.py's engine_identity()."""
-    entry = (engine_dir / "dist" / "core" / "main.js").resolve()
+    """Build date + content hash of ALL of dist/core/*.js — every compiled module the engine's own
+    require() graph can load at runtime, not just the entry point.
+
+    2026-09-03 defect (found while measuring the TS polygon, fixed here): this used to hash only
+    `dist/core/main.js`. TsAnalyzer's actual analysis logic lives in `emitCore.ts` (imported by
+    main.js as `./emitCore`, and itself pulling in `./prof.js`) — main.js is a thin CLI wrapper.
+    A rebuild that only touches emitCore.ts changes `dist/core/emitCore.js` and leaves
+    `dist/core/main.js` byte-identical (same mtime bump from `npm run build`'s bundler, same
+    content), so the old identity string was blind to exactly the edits that matter: an agent had
+    to check `dist/` by hand today to be sure a fresh build was actually measured. Same shape as
+    the C# arm's engine_identity() comment: an artifact older than the code it claims to represent
+    is a SILENT plausible-negative, and hashing the wrong file is how the manifest keeps lying
+    after the fix has landed.
+
+    Hashing dist/core/ (not the whole dist/, which also holds __tests__/) matches what main.js's
+    own require() graph can reach: core/*.js only, sorted by relative path so the digest is
+    order-independent and a renamed/added module changes it. node_modules (ts-morph, svelte,
+    @vue/compiler-sfc) is deliberately OUT of scope — that is third-party dependency identity, a
+    different question from "did our own source change," and hashing it would make an unrelated
+    `npm install` look like an engine change.
+    """
+    core_dir = (engine_dir / "dist" / "core").resolve()
     try:
-        st = entry.stat()
+        files = sorted(p for p in core_dir.rglob("*.js") if p.is_file())
     except OSError as exc:
-        return f"main.js UNREADABLE ({exc.strerror or exc}) at {entry}"
-    key = (str(entry), st.st_mtime_ns, st.st_size)
-    cached = _IDENTITY_CACHE.get(key)
+        return f"dist/core UNREADABLE ({exc.strerror or exc}) at {core_dir}"
+    if not files:
+        return f"dist/core has no .js files at {core_dir}"
+    try:
+        stats = [(p, p.stat()) for p in files]
+    except OSError as exc:
+        return f"dist/core UNREADABLE ({exc.strerror or exc}) at {core_dir}"
+    key = (str(core_dir), tuple((str(p), st.st_mtime_ns, st.st_size) for p, st in stats))
+    cache_key = repr(key)
+    cached = _IDENTITY_CACHE.get(cache_key)
     if cached is not None:
         return cached
-    built = time.strftime("%Y-%m-%d", time.gmtime(st.st_mtime))
+    newest_mtime = max(st.st_mtime for _, st in stats)
+    built = time.strftime("%Y-%m-%d", time.gmtime(newest_mtime))
+    hasher = hashlib.sha256()
     try:
-        digest = hashlib.sha256(entry.read_bytes()).hexdigest()[:12]
+        for p, _ in stats:
+            hasher.update(p.relative_to(core_dir).as_posix().encode("utf-8"))
+            hasher.update(b"\0")
+            hasher.update(p.read_bytes())
+            hasher.update(b"\0")
     except OSError as exc:
-        return f"main.js built {built} UNREADABLE ({exc.strerror or exc}) at {entry}"
-    identity = f"dist/core/main.js built {built} sha256:{digest} at {engine_dir}"
-    _IDENTITY_CACHE[key] = identity
+        return f"dist/core built {built} UNREADABLE ({exc.strerror or exc}) at {core_dir}"
+    digest = hasher.hexdigest()[:12]
+    identity = (f"dist/core/*.js ({len(files)} files) built {built} sha256:{digest} "
+                f"at {engine_dir}")
+    _IDENTITY_CACHE[cache_key] = identity
     return identity
 
 
