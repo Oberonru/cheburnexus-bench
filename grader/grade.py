@@ -343,6 +343,44 @@ def load_oracle(path: str, first_party: set[str] | None) -> tuple[dict[str, Cell
     return cells, overrides, stats
 
 
+def load_executed_callers(path: str) -> set[str]:
+    """The set of methods the answer key has DIRECT EVIDENCE executed — every Caller AND every
+    Callee it ever recorded, normalized exactly like an arm's own caller space (`method_key` +
+    `normalize_caller`). A Callee is proof the callee ran; a Caller is proof too (it had to run to
+    make the call). Union of both, because either role is enough evidence of execution.
+
+    ⛔⛔ RUNTIME ORACLES ONLY (TypeScript's shadow-stack key). Do NOT call this for the C# oracle:
+    Cecil's IL key is EXHAUSTIVE — it lists every call the compiler emitted, executed or not — so
+    there is no such thing as "never observed executing" there, and filtering by this set would
+    silently discard genuine false positives instead of coverage gaps.
+
+    There is NO guard inside this file: the grader cannot tell the two answer keys apart from their
+    rows alone (both carry Caller/Callee/Op/CalleeAssembly). The protection is structural and lives
+    one level up — runner/run.py passes --executed-only only when corpus.json says the cell's
+    language is TypeScript. If you ever invoke grade.py by hand, that is on you.
+
+    This is the same computation `diagnose_precision.py` already does by hand (bucket a); pulled
+    in here, named, so a published number can apply it instead of a one-off diagnostic script.
+    """
+    executed: set[str] = set()
+    with open(path, encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            row = json.loads(line)
+            for raw in (row.get("Caller"), row.get("Callee")):
+                if not raw:
+                    continue
+                key = method_key(raw)
+                if key is None:
+                    continue
+                normalized, attributable = normalize_caller(key)
+                if attributable:
+                    executed.add(normalized)
+    return executed
+
+
 def load_arm(path: str) -> tuple[set[tuple[str, str]], int]:
     """Load an arm's edges under exactly the caller discipline the answer key uses.
 
@@ -380,6 +418,16 @@ def main() -> int:
     parser.add_argument("--overrides", default=None,
                         help="JSON map {override_key: [declared_key, ...]} emitted by the oracle")
     parser.add_argument("--json", default=None)
+    parser.add_argument("--executed-only", action="store_true",
+                        help="RUNTIME ORACLES ONLY (TypeScript). Score a primary-cell arm edge "
+                             "only when the oracle has direct evidence its CALLER executed "
+                             "(the oracle is a record of one test run, not an exhaustive key — "
+                             "see load_executed_callers). An edge whose caller the key never saw "
+                             "run is withheld into a separate 'unjudged_caller_not_executed' cell "
+                             "instead of counting as a false positive. Never pass this for the "
+                             "C# oracle: Cecil's IL key is exhaustive-static, every callable is "
+                             "listed whether it ran or not, so there is nothing to withhold and "
+                             "this flag would silently erase real false positives.")
     args = parser.parse_args()
 
     first_party = set(args.first_party) if args.first_party else None
@@ -417,14 +465,43 @@ def main() -> int:
     for edge in arm:
         arm_by_cell[cell_of(edge[1], callee_cell, overrides)].add(edge)
 
+    # ── executed-only filter (RUNTIME ORACLES ONLY — see --executed-only help above) ────────────
+    # The unfiltered primary cell is scored FIRST and kept, unconditionally, as the "old strict"
+    # number (denominator = every arm edge in the primary cell). Then, only if the flag is set, the
+    # primary cell's arm set is split: edges whose caller the oracle never saw execute move to a
+    # new 'unjudged_caller_not_executed' cell (empty oracle set — the key has NO OPINION on them,
+    # so they are neither a match nor a false positive) and primary is re-scored on what remains.
+    # Recall is untouched either way: only cell.oracle sets decide recall's denominator, and this
+    # filter never adds, removes, or reclassifies an oracle edge — it only moves ARM edges between
+    # cells.
+    strict_primary = cells["primary"].score(arm_by_cell["primary"], overrides)
+    strict_primary["cell"] = "primary (strict — no executed-caller filter)"
+
+    if args.executed_only:
+        executed_callers = load_executed_callers(args.oracle)
+        judged, unjudged = set(), set()
+        for edge in arm_by_cell["primary"]:
+            (judged if edge[0] in executed_callers else unjudged).add(edge)
+        arm_by_cell["primary"] = judged
+        cells["unjudged_caller_not_executed"] = Cell(
+            "unjudged — arm's caller has no oracle evidence of executing (runtime key: not "
+            "wrong, just never observed)")
+        arm_by_cell["unjudged_caller_not_executed"] = unjudged
+
     results = [cell.score(arm_by_cell[name], overrides) for name, cell in cells.items()]
 
-    width = max(len(r["cell"]) for r in results)
+    width = max(len(r["cell"]) for r in results + [strict_primary])
     print(f"{'cell':<{width}}  {'oracle':>7} {'arm':>7} {'match':>7} {'prec':>7} {'recall':>7}")
     for r in results:
         fmt = lambda v: "    n/a" if v is None else f"{v:7.3f}"
         print(f"{r['cell']:<{width}}  {r['oracle_edges']:>7} {r['arm_edges_in_cell']:>7} "
               f"{r['matched']:>7} {fmt(r['precision'])} {fmt(r['recall'])}")
+    if args.executed_only:
+        fmt = lambda v: "    n/a" if v is None else f"{v:7.3f}"
+        r = strict_primary
+        print(f"{r['cell']:<{width}}  {r['oracle_edges']:>7} {r['arm_edges_in_cell']:>7} "
+              f"{r['matched']:>7} {fmt(r['precision'])} {fmt(r['recall'])}"
+              f"   <- for comparison: same cell, filter OFF")
 
     print(f"\noracle rows read      : {stats['rows']}")
     print(f"oracle rows unparsed   : {stats['unparsed_row']}  (Caller/Callee did not match "
@@ -434,8 +511,11 @@ def main() -> int:
     print(f"arm rows dropped      : {arm_dropped}  (same caller rule as the answer key)")
 
     if args.json:
+        payload = {"cells": results, "stats": {**stats, "arm_dropped": arm_dropped}}
+        if args.executed_only:
+            payload["primary_strict_no_filter"] = strict_primary
         with open(args.json, "w", encoding="utf-8") as handle:
-            json.dump({"cells": results, "stats": {**stats, "arm_dropped": arm_dropped}}, handle, indent=2)
+            json.dump(payload, handle, indent=2)
 
     return 0
 

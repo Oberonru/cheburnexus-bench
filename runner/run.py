@@ -448,7 +448,8 @@ def read_coverage(edges: Path) -> dict:
         return {}
 
 
-def grade(oracle: Path, overrides: Path, arm: ArmRun, first_party: list[str], out_dir: Path) -> dict | None:
+def grade(oracle: Path, overrides: Path, arm: ArmRun, first_party: list[str], out_dir: Path,
+          executed_only: bool = False) -> dict | None:
     if arm.edges_path is None:
         return None
     report = out_dir / "result.json"
@@ -456,13 +457,19 @@ def grade(oracle: Path, overrides: Path, arm: ArmRun, first_party: list[str], ou
     # PREREGISTRATION deviations, G3), but PYTHONHASHSEED is pinned here too as a second,
     # independent guard — belt and braces — so a published number never again depends on which
     # hash seed a Python process happened to start with.
-    result = run([
+    cmd = [
         sys.executable, str(GRADER),
         "--oracle", str(oracle), "--arm", str(arm.edges_path),
         "--overrides", str(overrides),
         "--first-party", *first_party,
         "--json", str(report),
-    ], env={**os.environ, "PYTHONHASHSEED": "0"})
+    ]
+    if executed_only:
+        # RUNTIME ORACLES ONLY. The caller sets this from corpus.json's `language`, never guessed
+        # here — see grade.py's --executed-only help for why this must never reach the C# cell
+        # (its IL key is exhaustive-static; there is no "never observed executing" there).
+        cmd.append("--executed-only")
+    result = run(cmd, env={**os.environ, "PYTHONHASHSEED": "0"})
     (out_dir / "grade.stdout.txt").write_text(result.stdout, encoding="utf-8")
     if result.returncode != 0:
         print(result.stderr[-2000:], file=sys.stderr)
@@ -546,7 +553,13 @@ def main() -> int:
                 arm_dir = cell_dir / arm_name
                 arm_dir.mkdir(parents=True, exist_ok=True)
                 arm = run_arm(arm_name, checkout, cell, arm_dir, repo_key)
-                report = grade(oracle, overrides, arm, first_party, arm_dir)
+                # executed-only is a RUNTIME-ORACLE-ONLY filter (see grade()'s docstring / grade.py
+                # --executed-only help): TypeScript's shadow-stack key only has an opinion on code
+                # a test actually ran, C#'s Cecil/IL key is exhaustive-static and sees everything
+                # compiled whether it ran or not. Gated on corpus.json's own `language` field, not
+                # guessed from the arm, so it can never silently drift onto the C# cell.
+                report = grade(oracle, overrides, arm, first_party, arm_dir,
+                                executed_only=(entry.get("language", DEFAULT_LANGUAGE) == "typescript"))
 
                 (arm_dir / "manifest.json").write_text(json.dumps({
                     "repo": entry["name"],
