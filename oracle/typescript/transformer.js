@@ -23,6 +23,86 @@ function nameOf(ts, node, fallback) {
   return fallback;
 }
 
+// ARROW STATIC NAME (2026-09-03, oracle side of the two-ends contract): an arrow assigned to a
+// variable, an object-literal property (possibly nested), or a bare `Target.member = () => {}`
+// HAS a real static name -- discarding it in favor of a positional `anonL<line>` is our own
+// ruler's defect, sized independently at 265 edges on class-validator / 1625 on zod (see
+// finding-zod-recall-bucketed-no-remainder-2026-09-03.md, bucket 4). Mirrors, on purpose, the
+// SAME three shapes and the SAME precedence TsAnalyzer's `describeCallable` (emitCore.ts) already
+// uses on the engine side -- read that function first if touching this one, do not reinvent a
+// different scheme, or the two ends of the label contract drift apart again (the exact failure
+// mode of 161842f5's regression). Returns null (never a guess) when no static root is reachable
+// (destructuring targets, computed member expressions, an object literal with no qualifying
+// root) -- the caller falls back to anonLabel(), same as before this fix existed.
+// IMPORTANT: called with the ORIGINAL (pre-visitEachChild) node -- .parent is only reliable on
+// nodes still attached to the parsed tree, and an arrow's static-name-bearing ancestor
+// (VariableDeclaration/PropertyAssignment/BinaryExpression) never changes shape under recursion
+// into the arrow's own body, so using the original node's parent chain is exact, not an
+// approximation.
+function arrowStaticName(ts, node) {
+  const par = node.parent;
+  if (!par) return null;
+
+  if (ts.isVariableDeclaration(par) && par.initializer === node && ts.isIdentifier(par.name)) {
+    return par.name.text;
+  }
+
+  const staticKeyName = (nameNode) => {
+    if (ts.isIdentifier(nameNode) || ts.isPrivateIdentifier(nameNode)) return nameNode.text;
+    if (ts.isStringLiteral(nameNode) || ts.isNumericLiteral(nameNode)) return nameNode.text;
+    return null;
+  };
+
+  if (ts.isPropertyAssignment(par) && par.initializer === node) {
+    const key = staticKeyName(par.name);
+    if (key) {
+      const segs = [key];
+      let cur = par.parent; // the ObjectLiteralExpression that owns `par`
+      for (;;) {
+        const holder = cur && cur.parent;
+        if (holder && ts.isPropertyAssignment(holder) && holder.initializer === cur) {
+          const hName = staticKeyName(holder.name);
+          if (!hName) break;
+          segs.unshift(hName);
+          cur = holder.parent;
+          continue;
+        }
+        if (holder && ts.isVariableDeclaration(holder) && holder.initializer === cur && ts.isIdentifier(holder.name)) {
+          segs.unshift(holder.name.text);
+        }
+        break;
+      }
+      return segs.join('.');
+    }
+  }
+
+  if (
+    ts.isBinaryExpression(par) &&
+    par.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+    par.right === node
+  ) {
+    const target = par.left;
+    // ONLY a plain dotted chain rooted in an identifier/`this` (`Mocker.pick`, `this.x.y`) is a
+    // safe static name. Anything else reachable through PropertyAccessExpression.getText() -- a
+    // parenthesized cast (`(payload as $RefinementCtx).addIssue`), a call result, an element
+    // access in the chain -- prints its FULL SOURCE TEXT including `(`/`as`/etc, which breaks the
+    // grader's `_CECIL_FULLNAME` regex (`[^(]+` for the method part) and silently drops the row
+    // as unparsed. MEASURED, not assumed: an early version of this fix produced exactly 46 such
+    // unparsed rows on zod (all from this one shape) before this guard was added. Falls through to
+    // anonLabel(), same as any other non-static-root shape.
+    if (isSimpleChain(ts, target)) return target.getText();
+  }
+
+  return null;
+}
+
+function isSimpleChain(ts, expr) {
+  if (ts.isIdentifier(expr)) return true;
+  if (expr.kind === ts.SyntaxKind.ThisKeyword) return true;
+  if (ts.isPropertyAccessExpression(expr)) return isSimpleChain(ts, expr.expression);
+  return false;
+}
+
 // COVERAGE-SWEEP FIX: wrapping a derived class's constructor body in a nested arrow moves the
 // super() call out of the constructor's own top-level statement position, which V8 rejects
 // ("Must call super constructor in derived class before accessing 'this'"). Detect a direct
@@ -409,7 +489,10 @@ function makeTransformer(ts, fileTag) {
 
       if (ts.isArrowFunction(visited) && visited.body && ts.isBlock(visited.body)) {
         counter++;
-        const label = labelFor(visited, anonLabel(visited));
+        // ORACLE-NAME FIX (2026-09-03): use the arrow's static name (var/property/assignment
+        // target) when one exists, matching the engine's describeCallable -- see arrowStaticName
+        // above. Falls back to the old positional anonLabel() only when no static root exists.
+        const label = labelFor(visited, arrowStaticName(ts, node) ?? anonLabel(visited));
         const { newParams, hoistStatements } = hoistDefaultParams(ts, factory, visited.parameters);
         const bodyWithDefaults = hoistStatements.length
           ? factory.createBlock([...hoistStatements, ...visited.body.statements], true)
@@ -429,7 +512,8 @@ function makeTransformer(ts, fileTag) {
       // shape and its async-ness.
       if (ts.isArrowFunction(visited) && visited.body && !ts.isBlock(visited.body)) {
         counter++;
-        const label = labelFor(visited, anonLabel(visited));
+        // Same ORACLE-NAME FIX as the block-bodied arrow branch above.
+        const label = labelFor(visited, arrowStaticName(ts, node) ?? anonLabel(visited));
         const newBody = wrapExpr(visited.body, label, isAsyncNode(ts, visited));
         return factory.updateArrowFunction(
           visited, visited.modifiers, visited.typeParameters, visited.parameters,
