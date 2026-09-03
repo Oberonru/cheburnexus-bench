@@ -53,6 +53,19 @@ function arrowStaticName(ts, node) {
     return null;
   };
 
+  // CLASS-FIELD-INITIALIZER FIX (2026-09-03): `class C { static create = (p) => {...} }` is a
+  // PropertyDeclaration, not a VariableDeclaration/PropertyAssignment/BinaryExpression -- none of
+  // the branches below matched it, so an arrow initializing a class field (static or instance)
+  // fell through to anonLabel() despite JS's own inferred-name rule giving it the field's name
+  // (verified in node: `A.create.name === "create"`). The engine's describeCallable already
+  // treats this shape as a named member (`ZodString.create`); classStack (see labelFor) already
+  // supplies the class-name half, so this branch only needs to return the bare property key, not
+  // a qualified name -- prefixing the class here would double it.
+  if (ts.isPropertyDeclaration(par) && par.initializer === node) {
+    const key = staticKeyName(par.name);
+    if (key) return key;
+  }
+
   if (ts.isPropertyAssignment(par) && par.initializer === node) {
     const key = staticKeyName(par.name);
     if (key) {
