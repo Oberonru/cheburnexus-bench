@@ -51,6 +51,30 @@ const PROJECT_DIR = process.env.ORACLE_TS_PROJECT_DIR || CORPUS_ROOT;
 // resolved normally at runtime; only the corpus's own relative .ts files get inlined), write the
 // bundled JS to a throwaway file next to the entry so its own relative imports still resolve, and
 // import that.
+// Preserves each inlined source file's own `import.meta.url` across bundling. esbuild bundles the
+// corpus's whole local config chain into ONE file; without this, every inlined file's
+// `import.meta.url` collapses to the outer bundle's location, so a call like
+// `new URL('../packages', import.meta.url)` inside an inlined file resolves against the WRONG
+// directory (reproduced on vuejs/core: `scripts/aliases.js` does exactly this and the run died
+// with ENOENT before any test started). Fix: textually replace `import.meta.url` with a string
+// literal of that file's OWN url before esbuild inlines it, so each file keeps its own location
+// regardless of where it ends up in the bundle.
+const metaUrlPlugin = {
+  name: 'preserve-import-meta-url',
+  setup(build) {
+    build.onLoad({ filter: /\.(m?[jt]s)$/ }, (args) => {
+      const fs = require('fs');
+      const src = fs.readFileSync(args.path, 'utf8');
+      if (!src.includes('import.meta.url')) return null; // untouched unless needed
+      const loader = args.path.endsWith('.ts') || args.path.endsWith('.mts') ? 'ts' : 'js';
+      return {
+        contents: src.split('import.meta.url').join(JSON.stringify(pathToFileURL(args.path).href)),
+        loader,
+      };
+    });
+  },
+};
+
 async function loadCorpusConfig(dir, corpusRoot) {
   const fs = require('fs');
   const esbuild = require(require.resolve('esbuild', { paths: [corpusRoot] }));
@@ -65,6 +89,7 @@ async function loadCorpusConfig(dir, corpusRoot) {
       format: 'esm',
       write: false,
       logLevel: 'silent',
+      plugins: [metaUrlPlugin],
     });
     const tmp = path.join(dir, `.oracle-corpus-config.${Date.now()}.mjs`);
     fs.writeFileSync(tmp, result.outputFiles[0].text);
@@ -82,14 +107,21 @@ const base = await loadCorpusConfig(PROJECT_DIR, CORPUS_ROOT);
 const baseTest = { ...(base.test || {}) };
 delete baseTest.projects; // see header comment: workspace fan-out is not what a scoped run wants
 
-// KNOWN LIMITATION: when the corpus's own config chain spans multiple files (a project config
-// importing a shared root config, zod's shape), esbuild bundling them together for the plain-Node
-// `import()` above erases each file's own `import.meta.url` -- every `resolve(__dirname, ...)`
-// call in the INLINED file now resolves against the OUTER bundle's location instead of its own,
-// so a path like the root config's own setupFile can come out pointing at a directory that
-// doesn't have it. Rather than silently run with a broken path (a setupFile vitest would fail to
+// FIXED (was a known limitation): when the corpus's own config chain spans multiple files (a
+// project config importing a shared root config, zod's shape), esbuild bundling them together for
+// the plain-Node `import()` above used to erase each file's own `import.meta.url`. The
+// `preserve-import-meta-url` plugin above now rewrites it per-file before bundling, so
+// `resolve(__dirname, ...)`-style calls in an inlined file resolve against ITS OWN location again.
+// Kept as a safety net in case some setupFile still doesn't resolve on disk for an unrelated
+// reason (a genuinely missing corpus-side test helper, say) -- a setupFile vitest would fail to
 // find is a startup error, not a silent no-op, so this is safe -- but drop it loudly instead of
-// crashing the whole run over a corpus-side test helper unrelated to instrumentation):
+// crashing the whole run over a corpus-side test helper unrelated to instrumentation:
+// A corpus's own config may declare setupFiles as a single string (vue's shape) rather than an
+// array -- spreading a string below (`[...str]`) silently explodes it into one bogus one-char
+// "setup file" per character instead of the ONE real file, so normalize to an array first.
+if (typeof baseTest.setupFiles === 'string') {
+  baseTest.setupFiles = [baseTest.setupFiles];
+}
 if (Array.isArray(baseTest.setupFiles)) {
   const fs = require('fs');
   const kept = [];
@@ -116,6 +148,11 @@ export default defineConfig({
     // neither our plugin nor the code under test's runtime call graph, and it roughly doubles
     // wall time for no benefit to this oracle. Off for the instrumented run.
     typecheck: { ...(baseTest.typecheck || {}), enabled: false },
-    setupFiles: [...(baseTest.setupFiles || []), path.join(__dirname, 'vitest_setup_stack.js')],
+    // Ours FIRST: it defines the global `__stack` that every instrumented function body (the
+    // corpus's OWN setupFiles included, since those are corpus .ts files too and get wrapped like
+    // any other) calls into. If a corpus setupFile ran first and its wrapped body referenced
+    // `__stack` before this installed it, that's a ReferenceError before any test starts
+    // (reproduced on vuejs/core: `scripts/setup-vitest.ts` is itself instrumented).
+    setupFiles: [path.join(__dirname, 'vitest_setup_stack.js'), ...(baseTest.setupFiles || [])],
   },
 });
