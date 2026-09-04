@@ -378,6 +378,9 @@ def _run_engine(engine_dir: Path, repo_root: Path, out_dir: Path) -> dict:
 # many that discarded (1179 unparseable-raw-key rows on the same class-validator run this fix was
 # checked against, alongside 0.930/0.988 precision measured on a denominator quietly missing the
 # hardest edges).
+_COLLISION_TAG_RE = re.compile(r"@L\d+(?:#\d+)?$")
+
+
 def _parse_raw_key(raw: str) -> tuple[str, str, str, str, str | None] | None:
     """`{filePath}::{OwnerFqn}::{"static:"?}{[ownerMethod/]name}({paramTypes})` ->
     (filePath, ownerFqn, name, params, closureOwnerOrNone).
@@ -400,6 +403,14 @@ def _parse_raw_key(raw: str) -> tuple[str, str, str, str, str | None] | None:
     member_sig = "::".join(parts[2:])
     if member_sig.startswith("static:"):
         member_sig = member_sig[len("static:"):]
+    # Key-collision disambiguator (TsAnalyzer putSidecar): when two DIFFERENT declarations build the
+    # same base key, the loser is stored under `<baseKey>@L<line>` (plus `#<startOffset>` if even that
+    # line is taken) instead of silently overwriting the winner. It is an IDENTITY tag, not part of the
+    # name or the signature — the oracle spells the runtime name, and the line is read from the entry's
+    # own `Line` field either way — so it is stripped here. Stripping it AFTER the `(`-partition would
+    # be wrong: the tag sits past the closing paren, so it would otherwise land in `params` and break
+    # the accessor param-count test below.
+    member_sig = _COLLISION_TAG_RE.sub("", member_sig)
     name, paren, rest = member_sig.partition("(")
     if not paren:
         return None
