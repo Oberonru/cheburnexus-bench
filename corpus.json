@@ -341,5 +341,19 @@
     "commit_date": "2026-09-02T13:45:59-07:00",
     "license": "MIT",
     "note": "Second TS corpus, added 2026-09-03 to test whether the class-validator numbers are a property of the PRODUCT or of one narrow code shape (decorators + reflect-metadata + Jest callbacks). pnpm monorepo; scope is the single workspace package packages/zod (docs, bench, integration, mini, treeshake, resolution are NOT run). CHECKOUT LIVES OUTSIDE corpus/: run it as `--checkouts D:\\DEV\\TsTest --only zod`, where `pnpm install` has already been done. A junction at corpus/zod was TRIED and does NOT work: Vite/Node resolve every module through realpath, so the files come back spelled under the junction TARGET while the plugin's corpusRoot filter still holds the junction path -- nothing matches and the run instruments ZERO functions (caught only because the plugin's zero-wrap guard exits non-zero; the suite itself stays green). Verified standalone before wiring: 8253 bodies wrapped, 25766 edges, two runs byte-identical. See oracle/typescript/README.md for the Vitest adapter and its three permanent side effects."
+  },
+  {
+    "name": "vuejs/core",
+    "language": "typescript",
+    "typescript_harness": "vitest",
+    "typescript_project_dir": "packages/reactivity",
+    "typescript_test_filter": "packages/reactivity",
+    "url": "https://github.com/vuejs/core.git",
+    "sha": "b5f8518379b77c3b62a7a9d2b52f6c76cda09bd5",
+    "commit_date": "2026-07-21T16:21:40+08:00",
+    "license": "MIT",
+    "package_version": "3.5.40",
+    "test": "vitest",
+    "note": "Third TS corpus, added 2026-09-04. Shape differs from zod: NO per-package vitest config — a single ROOT vitest.config.ts with a `test.projects` fan-out, so vitest must be rooted at the checkout root, not at the package. `typescript_project_dir` here does its usual job of scoping the ARM's own source-file scan (packages/reactivity only); the NEW `typescript_test_filter` field tells build_oracle_typescript to root vitest at the checkout instead and pass this value as a positional test-path filter, narrowing the answer key to the same package. This first cell is scoped to packages/reactivity only (not the whole monorepo). CHECKOUT LIVES OUTSIDE corpus/, same out-of-corpus arrangement as zod: run it as `--checkouts D:\\DEV\\TsTest --only core` (or `vuejs/core`), where `pnpm install` has already been done at the repo root. Required the 2026-09-04 vitest.instrumented.config.mts fix (own import.meta.url per inlined config, setupFiles string normalized to array, our stack setup ordered first) — see that file's commit. Verified standalone: 2462 bodies wrapped, 4520 unique edges, 433/440 tests pass."
   }
 ]

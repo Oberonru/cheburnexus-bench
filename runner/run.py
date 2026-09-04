@@ -286,14 +286,22 @@ def build_oracle_typescript(entry: dict, checkout: Path, cell: str, out_dir: Pat
                "--config", str(ORACLE_TS_DIR / "jest.instrumented.config.js"),
                "--runInBand", "--no-cache"]
     else:
-        project_dir = checkout
+        # typescript_test_filter is for a monorepo with NO per-package vitest config (vue: one
+        # root vitest.config.ts with a `test.projects` fan-out) — the root is what vitest must be
+        # rooted at, and typescript_project_dir alone (used unscoped, per-package config) would
+        # point --root at a directory with no vitest config of its own. In that shape the answer
+        # key is narrowed instead with a positional test-path filter passed straight through to
+        # vitest, while typescript_project_dir keeps doing its other job of scoping the ARM's own
+        # source-file scan (armkit.scope_dirs_from_entry) to the same package.
+        test_filter = entry.get("typescript_test_filter")
         rel = entry.get("typescript_project_dir")
-        if rel:
-            project_dir = checkout / rel
+        project_dir = checkout if test_filter else (checkout / rel if rel else checkout)
         env["ORACLE_TS_PROJECT_DIR"] = str(project_dir)
         npx = "npx.cmd" if os.name == "nt" else "npx"
         cmd = [npx, "vitest", "run", "--root", str(project_dir),
                "--config", str(ORACLE_TS_DIR / "vitest.instrumented.config.mts")]
+        if test_filter:
+            cmd.append(test_filter)
 
     result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(checkout), env=env)
     (out_dir / "harness.stdout.txt").write_text(result.stdout, encoding="utf-8")
