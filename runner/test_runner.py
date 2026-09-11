@@ -111,8 +111,10 @@ def check_cell_split(tmp: Path) -> list[str]:
         if got is not is_test:
             failures.append(f"is_test_path({relative}) = {got}, expected {is_test}")
 
-    without = {str(p.relative_to(repo)) for p in armkit.source_files(repo, "without-tests")}
-    with_tests = {str(p.relative_to(repo)) for p in armkit.source_files(repo, "with-tests")}
+    # `source_files` returns platform-native separators (never a comparison key downstream) —
+    # normalize to "/" so the hardcoded expectations below hold on both POSIX and Windows.
+    without = {p.relative_to(repo).as_posix() for p in armkit.source_files(repo, "without-tests")}
+    with_tests = {p.relative_to(repo).as_posix() for p in armkit.source_files(repo, "with-tests")}
 
     if any("obj/" in p or "bin/" in p for p in without | with_tests):
         failures.append("build output leaked into a cell — generated code is not source under test")

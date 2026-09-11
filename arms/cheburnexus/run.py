@@ -319,6 +319,122 @@ class ClassIndex:
         return f"{type_full}::{method_name}"
 
 
+# ── inherits/implements axis (classdeps sidecar → implements.jsonl) ────────────────────────────
+# Same contract shape as the oracle's ImplementsRow (oracle/csharp/Program.cs): Type, Target, Kind,
+# TypeFile, TypeLine, TypeAssembly, TargetAssembly, TargetExternal. Direct declarations only, one
+# row per (Type, Target, Kind) — the oracle computes transitive closure later, not this arm.
+#
+# CAVEAT (read before trusting this axis in a comparison): ClassDepsSidecarBuilder.Canon() strips
+# generic type arguments from BOTH ends of the edge before this arm ever sees it (see the product
+# repo's ClassDepsSidecarBuilder.cs Canon()/AddTypeArgs() split). The oracle's Cecil-derived keys
+# carry arity (`Box\`1`); this arm's keys for a generic base/interface do not and cannot — the
+# information needed to add it back was already discarded upstream of the sidecar. This is a real,
+# structural key-shape gap for GENERIC bases/interfaces specifically, separate from the
+# by-simple-name resolution hypothesis this whole axis exists to measure — report it as such, do not
+# quietly work around it here.
+def _build_type_facts(arch_model: dict) -> dict[str, dict]:
+    """fqn (in the sidecar's own Canon()'d shape — dot namespace, '/'-nested, no generic arity) ->
+    {file, line, assembly}, built the same way ClassIndex.add_file reconstructs a type's full name,
+    so a classdeps edge's Source/Target string looks up here directly."""
+    facts: dict[str, dict] = {}
+    for file_obj in arch_model.get("Files", []):
+        namespace = file_obj.get("Namespace") or ""
+        path = file_obj.get("Path")
+        assembly = file_obj.get("Assembly") or None
+        for cls in file_obj.get("Types", []):
+            name = cls.get("Name", "")
+            if not name:
+                continue
+            fqn = cls.get("fqn")
+            full_key = fqn if fqn else (f"{namespace}.{name}" if namespace else name)
+            facts[full_key] = {
+                "file": path,
+                "line": cls.get("sl") or None,
+                "assembly": assembly,
+            }
+    return facts
+
+
+def _oracle_style_type_key(fqn: str) -> str:
+    """The engine's own dotted/slash-nested key, reshaped into the oracle's Cecil-FullName style —
+    exactly the transform `ClassIndex.contract_key` already applies to the caller/callee side of the
+    calls axis (arity-per-nesting-segment, "~global." synthetic prefix stripped to a bare name)."""
+    namespace, chain = _split_namespace(fqn)
+    path = nested_type_path(chain)
+    if namespace.startswith(GLOBAL_NAMESPACE_PREFIX):
+        return path
+    return f"{namespace}.{path}" if namespace else path
+
+
+def _implements_rows_for_run(arch_path: Path, classdeps_path: Path, repo_root: Path) -> list[dict]:
+    """One run's worth of implements.jsonl rows: inherits/implements edges from that run's own
+    classdeps sidecar, enriched with file/line/assembly from that same run's architecture.json.
+    `TargetAssembly`/`TargetExternal` only ever say what THIS run's own type universe can see — a
+    per-project (non-combined) run sees no sibling project's Files, so a same-repo target it cannot
+    resolve here is honestly reported external, not guessed at."""
+    arch_model = json.loads(arch_path.read_text(encoding="utf-8"))
+    facts = _build_type_facts(arch_model)
+    classdeps_env = json.loads(classdeps_path.read_text(encoding="utf-8"))
+    edges = (classdeps_env.get("Data") or {}).get("Edges") or []
+
+    rows: list[dict] = []
+    for edge in edges:
+        kind = edge.get("Kind")
+        if kind not in ("inherits", "implements"):
+            continue
+        source = edge.get("Source")
+        target = edge.get("Target")
+        if not source or not target:
+            continue
+        source_fact = facts.get(source)
+        target_fact = facts.get(target)
+        type_file = None
+        if source_fact and source_fact.get("file"):
+            type_file = _to_repo_relative(source_fact["file"], repo_root)
+        rows.append({
+            "Type": _oracle_style_type_key(source),
+            "Target": _oracle_style_type_key(target),
+            "Kind": kind,
+            "TypeFile": type_file,
+            "TypeLine": source_fact["line"] if source_fact else None,
+            "TypeAssembly": source_fact["assembly"] if source_fact else None,
+            "TargetAssembly": target_fact["assembly"] if target_fact else None,
+            "TargetExternal": target_fact is None,
+        })
+    return rows
+
+
+# Accumulated across every engine invocation `collect()` makes in this process — one CLI run covers
+# one (repo, cell), so a single process-lifetime list is the whole answer; written out in __main__
+# after armkit.main has decided whether the run succeeded at all.
+_IMPLEMENTS_ROWS: list[dict] = []
+
+
+def _collect_implements_rows(result: dict, repo_root: Path) -> None:
+    if not result.get("ok") or result.get("classdeps") is None:
+        return
+    try:
+        _IMPLEMENTS_ROWS.extend(_implements_rows_for_run(result["arch"], result["classdeps"], repo_root))
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"cheburnexus: could not read classdeps sidecar {result['classdeps']}: {exc}",
+              file=sys.stderr)
+
+
+def write_implements_jsonl(out_path: Path) -> int:
+    """implements.jsonl rides alongside the arm's edge output — same directory, fixed name, matching
+    the oracle's own convention (oracle/csharp/Program.cs) so the grader can diff them directly."""
+    dest = out_path.parent / "implements.jsonl"
+    unique = {
+        (r["Type"], r["Target"], r["Kind"]): r for r in _IMPLEMENTS_ROWS
+    }
+    rows = sorted(unique.values(), key=lambda r: (r["Type"], r["Target"], r["Kind"]))
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    with open(dest, "w", encoding="utf-8") as handle:
+        for row in rows:
+            handle.write(json.dumps(row) + "\n")
+    return len(rows)
+
+
 def _parse_raw_key(raw: str) -> tuple[str, str, str] | None:
     """Split 'filePath::Namespace.Type::Method(paramTypes)' into (filePath, dottedType, methodName).
     Only ever splits on the literal '::' the engine's CallKeyBuilder inserts — file paths use '/',
@@ -671,6 +787,22 @@ def _reset_work_dir(out_dir: Path) -> None:
     resolved.mkdir(parents=True, exist_ok=True)
 
 
+def _argv(executable: str, *args: str) -> list[str]:
+    """Build a launchable argv for `executable`.
+
+    Windows' CreateProcess (what `subprocess.run` calls without `shell=True`) only knows how to
+    start real binaries and the handful of extensions it special-cases (.exe, .bat, .cmd) — handed
+    a `.py` path directly it fails with WinError 193 ("%1 is not a valid Win32 application"),
+    because nothing there parses the shebang line the way POSIX `exec` does. The real engine is
+    always a built `.exe`, and the real `dotnet` is always its own native launcher, so this only
+    ever fires for the Python fixtures our own tests substitute in — but it is cheap and correct to
+    handle unconditionally rather than special-case "are we under test".
+    """
+    if executable.endswith(".py"):
+        return [sys.executable, executable, *args]
+    return [executable, *args]
+
+
 def _invoke(engine: Path, args: list[str], out_dir: Path, tag: str) -> dict:
     """Run one engine invocation, capture its streams under out_dir/<tag>.*, and report what
     happened — never what it means; the caller decides.
@@ -684,7 +816,7 @@ def _invoke(engine: Path, args: list[str], out_dir: Path, tag: str) -> dict:
     invoked_at = time.time()
     try:
         proc = subprocess.run(
-            [str(engine), *args, "--output", str(arch)],
+            _argv(str(engine), *args, "--output", str(arch)),
             capture_output=True, text=True, timeout=600,
         )
     except subprocess.TimeoutExpired:
@@ -718,11 +850,16 @@ def _invoke(engine: Path, args: list[str], out_dir: Path, tag: str) -> dict:
 
     calls = out_dir / "architecture.calls.json"
     counts = out_dir / "architecture.calls-counts.json"
+    # inherits/implements is a SYNTACTIC fact (ClassDepsSidecarBuilder.cs), built in any mode — unlike
+    # calls.json it is never withheld by the entitlement wall, so it can be present even when "calls"
+    # above is None (Free tier, or a --project fallback with no semantic pass).
+    classdeps = out_dir / "architecture.classdeps.json"
     return {
         "ok": True,
         "arch": arch,
         "calls": calls if _fresh(calls) else None,
         "counts": counts if _fresh(counts) else None,
+        "classdeps": classdeps if _fresh(classdeps) else None,
         "returncode": proc.returncode,
         "stderr": proc.stderr,
     }
@@ -797,7 +934,7 @@ def _run_new_sln(
     exit code, but a failure to launch dotnet at all is terminal for this whole path."""
     try:
         proc = subprocess.run(
-            [dotnet, "new", "sln", "-n", sln_name, *extra],
+            _argv(dotnet, "new", "sln", "-n", sln_name, *extra),
             cwd=str(out_dir), capture_output=True, text=True, timeout=120,
         )
     except (subprocess.TimeoutExpired, OSError) as exc:
@@ -853,7 +990,7 @@ def _write_synthetic_solution(
 
     try:
         add_proc = subprocess.run(
-            [dotnet, "sln", str(sln_path), "add", *[str(c) for c in sorted(csprojs)]],
+            _argv(dotnet, "sln", str(sln_path), "add", *[str(c) for c in sorted(csprojs)]),
             capture_output=True, text=True, timeout=120,
         )
     except (subprocess.TimeoutExpired, OSError) as exc:
@@ -962,6 +1099,7 @@ def _collect_per_project(
     for csproj in sorted(candidates):
         out_dir = scratch / csproj.stem
         result = _run_engine(engine, csproj, out_dir)
+        _collect_implements_rows(result, repo_root)
         rel = str(csproj.relative_to(repo_root))
 
         if not result["ok"]:
@@ -1052,6 +1190,9 @@ def collect(repo_root: Path, cell: str) -> tuple[list[armkit.Edge], armkit.Cover
 
     scratch = WORK_ROOT / repo_root.name / cell
     combined = _run_combined(engine, repo_root, cell, candidates, scratch)
+    # inherits/implements is syntactic and not entitlement-gated (see _invoke) — collect it here,
+    # once, regardless of which branch below the calls/counts distinction sends this cell down.
+    _collect_implements_rows(combined, repo_root)
 
     if combined["ok"] and combined.get("calls") is not None:
         edges, productive, unproductive = _edges_from_combined(combined, repo_root, candidates)
@@ -1122,5 +1263,27 @@ def collect(repo_root: Path, cell: str) -> tuple[list[armkit.Edge], armkit.Cover
     return edges, armkit.Coverage(note=note)
 
 
+def _out_arg_from_argv() -> Path | None:
+    """`--out`'s value, read straight off sys.argv — armkit.main() owns the real argparse call and
+    does not hand its Namespace back, so this is the cheapest way for the implements.jsonl writer
+    (which must run alongside, not inside, that shared CLI) to find where the edges file landed."""
+    argv = sys.argv[1:]
+    for i, arg in enumerate(argv):
+        if arg == "--out" and i + 1 < len(argv):
+            return Path(argv[i + 1])
+        if arg.startswith("--out="):
+            return Path(arg.split("=", 1)[1])
+    return None
+
+
 if __name__ == "__main__":
-    sys.exit(armkit.main(name="cheburnexus", version=version, collect=collect, mode="live"))
+    exit_code = armkit.main(name="cheburnexus", version=version, collect=collect, mode="live")
+    # Only on a real, non-blocked run: a blocked/failed cell must not leave a stray implements.jsonl
+    # beside an edges file that was itself never written (armkit.main only writes edges on success).
+    if exit_code == 0:
+        out_path = _out_arg_from_argv()
+        if out_path is not None:
+            written = write_implements_jsonl(out_path)
+            print(f"cheburnexus: {written} implements/inherits rows -> "
+                  f"{out_path.parent / 'implements.jsonl'}", file=sys.stderr)
+    sys.exit(exit_code)

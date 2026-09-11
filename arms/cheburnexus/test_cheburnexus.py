@@ -446,6 +446,38 @@ def check_engine_identity_survives_an_unreadable_binary() -> list[str]:
     loop. `armkit.main` catches only `Blocked`, so the arm would die with an unnamed traceback and
     the runner would file the cell as "could not run here" instead of naming what happened."""
     failures = []
+    if sys.platform == "win32":
+        # chmod(0o000) is a POSIX-permissions test: NTFS does not revoke the owning user's own read
+        # access that way (only a `readonly` attribute toggle, which blocks writes, not reads), so
+        # this scenario cannot be reproduced by chmod alone on Windows. Simulate "unreadable" instead
+        # with a sharing violation: hold the file open with no read/write sharing granted to anyone
+        # else, which `engine_identity`'s own `read_bytes()` call will fail to open into.
+        import msvcrt
+
+        with tempfile.TemporaryDirectory() as raw:
+            tmp = Path(raw)
+            exe = tmp / "arch-computer.exe"
+            exe.write_bytes(b"apphost")
+            code = tmp / "ArchitectureAnalyzer.Core.dll"
+            code.write_bytes(b"engine-code")
+            fd = os.open(str(code), os.O_RDWR)
+            try:
+                msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+                try:
+                    identity = engine_identity(exe)
+                except OSError as exc:
+                    return [f"engine_identity raised {type(exc).__name__} on an unreadable assembly "
+                            f"instead of reporting it — this propagates out of --describe as an "
+                            f"unnamed crash"]
+                if "UNREADABLE" not in identity:
+                    failures.append(
+                        f"engine_identity returned {identity!r} for an unreadable assembly — an "
+                        "engine we cannot read is a fact to state, not one to paper over")
+                msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+            finally:
+                os.close(fd)
+        return failures
+
     with tempfile.TemporaryDirectory() as raw:
         tmp = Path(raw)
         exe = tmp / "arch-computer.exe"
@@ -882,9 +914,13 @@ def check_combined_mode_reports_zero_file_project_as_unproductive() -> list[str]
         {"Path": "src/Beta.Extra/C.cs"},
     ]
     productive, unproductive = _combined_project_coverage(files, [alpha, beta], repo_root)
+    # `_combined_project_coverage` reports `rel` with the platform's own separator (it is a display
+    # string, never a comparison key downstream) — normalize before comparing so this test means the
+    # same thing on POSIX and on Windows.
+    productive = [p.replace("\\", "/") for p in productive]
     if productive != ["src/Alpha/Alpha.csproj"]:
         failures.append(f"productive = {productive!r}, expected only Alpha")
-    unproductive_paths = [rel for rel, _why in unproductive]
+    unproductive_paths = [rel.replace("\\", "/") for rel, _why in unproductive]
     if unproductive_paths != ["src/Beta/Beta.csproj"]:
         failures.append(
             f"unproductive = {unproductive_paths!r}, expected only Beta — a sibling directory "
@@ -929,6 +965,122 @@ out_path.with_name("architecture.calls.json").write_text(json.dumps({
 }))
 sys.exit(0)
 '''
+
+
+# Same shape as _COMBINED_FAKE_ENGINE_SOURCE, plus an architecture.classdeps.json sidecar —
+# proving the arm reads the inherits/implements axis, not just calls.json.
+_COMBINED_FAKE_ENGINE_WITH_CLASSDEPS_SOURCE = '''#!/usr/bin/env python3
+import json
+import pathlib
+import sys
+
+args = sys.argv[1:]
+out_path = pathlib.Path(args[args.index("--output") + 1])
+
+if "--project" not in args:
+    sys.stderr.write("fake-combined-engine: expected --project alongside --solution\\n")
+    sys.exit(1)
+
+project_root = pathlib.Path(args[args.index("--project") + 1])
+alpha_dir = project_root / "src" / "Alpha"
+if not alpha_dir.is_dir():
+    sys.stderr.write(f"fake-combined-engine: no Alpha under {project_root}\\n")
+    sys.exit(1)
+
+out_path.write_text(json.dumps({
+    "Files": [
+        {"Path": "src/Alpha/A.cs", "Namespace": "App", "Assembly": "Alpha.dll",
+         "Types": [{"Name": "Alpha", "sl": 10, "Methods": []}]},
+        {"Path": "src/Alpha/IWidget.cs", "Namespace": "App", "Assembly": "Alpha.dll",
+         "Types": [{"Name": "IWidget", "sl": 3, "Methods": []}]},
+    ]
+}))
+out_path.with_name("architecture.calls.json").write_text(json.dumps({
+    "Data": {
+        "src/Alpha/A.cs::App.Alpha::Run": {
+            "Calls": [{"Target": "src/Alpha/A.cs::App.Alpha::Helper()", "Line": 7}]
+        }
+    }
+}))
+out_path.with_name("architecture.classdeps.json").write_text(json.dumps({
+    "Data": {
+        "Edges": [
+            {"Source": "App.Alpha", "Target": "App.IWidget", "Kind": "implements",
+             "Origin": "syntactic", "Count": 1},
+            {"Source": "App.Alpha", "Target": "System.Object", "Kind": "inherits",
+             "Origin": "syntactic", "Count": 1},
+        ]
+    }
+}))
+sys.exit(0)
+'''
+
+
+def _write_combined_fake_engine_with_classdeps(tmp: Path) -> Path:
+    engine = tmp / "fake_combined_engine_classdeps.py"
+    engine.write_text(_COMBINED_FAKE_ENGINE_WITH_CLASSDEPS_SOURCE, encoding="utf-8")
+    engine.chmod(0o755)
+    return engine
+
+
+def check_implements_axis_written_alongside_edges() -> list[str]:
+    """The arm must also emit implements.jsonl — one row per direct inherits/implements edge from
+    its own classdeps sidecar, in the oracle's own field shape (Program.cs's ImplementsRow) — so the
+    grader can diff the two directly. A project-internal target (App.IWidget) must resolve its own
+    file/line/assembly; an external one (System.Object, never declared anywhere in this run's own
+    Files[]) must be reported TargetExternal with TargetAssembly=null, never guessed at."""
+    failures = []
+    with tempfile.TemporaryDirectory() as raw:
+        tmp = Path(raw)
+        engine = _write_combined_fake_engine_with_classdeps(tmp)
+        dotnet = _write_fake_dotnet(tmp, _FAKE_DOTNET_OK_SOURCE)
+        repo = _make_two_project_repo(tmp, ["Alpha"])
+        out = tmp / "out.jsonl"
+        result = _run_arm_cli_combined(repo, "without-tests", out, engine, dotnet)
+        if result.returncode != 0:
+            return [f"combined run failed unexpectedly: exit {result.returncode}, "
+                    f"stderr {result.stderr[-800:]!r}"]
+
+        implements_path = out.parent / "implements.jsonl"
+        if not implements_path.is_file():
+            return ["no implements.jsonl was written alongside the edges output"]
+        rows = {
+            (r["Type"], r["Target"]): r
+            for r in (json.loads(line) for line in implements_path.read_text(encoding="utf-8").splitlines())
+        }
+
+        implemented = rows.get(("App.Alpha", "App.IWidget"))
+        if implemented is None:
+            failures.append(f"missing the App.Alpha -> App.IWidget implements row; got {sorted(rows)!r}")
+        else:
+            if implemented["Kind"] != "implements":
+                failures.append(f"App.Alpha -> App.IWidget Kind = {implemented['Kind']!r}, expected 'implements'")
+            if implemented["TypeFile"] != "src/Alpha/A.cs":
+                failures.append(f"TypeFile = {implemented['TypeFile']!r}, expected 'src/Alpha/A.cs'")
+            if implemented["TypeLine"] != 10:
+                failures.append(f"TypeLine = {implemented['TypeLine']!r}, expected 10")
+            if implemented["TypeAssembly"] != "Alpha.dll":
+                failures.append(f"TypeAssembly = {implemented['TypeAssembly']!r}, expected 'Alpha.dll'")
+            if implemented["TargetAssembly"] != "Alpha.dll":
+                failures.append(
+                    f"TargetAssembly = {implemented['TargetAssembly']!r}, expected 'Alpha.dll' — "
+                    "App.IWidget is declared in this same run's own Files[]")
+            if implemented["TargetExternal"] is not False:
+                failures.append("App.IWidget marked TargetExternal, but it is in the corpus")
+
+        inherited = rows.get(("App.Alpha", "System.Object"))
+        if inherited is None:
+            failures.append(f"missing the App.Alpha -> System.Object inherits row; got {sorted(rows)!r}")
+        else:
+            if inherited["Kind"] != "inherits":
+                failures.append(f"App.Alpha -> System.Object Kind = {inherited['Kind']!r}, expected 'inherits'")
+            if inherited["TargetAssembly"] is not None:
+                failures.append(
+                    f"TargetAssembly = {inherited['TargetAssembly']!r}, expected null — the engine never "
+                    "declared System.Object, so its assembly is unknown, not a fact to invent")
+            if inherited["TargetExternal"] is not True:
+                failures.append("System.Object not marked TargetExternal, but it is never in this corpus")
+    return failures
 
 
 def _write_combined_fake_engine(tmp: Path) -> Path:
