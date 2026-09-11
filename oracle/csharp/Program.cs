@@ -18,6 +18,37 @@ using Mono.Cecil.Cil;
 
 namespace Cheburnexus.Bench.Oracle;
 
+/// <summary>
+/// One directly-declared inheritance or interface relationship, before any closure is computed.
+/// The grader expands transitively later; this row is only the edge the compiler recorded.
+/// </summary>
+internal sealed record ImplementsRow
+{
+    /// <summary>Full name of the declaring/implementing type, in Cecil's full-name form.</summary>
+    public required string Type { get; init; }
+
+    /// <summary>Full name of the base class or interface. Generic targets are the open definition.</summary>
+    public required string Target { get; init; }
+
+    /// <summary>"inherits" for a base class, "implements" for an interface.</summary>
+    public required string Kind { get; init; }
+
+    /// <summary>Source file of the declaring type, from PDB. Null if no method in the type carries one.</summary>
+    public string? TypeFile { get; init; }
+
+    /// <summary>Earliest source line touched by the declaring type, from PDB. Null if unavailable.</summary>
+    public int? TypeLine { get; init; }
+
+    /// <summary>Assembly the declaring type came from.</summary>
+    public required string TypeAssembly { get; init; }
+
+    /// <summary>Assembly the target resolves to, or null if it could not be resolved.</summary>
+    public string? TargetAssembly { get; init; }
+
+    /// <summary>True when the target lives outside the corpus assemblies (BCL/third-party).</summary>
+    public required bool TargetExternal { get; init; }
+}
+
 /// <summary>One call edge as the compiler emitted it, before any grading rule is applied.</summary>
 internal sealed record EdgeRow
 {
@@ -107,22 +138,53 @@ internal static class Program
         // Create the directory rather than requiring a caller to have made it. The runner happened
         // to create it first, which hid this until a test called the tool directly — a tool that
         // only works when driven by one particular caller is not one an outsider can rerun.
+        // implements.jsonl rides alongside the call-edge output — same directory, fixed name — so a
+        // caller who only knows --out still gets both ground-truth streams without a second flag to
+        // remember. Written to stdout's directory only when --out selects a file at all.
+        var implementsPath = outPath is null
+            ? null
+            : Path.Combine(Path.GetDirectoryName(Path.GetFullPath(outPath)) ?? ".", "implements.jsonl");
+
         EnsureDirectoryFor(outPath);
         EnsureDirectoryFor(overridesPath);
+        EnsureDirectoryFor(implementsPath);
 
         var fileOutput = outPath is null
             ? null
             : new StreamWriter(File.Create(outPath), new UTF8Encoding(false));
         var output = fileOutput ?? Console.Out;
 
+        var implementsWriter = implementsPath is null
+            ? null
+            : new StreamWriter(File.Create(implementsPath), new UTF8Encoding(false));
+
         var jsonOptions = new JsonSerializerOptions { WriteIndented = false };
         long emitted = 0, withoutDebug = 0, compilerGenerated = 0;
+        long implementsEmitted = 0;
         var assembliesRead = 0;
         var skipped = new List<string>();
         // override full name -> the declarations it answers for. Raw Cecil names: the grader owns
         // canonicalisation, and duplicating that rule here would give the two sides two chances to
         // disagree about what a method is called.
         var overrides = new SortedDictionary<string, SortedSet<string>>(StringComparer.Ordinal);
+
+        // Corpus assembly names, gathered up front so TargetExternal can be judged regardless of the
+        // order assemblies happen to appear in below — a base type in an assembly not yet visited
+        // must not look "external" just because we haven't gotten to it yet.
+        var corpusAssemblyNames = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var path in assemblies)
+        {
+            try
+            {
+                using var probe = AssemblyDefinition.ReadAssembly(path, new ReaderParameters { ReadSymbols = false, ReadWrite = false });
+                corpusAssemblyNames.Add(probe.Name.Name);
+            }
+            catch
+            {
+                // Unreadable files are reported (and skipped) in the main loop below; here we only
+                // need the name, so a failure just means it never joins the corpus set.
+            }
+        }
 
         foreach (var path in assemblies)
         {
@@ -168,8 +230,29 @@ internal static class Program
 
                 foreach (var module in assembly.Modules)
                 foreach (var type in AllTypes(module))
-                foreach (var method in type.Methods)
                 {
+                    if (implementsWriter is not null && !IsCompilerGenerated(type))
+                    {
+                        var typeAssembly = assembly.Name.Name;
+                        var (typeFile, typeLine) = TypeSourceLocation(type, sourceRoot);
+
+                        if (type.BaseType is not null)
+                        {
+                            EmitImplements(implementsWriter, jsonOptions, type, type.BaseType, "inherits",
+                                typeAssembly, typeFile, typeLine, corpusAssemblyNames);
+                            implementsEmitted++;
+                        }
+
+                        foreach (var implemented in type.Interfaces)
+                        {
+                            EmitImplements(implementsWriter, jsonOptions, type, implemented.InterfaceType, "implements",
+                                typeAssembly, typeFile, typeLine, corpusAssemblyNames);
+                            implementsEmitted++;
+                        }
+                    }
+
+                    foreach (var method in type.Methods)
+                    {
                     if (overridesPath is not null)
                     {
                         foreach (var declared in DeclarationsOf(method, type))
@@ -215,6 +298,7 @@ internal static class Program
                         if (noDebug) withoutDebug++;
                         if (callerGenerated) compilerGenerated++;
                     }
+                    }
                 }
             }
         }
@@ -223,6 +307,8 @@ internal static class Program
         Console.Error.WriteLine($"edges emitted   : {emitted}");
         Console.Error.WriteLine($"  no debug info : {withoutDebug} ({Percent(withoutDebug, emitted)})");
         Console.Error.WriteLine($"  caller cgen   : {compilerGenerated} ({Percent(compilerGenerated, emitted)})");
+        if (implementsWriter is not null)
+            Console.Error.WriteLine($"implements rows : {implementsEmitted}");
         foreach (var s in skipped) Console.Error.WriteLine($"note: {s}");
 
         if (overridesPath is not null)
@@ -237,8 +323,72 @@ internal static class Program
         }
 
         fileOutput?.Dispose();
+        implementsWriter?.Dispose();
         return 0;
     }
+
+    /// <summary>
+    /// Writes one implements.jsonl row. Generic targets are reduced to the open definition — the
+    /// same spelling a declaring generic TypeDefinition already has via Cecil's FullName — so a
+    /// base class instantiated differently in different places still keys the same way.
+    /// </summary>
+    private static void EmitImplements(
+        StreamWriter writer, JsonSerializerOptions jsonOptions, TypeDefinition type, TypeReference target,
+        string kind, string typeAssembly, string? typeFile, int? typeLine, HashSet<string> corpusAssemblyNames)
+    {
+        var targetName = target is GenericInstanceType generic ? generic.ElementType.FullName : target.FullName;
+        // The scope is intrinsic to the reference — available even when the type itself cannot be
+        // resolved (e.g. System.Object without a loaded corlib reference), so resolution failure
+        // costs us nothing here beyond what CalleeAssemblyName already accepts for call edges.
+        var targetAssembly = TypeAssemblyName(target);
+        var targetExternal = targetAssembly is null || !corpusAssemblyNames.Contains(targetAssembly);
+
+        var row = new ImplementsRow
+        {
+            Type = type.FullName,
+            Target = targetName,
+            Kind = kind,
+            TypeFile = typeFile,
+            TypeLine = typeLine,
+            TypeAssembly = typeAssembly,
+            TargetAssembly = targetAssembly,
+            TargetExternal = targetExternal,
+        };
+        writer.WriteLine(JsonSerializer.Serialize(row, jsonOptions));
+    }
+
+    /// <summary>
+    /// Best-effort source anchor for a type as a whole: types carry no sequence point of their own,
+    /// so this takes the earliest non-hidden sequence point among the type's own methods (skipping
+    /// compiler-generated ones, which point at synthesized code rather than where the type was
+    /// written). Null when nothing in the type has debug info.
+    /// </summary>
+    private static (string? file, int? line) TypeSourceLocation(TypeDefinition type, string? sourceRoot)
+    {
+        SequencePoint? best = null;
+        foreach (var method in type.Methods)
+        {
+            if (IsCompilerGenerated(method)) continue;
+            var debug = method.DebugInformation;
+            if (debug is null || !debug.HasSequencePoints) continue;
+
+            foreach (var point in debug.SequencePoints)
+            {
+                if (point.StartLine == HiddenLine) continue;
+                if (best is null || point.StartLine < best.StartLine) best = point;
+            }
+        }
+        return best is null ? (null, null) : (Relativize(best.Document.Url, sourceRoot), best.StartLine);
+    }
+
+    /// <summary>Same scope-based lookup as <see cref="CalleeAssemblyName"/>, for a type reference directly.</summary>
+    private static string? TypeAssemblyName(TypeReference reference) =>
+        reference.Scope switch
+        {
+            AssemblyNameReference assemblyName => assemblyName.Name,
+            ModuleDefinition module => module.Assembly?.Name?.Name ?? module.Name,
+            _ => reference.Scope?.Name,
+        };
 
     /// <summary>
     /// Everything <paramref name="method"/> overrides or implements: the base-class virtual it

@@ -46,7 +46,7 @@ def build_fixture() -> None:
         raise SystemExit("fixture build failed:\n" + result.stdout[-3000:] + result.stderr[-2000:])
 
 
-def run_oracle(assembly: Path, out_dir: Path) -> tuple[list[dict], dict]:
+def run_oracle(assembly: Path, out_dir: Path) -> tuple[list[dict], dict, list[dict]]:
     edges = out_dir / "edges.jsonl"
     overrides = out_dir / "overrides.json"
     result = subprocess.run(
@@ -57,7 +57,10 @@ def run_oracle(assembly: Path, out_dir: Path) -> tuple[list[dict], dict]:
     if result.returncode != 0:
         raise SystemExit("oracle failed:\n" + result.stderr[-3000:])
     rows = [json.loads(line) for line in edges.read_text(encoding="utf-8").splitlines() if line.strip()]
-    return rows, json.loads(overrides.read_text(encoding="utf-8"))
+    implements_file = out_dir / "implements.jsonl"
+    implements = ([json.loads(line) for line in implements_file.read_text(encoding="utf-8").splitlines() if line.strip()]
+                  if implements_file.is_file() else [])
+    return rows, json.loads(overrides.read_text(encoding="utf-8")), implements
 
 
 def find(rows: list[dict], *, caller_has: str, callee_has: str, op: str | None = None) -> list[dict]:
@@ -163,6 +166,56 @@ def check_override_map(overrides: dict) -> list[str]:
     return failures
 
 
+def check_implements(implements: list[dict]) -> list[str]:
+    """The type-level ground truth: one row per DIRECTLY-declared base/interface, no transitive closure."""
+    failures = []
+
+    def rel(type_has: str, target_has: str, kind: str) -> dict | None:
+        hits = [r for r in implements
+                if type_has in r["Type"] and target_has in r["Target"] and r["Kind"] == kind]
+        return hits[0] if hits else None
+
+    # FileSink : SinkBase — a direct base class.
+    row = rel("FileSink", "SinkBase", "inherits")
+    if row is None:
+        failures.append("no inherits edge FileSink -> SinkBase")
+    else:
+        if row["TargetExternal"]:
+            failures.append("FileSink -> SinkBase marked TargetExternal, but SinkBase is in the corpus")
+        if row["TypeFile"] is None or "Fixture.cs" not in row["TypeFile"]:
+            failures.append(f"FileSink's TypeFile is {row['TypeFile']!r}, expected the fixture source")
+        if row["TypeLine"] is None:
+            failures.append("FileSink's TypeLine is null even though the fixture has debug info")
+
+    # FileSink must NOT show an edge to ISink directly — that relationship is SinkBase's, and this
+    # contract is one row per DIRECT relationship; closure is the grader's job, not the oracle's.
+    if rel("FileSink", "ISink", "implements") is not None:
+        failures.append("FileSink -> ISink is not a direct relationship (it comes via SinkBase) — "
+                        "the oracle expanded the closure itself, which the grader must do instead")
+
+    # SinkBase : ISink — a direct interface implementation.
+    if rel("SinkBase", "ISink", "implements") is None:
+        failures.append("no implements edge SinkBase -> ISink")
+
+    # NullSink : ISink — another direct interface implementation, on an unrelated type.
+    if rel("NullSink", "ISink", "implements") is None:
+        failures.append("no implements edge NullSink -> ISink")
+
+    # Numbers : IEnumerable — a BCL interface. Must resolve as external.
+    row = rel("Numbers", "IEnumerable", "implements")
+    if row is None:
+        failures.append("no implements edge Numbers -> IEnumerable")
+    elif not row["TargetExternal"]:
+        failures.append("Numbers -> IEnumerable not marked TargetExternal, but IEnumerable is BCL")
+
+    # Every non-interface type has an inherits edge to something (System.Object at the root, if
+    # nothing else) — a class with zero inherits rows would mean the base-type walk was skipped.
+    if rel("SinkBase", "Object", "inherits") is None:
+        failures.append("no inherits edge SinkBase -> System.Object")
+
+    return failures
+
+
 def check_missing_symbols_never_shrink(tmp: Path) -> list[str]:
     """Without a PDB the answer key must lose ANCHORS, never edges.
 
@@ -175,8 +228,8 @@ def check_missing_symbols_never_shrink(tmp: Path) -> list[str]:
     stripped.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(ASSEMBLY, stripped / ASSEMBLY.name)  # deliberately without the .pdb
 
-    with_symbols, _ = run_oracle(ASSEMBLY, tmp / "with")
-    without_symbols, _ = run_oracle(stripped / ASSEMBLY.name, tmp / "without")
+    with_symbols, _, _ = run_oracle(ASSEMBLY, tmp / "with")
+    without_symbols, _, _ = run_oracle(stripped / ASSEMBLY.name, tmp / "without")
 
     if len(without_symbols) != len(with_symbols):
         failures.append(f"dropping the PDB changed the edge count "
@@ -198,12 +251,13 @@ def main() -> int:
     failures: list[str] = []
     with tempfile.TemporaryDirectory() as raw:
         tmp = Path(raw)
-        rows, overrides = run_oracle(ASSEMBLY, tmp / "main")
+        rows, overrides, implements = run_oracle(ASSEMBLY, tmp / "main")
         if not rows:
             print("FAILED: the oracle produced no rows at all for the fixture")
             return 1
         failures += check_edges(rows)
         failures += check_override_map(overrides)
+        failures += check_implements(implements)
         failures += check_missing_symbols_never_shrink(tmp)
 
     if failures:
