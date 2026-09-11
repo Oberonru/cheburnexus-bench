@@ -366,12 +366,31 @@ def _oracle_style_type_key(fqn: str) -> str:
     return f"{namespace}.{path}" if namespace else path
 
 
-def _implements_rows_for_run(arch_path: Path, classdeps_path: Path, repo_root: Path) -> list[dict]:
+def _implements_rows_for_run(
+    arch_path: Path, classdeps_path: Path, repo_root: Path, cell: str
+) -> list[dict]:
     """One run's worth of implements.jsonl rows: inherits/implements edges from that run's own
     classdeps sidecar, enriched with file/line/assembly from that same run's architecture.json.
     `TargetAssembly`/`TargetExternal` only ever say what THIS run's own type universe can see — a
     per-project (non-combined) run sees no sibling project's Files, so a same-repo target it cannot
-    resolve here is honestly reported external, not guessed at."""
+    resolve here is honestly reported external, not guessed at.
+
+    Scoped by `TypeFile` with the SAME rule `collect()` already applies to call edges below
+    (`armkit.in_scope`, and for `without-tests` also `armkit.is_test_path`) — not a parallel filter
+    invented for this axis. A combined engine run's architecture.json is not itself scoped to
+    `cell`'s candidate projects (Roslyn follows `<ProjectReference>` edges the synthetic solution
+    never declared — "defect #10" above), so without this filter a `without-tests` cell's
+    implements.jsonl silently absorbed every test-directory type the combined solution happened to
+    touch (49 of 119 rows on the 2026-09-11 serilog run: Serilog.Tests/TestDummies/
+    Serilog.PerformanceTests types — a corpus-scope artifact, not an engine-accuracy finding, and
+    one the calls axis was already immune to because it applies this exact filter).
+
+    A row with `TypeFile: None` (no method in the type carries a source anchor — see
+    `_build_type_facts`) is KEPT, never dropped for scope. This mirrors the calls axis's own
+    `e.caller_file is None -> keep` rule a few dozen lines below: "no path to judge scope by" is
+    treated as "cannot be ruled OUT", not as grounds to silently discard the row — a row dropped
+    here would be a hidden recall loss with no trace in implements.jsonl for a reader to catch.
+    """
     arch_model = json.loads(arch_path.read_text(encoding="utf-8"))
     facts = _build_type_facts(arch_model)
     classdeps_env = json.loads(classdeps_path.read_text(encoding="utf-8"))
@@ -391,6 +410,14 @@ def _implements_rows_for_run(arch_path: Path, classdeps_path: Path, repo_root: P
         type_file = None
         if source_fact and source_fact.get("file"):
             type_file = _to_repo_relative(source_fact["file"], repo_root)
+
+        if type_file is not None:
+            abs_path = repo_root / type_file
+            if not armkit.in_scope(abs_path, repo_root, cell):
+                continue
+            if cell == "without-tests" and armkit.is_test_path(abs_path, repo_root):
+                continue
+
         rows.append({
             "Type": _oracle_style_type_key(source),
             "Target": _oracle_style_type_key(target),
@@ -410,11 +437,12 @@ def _implements_rows_for_run(arch_path: Path, classdeps_path: Path, repo_root: P
 _IMPLEMENTS_ROWS: list[dict] = []
 
 
-def _collect_implements_rows(result: dict, repo_root: Path) -> None:
+def _collect_implements_rows(result: dict, repo_root: Path, cell: str) -> None:
     if not result.get("ok") or result.get("classdeps") is None:
         return
     try:
-        _IMPLEMENTS_ROWS.extend(_implements_rows_for_run(result["arch"], result["classdeps"], repo_root))
+        _IMPLEMENTS_ROWS.extend(
+            _implements_rows_for_run(result["arch"], result["classdeps"], repo_root, cell))
     except (OSError, json.JSONDecodeError) as exc:
         print(f"cheburnexus: could not read classdeps sidecar {result['classdeps']}: {exc}",
               file=sys.stderr)
@@ -1099,7 +1127,7 @@ def _collect_per_project(
     for csproj in sorted(candidates):
         out_dir = scratch / csproj.stem
         result = _run_engine(engine, csproj, out_dir)
-        _collect_implements_rows(result, repo_root)
+        _collect_implements_rows(result, repo_root, cell)
         rel = str(csproj.relative_to(repo_root))
 
         if not result["ok"]:
@@ -1192,7 +1220,7 @@ def collect(repo_root: Path, cell: str) -> tuple[list[armkit.Edge], armkit.Cover
     combined = _run_combined(engine, repo_root, cell, candidates, scratch)
     # inherits/implements is syntactic and not entitlement-gated (see _invoke) — collect it here,
     # once, regardless of which branch below the calls/counts distinction sends this cell down.
-    _collect_implements_rows(combined, repo_root)
+    _collect_implements_rows(combined, repo_root, cell)
 
     if combined["ok"] and combined.get("calls") is not None:
         edges, productive, unproductive = _edges_from_combined(combined, repo_root, candidates)

@@ -1083,6 +1083,108 @@ def check_implements_axis_written_alongside_edges() -> list[str]:
     return failures
 
 
+# A second Files[] entry lives under `test/Beta/`, simulating exactly the shape that leaked on the
+# real serilog run: a combined-solution architecture.json is not itself scoped to the cell's
+# declared candidates (Roslyn follows <ProjectReference> edges the synthetic solution never
+# listed — "defect #10" above), so the fake engine hands back a test-directory type's
+# inherits/implements edge REGARDLESS of which projects were passed on argv, exactly like the real
+# engine does. The implements-axis collector, not the engine, is the only place left to keep a
+# `without-tests` cell honest about it.
+_COMBINED_FAKE_ENGINE_WITH_CLASSDEPS_SCOPED_SOURCE = '''#!/usr/bin/env python3
+import json
+import pathlib
+import sys
+
+args = sys.argv[1:]
+out_path = pathlib.Path(args[args.index("--output") + 1])
+
+out_path.write_text(json.dumps({
+    "Files": [
+        {"Path": "src/Alpha/A.cs", "Namespace": "App", "Assembly": "Alpha.dll",
+         "Types": [{"Name": "Alpha", "sl": 10, "Methods": []}]},
+        {"Path": "test/Beta/B.cs", "Namespace": "App", "Assembly": "Beta.dll",
+         "Types": [{"Name": "BetaHelper", "sl": 4, "Methods": []}]},
+        {"Path": "src/Alpha/IWidget.cs", "Namespace": "App", "Assembly": "Alpha.dll",
+         "Types": [{"Name": "IWidget", "sl": 3, "Methods": []}]},
+    ]
+}))
+out_path.with_name("architecture.calls.json").write_text(json.dumps({"Data": {}}))
+out_path.with_name("architecture.classdeps.json").write_text(json.dumps({
+    "Data": {
+        "Edges": [
+            {"Source": "App.Alpha", "Target": "App.IWidget", "Kind": "implements",
+             "Origin": "syntactic", "Count": 1},
+            {"Source": "App.BetaHelper", "Target": "App.IWidget", "Kind": "implements",
+             "Origin": "syntactic", "Count": 1},
+        ]
+    }
+}))
+sys.exit(0)
+'''
+
+
+def _write_combined_fake_engine_with_classdeps_scoped(tmp: Path) -> Path:
+    engine = tmp / "fake_combined_engine_classdeps_scoped.py"
+    engine.write_text(_COMBINED_FAKE_ENGINE_WITH_CLASSDEPS_SCOPED_SOURCE, encoding="utf-8")
+    engine.chmod(0o755)
+    return engine
+
+
+def check_implements_axis_respects_test_scope() -> list[str]:
+    """`without-tests` must not leak a test-directory type's inherits/implements edge into
+    implements.jsonl, using the SAME scope rule (`armkit.is_test_path`, keyed on `TypeFile`) the
+    calls axis already applies to `Edge.caller_file` — not a parallel filter invented for this
+    axis. Found live on serilog (2026-09-11): 49 of 119 rows in the `without-tests` cell's
+    implements.jsonl were `Serilog.Tests`/`TestDummies`/`Serilog.PerformanceTests` types, because
+    `_collect_implements_rows` read the whole combined architecture model before any scope filter
+    ran. `with-tests` must still carry the test-directory row — the filter is cell-conditional,
+    not a blanket drop."""
+    failures = []
+    with tempfile.TemporaryDirectory() as raw:
+        tmp = Path(raw)
+        engine = _write_combined_fake_engine_with_classdeps_scoped(tmp)
+        dotnet = _write_fake_dotnet(tmp, _FAKE_DOTNET_OK_SOURCE)
+        repo = tmp / "repo"
+        for rel_dir, proj_name in (("src/Alpha", "Alpha"), ("test/Beta", "Beta")):
+            proj_dir = repo / rel_dir
+            proj_dir.mkdir(parents=True)
+            (proj_dir / f"{proj_name}.csproj").write_text(
+                '<Project Sdk="Microsoft.NET.Sdk"></Project>', encoding="utf-8")
+
+        def implements_types(cell: str) -> set[str]:
+            out = tmp / f"out-{cell}.jsonl"
+            result = _run_arm_cli_combined(repo, cell, out, engine, dotnet)
+            if result.returncode != 0:
+                failures.append(
+                    f"combined run for cell {cell!r} failed unexpectedly: exit {result.returncode}, "
+                    f"stderr {result.stderr[-800:]!r}")
+                return set()
+            implements_path = out.parent / "implements.jsonl"
+            if not implements_path.is_file():
+                failures.append(f"no implements.jsonl written for cell {cell!r}")
+                return set()
+            return {
+                json.loads(line)["Type"]
+                for line in implements_path.read_text(encoding="utf-8").splitlines() if line.strip()
+            }
+
+        without = implements_types("without-tests")
+        if "App.BetaHelper" in without:
+            failures.append(
+                f"App.BetaHelper (test/Beta/B.cs) leaked into the without-tests cell's "
+                f"implements.jsonl: {sorted(without)!r}")
+        if "App.Alpha" not in without:
+            failures.append(f"App.Alpha (src/Alpha/A.cs, real product code) was dropped too "
+                             f"eagerly: {sorted(without)!r}")
+
+        with_tests = implements_types("with-tests")
+        if "App.BetaHelper" not in with_tests:
+            failures.append(
+                f"App.BetaHelper was dropped from the with-tests cell too — the filter must be "
+                f"cell-conditional, not a blanket exclusion: {sorted(with_tests)!r}")
+    return failures
+
+
 def _write_combined_fake_engine(tmp: Path) -> Path:
     engine = tmp / "fake_combined_engine.py"
     engine.write_text(_COMBINED_FAKE_ENGINE_SOURCE, encoding="utf-8")
@@ -1199,6 +1301,7 @@ def main() -> int:
     failures += check_manifest_states_combined_mode()
     failures += check_manifest_states_fallback_mode_when_combined_unavailable()
     failures += check_implements_axis_written_alongside_edges()
+    failures += check_implements_axis_respects_test_scope()
 
     if failures:
         print("FAILED:")
