@@ -1198,6 +1198,7 @@ def main() -> int:
     failures += check_combined_mode_reports_zero_file_project_as_unproductive()
     failures += check_manifest_states_combined_mode()
     failures += check_manifest_states_fallback_mode_when_combined_unavailable()
+    failures += check_implements_axis_written_alongside_edges()
 
     if failures:
         print("FAILED:")
