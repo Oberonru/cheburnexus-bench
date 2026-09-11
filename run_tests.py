@@ -19,6 +19,7 @@ SUITES = [
     ("armkit", "arms/_lib/test_armkit.py", "shared with-tests/without-tests cell split, dotted test-suffix directories"),
     ("grader", "grader/test_identity.py", "neutrality, key agreement between forms, the override map"),
     ("grader:bucket", "grader/test_bucket.py", "the decomposition tool: it reproduces a published total, or refuses"),
+    ("grader:implements", "grader/test_implements.py", "type-level axis: primary/external/generic cell separation, neutrality"),
     ("harness", "runner/test_runner.py", "assembly selection, cell split, determinism, blocked, refused cells"),
     ("arm:grep", "arms/grep/test_grep.py", "caller attribution, cell exclusion, constructors, candidate fan-out"),
     ("arm:repowise", "arms/repowise/test_repowise.py", "key reconstruction from their path-anchored ids, drop accounting"),
