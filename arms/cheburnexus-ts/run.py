@@ -421,6 +421,46 @@ def _parse_raw_key(raw: str) -> tuple[str, str, str, str, str | None] | None:
     return file_path, owner_fqn, name, params, closure_owner
 
 
+# ── generic-arity stripping (join-key side only) ────────────────────────────────────────────────
+# Engine commit 7cf2e092 (main repo, 2026-09-13) made a type declaration's own `Name`/`fqn` keep its
+# type-parameter list VERBATIM, as written (`class Box<T>` -> Name="Box<T>"), matching the C# engine's
+# long-standing convention (ArchitectureAnalyzer.Core/Roslyn/CallKeyBuilder.cs) of never guessing arity
+# away at the engine boundary — a canon layer downstream is meant to derive arity, not the engine.
+#
+# The C# arm (arms/cheburnexus/run.py, backtick_arity()) converts that verbatim `<...>` suffix to IL
+# arity notation (`Cache<T>` -> `` Cache`1 ``) because the C# ORACLE's keys are Cecil-derived IL
+# FullNames, which DO spell arity that way. The TS oracle is different: it labels a class by
+# `ts.Identifier.text` alone (oracle/typescript/transformer.js:381, `node.name.text` — a plain AST
+# identifier node, which can never include a `<...>` type-parameter list; that list is a SEPARATE
+# `typeParameters` property the oracle never reads for the label). So the TS oracle carries no generic
+# marker of any kind, unlike C#'s backtick — the correct join-side transform here is not "convert
+# arity notation" but "drop the suffix outright", the same fact stated a different way.
+#
+# Cutting at the FIRST '<' is correct here, not a naive shortcut: a type declaration's Name/fqn carry
+# at most ONE type-parameter list, always as a trailing suffix (`Box<T>`, `Map<K,V>`,
+# `Box<Map<K,V>>`, even `Box<T extends Base<Q>>`) — there is no second, unrelated '<' earlier in the
+# string for a naive cut to mistake, so no bracket-depth counting is needed to find where the REAL
+# suffix begins (contrast the C# arm's backtick_arity, which counts commas AT DEPTH ZERO because it
+# must also compute an arity NUMBER from what is inside the brackets — this function only ever
+# discards what is inside, so nesting inside the brackets cannot affect the result either way).
+# A name with no suffix at all is returned unchanged (`.find` returns -1, slice is the whole string).
+#
+# NOT applied to BaseTypes/Interfaces: this arm never reads those fields (it builds only the calls
+# axis, unlike the C# arm's implements axis) — see this file's header, "the only sidecars this arm
+# actually reads: architecture.calls.json ... architecture.methods.json". `fqn` itself is also left
+# alone everywhere else it appears in this file (TypeIndex.kind_name's key, `owner_fqn` parsed from a
+# raw key) because those are engine-output-to-engine-output lookups — both sides come from the SAME
+# helper the fixing commit introduced (declaredTypeName/typeParamsSuffix), so they still match each
+# other exactly and never touch the oracle's arity-free spelling. Only `simple_name`, read out of
+# `TypeIndex.kind_name` to build the oracle-facing `qualified` join key below, crosses that boundary.
+def strip_type_param_suffix(name: str) -> str:
+    """A type declaration's own Name/fqn, with its verbatim type-parameter suffix removed for the
+    oracle join (`Box<T>` -> `Box`, `Map<K,V>` -> `Map`, `Box<Map<K,V>>` -> `Box`, `Plain` -> `Plain`).
+    """
+    idx = name.find("<")
+    return name if idx == -1 else name[:idx]
+
+
 def _param_count(params: str) -> int:
     """Depth-aware comma count — a parameter TYPE can itself contain a comma (`Box<A, B>`,
     `{ new (...args: any[]): T }`), so a naive split would over-count. Same algorithm as the C# arm's
@@ -578,6 +618,7 @@ class Translator:
             self._drop("no-owner-fqn-in-architecture-json")
             return None
         kind, simple_name = info
+        simple_name = strip_type_param_suffix(simple_name)
         qualified = name if kind == "module" else f"{simple_name}.{name}"
 
         suffix = ""
