@@ -191,14 +191,36 @@ every pinned repository against every live arm.
 ### Running the `cheburnexus` arm live
 
 Since engine commit `c00c1945` (2026-09-24), the call-graph feature this benchmark measures ships
-in CheburNexus's Free tier — no licence key needed. Download the free engine
-(<!-- TODO(owner): confirm this is still the canonical public releases link before publishing -->
-`https://github.com/Oberonru/cheburnexus-releases`), then point the runner at the executable:
+in CheburNexus's Free tier — no licence key needed. Download the free engine from the public
+releases repo, `https://github.com/Oberonru/cheburnexus-releases` (confirmed canonical, checked
+against release `v1.8.0`, 2026-09-24):
+
+- **Windows (win-x64)**: download `cheburnexus-all-win-x64.zip` from the latest release and unzip
+  it anywhere. The CLI is `arch-computer.exe` at the top level of the archive (next to
+  `ArchitectureAnalyzer.CLI.dll` — do not confuse it with `cheburnexus.exe`, the unrelated MCP
+  server binary also shipped in the same zip).
+- **macOS (osx-x64)**: download `cheburnexus-all-osx-x64.zip` instead; same layout, `arch-computer`
+  at the top level.
+- **Linux**: no binary is published in this release — only win-x64 and osx-x64 archives (plus the
+  source code archives GitHub always adds). Building from source is the only option today.
+
+Then point the runner at the executable. PowerShell:
+
+```powershell
+$env:CHEBURNEXUS_ENGINE = "C:\path\to\arch-computer.exe"
+python3 runner/run.py --checkouts corpus --only serilog --arms cheburnexus --cells without-tests
+```
+
+bash:
 
 ```sh
 CHEBURNEXUS_ENGINE=/path/to/arch-computer.exe \
   python3 runner/run.py --checkouts corpus --only serilog --arms cheburnexus --cells without-tests
 ```
+
+This has been verified end to end with the licence passport removed (Free-tier conditions): the
+public `v1.8.0` win-x64 binary reproduces the published `serilog`/`without-tests` numbers exactly
+(precision 0.998, recall 1.000, 537/538 matched).
 
 Without `CHEBURNEXUS_ENGINE` set, `arms/cheburnexus/run.py` falls back to the replayed rows
 published under `results/published/cheburnexus/` — see

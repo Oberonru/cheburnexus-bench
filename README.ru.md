@@ -197,15 +197,36 @@ python3 runner/run.py --checkouts corpus --only serilog --arms grep --cells with
 
 С коммита движка `c00c1945` (2026-09-24) граф вызовов — функция, которую измеряет этот
 бенчмарк — переехал в бесплатный тариф CheburNexus: лицензионный ключ не нужен. Скачай
-бесплатный движок
-(<!-- TODO(владельцу): перед публикацией проверить, что это по-прежнему канонический
-публичный адрес релизов -->
-`https://github.com/Oberonru/cheburnexus-releases`), потом укажи раннеру путь до бинарника:
+бесплатный движок из публичного репозитория релизов,
+`https://github.com/Oberonru/cheburnexus-releases` (канонический адрес подтверждён, проверено на
+релизе `v1.8.0`, 2026-09-24):
+
+- **Windows (win-x64)**: скачай `cheburnexus-all-win-x64.zip` из последнего релиза и распакуй
+  куда угодно. CLI — это `arch-computer.exe` в корне архива (рядом с
+  `ArchitectureAnalyzer.CLI.dll` — не перепутай с `cheburnexus.exe`, это отдельный MCP-сервер,
+  который лежит в том же архиве).
+- **macOS (osx-x64)**: скачай вместо этого `cheburnexus-all-osx-x64.zip`; та же раскладка,
+  `arch-computer` в корне.
+- **Linux**: в этом релизе бинарника нет — только архивы win-x64 и osx-x64 (плюс архивы
+  исходников, которые GitHub добавляет всегда). Собрать из исходников — пока единственный путь.
+
+Дальше укажи раннеру путь до бинарника. PowerShell:
+
+```powershell
+$env:CHEBURNEXUS_ENGINE = "C:\путь\к\arch-computer.exe"
+python3 runner/run.py --checkouts corpus --only serilog --arms cheburnexus --cells without-tests
+```
+
+bash:
 
 ```sh
 CHEBURNEXUS_ENGINE=/путь/к/arch-computer.exe \
   python3 runner/run.py --checkouts corpus --only serilog --arms cheburnexus --cells without-tests
 ```
+
+Это проверено вживую: с убранным лицензионным паспортом (условия бесплатного тарифа) публичный
+бинарник win-x64 из `v1.8.0` в точности повторяет опубликованные числа для `serilog`/`without-tests`
+(precision 0.998, recall 1.000, совпало 537 из 538).
 
 Без `CHEBURNEXUS_ENGINE` `arms/cheburnexus/run.py` откатывается на опубликованные строки из
 `results/published/cheburnexus/` — смотри

@@ -7,19 +7,27 @@ not confuse it with `cheburnexus.exe`, the unrelated MCP server) in `--solution`
 Roslyn/semantic front end: the same compiler-grade parse the product markets, as opposed to
 `--project` (syntactic, no semantics).
 
-THE ENTITLEMENT WALL (read this before reading the rest of the file — see NOTES.md for the full
-account with evidence): the call graph is a Pro-tier feature, gated on TIER, not on analysis mode.
-On a machine with no licence passport (the default, and — per the task — the one this arm must
-never try to work around), ModelProjectionService nulls the semantic call-graph source before
-export, and the CLI writes ONLY `architecture.calls-counts.json` (an aggregate
-{calleeKey: incoming-call-count} map with NO caller identity) instead of
-`architecture.calls.json` (the real per-edge list). Zero edges is therefore the correct, honest
-result of a live run here — not a bug in this arm, and not something to patch around.
+THE ENTITLEMENT WALL — HISTORICAL, READ THIS FIRST (see NOTES.md for the full account with
+evidence): up to and including engine build 1.7.x, the call graph was a Pro-tier feature, gated on
+TIER, not on analysis mode. On a machine with no licence passport, ModelProjectionService nulled
+the semantic call-graph source before export, and the CLI wrote ONLY
+`architecture.calls-counts.json` (an aggregate {calleeKey: incoming-call-count} map with NO caller
+identity) instead of `architecture.calls.json` (the real per-edge list). Zero edges was therefore
+the correct, honest result of a live run with no passport — not a bug in this arm, and not
+something to patch around.
+
+Since engine commit `c00c1945` (2026-09-24, shipped in the public `v1.8.0` release), the call
+graph is a Free-tier feature: `architecture.calls.json` is written with no passport at all, and a
+run against the public download reproduces the published numbers exactly (verified 2026-09-26
+against `cheburnexus-all-win-x64.zip` from
+https://github.com/Oberonru/cheburnexus-releases, passport hidden, `serilog`/`without-tests`:
+537/538 matched, same as `results/published/`). The wall above is kept here as history — the
+conversion logic still has to handle whatever a given engine build actually writes, and an older
+binary pointed at by `$CHEBURNEXUS_ENGINE` still hits it.
 
 The conversion logic below (raw calls.json key -> contract key) is written and exercised against a
-recorded sample so it is correct WHEN a licensed run does produce `architecture.calls.json` — for
-this arm to be useful the moment a passport is available, and so a reader can audit the mapping
-without needing one.
+recorded sample so it is correct whether the run that produced `architecture.calls.json` needed a
+passport or not — so a reader can audit the mapping either way.
 """
 
 from __future__ import annotations
