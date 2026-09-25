@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="730" viewBox="0 0 1000 730" role="img" aria-label="Precision by repository and arm, primary cell">
+<title>Precision by repository and arm (primary cell)</title>
+<text x="190" y="22" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="17" font-weight="600" fill="#0b0b0b">Precision, primary cell</text>
+<text x="190" y="40" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" fill="#52514e">matched edges / edges emitted, per repo — higher is better</text>
+<rect x="190" y="50" width="12" height="12" rx="2" fill="#6b6b68"/>
+<text x="208" y="60" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" fill="#0b0b0b">grep</text>
+<rect x="350" y="50" width="12" height="12" rx="2" fill="#eda100"/>
+<text x="368" y="60" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" fill="#0b0b0b">repowise</text>
+<rect x="510" y="50" width="12" height="12" rx="2" fill="#2a78d6"/>
+<text x="528" y="60" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" fill="#0b0b0b">cheburnexus</text>
+<line x1="190.0" y1="70" x2="190.0" y2="684" stroke="#e3e2dd" stroke-width="1"/>
+<text x="190.0" y="700" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#52514e" text-anchor="middle">0.00</text>
+<line x1="375.0" y1="70" x2="375.0" y2="684" stroke="#e3e2dd" stroke-width="1"/>
+<text x="375.0" y="700" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#52514e" text-anchor="middle">0.25</text>
+<line x1="560.0" y1="70" x2="560.0" y2="684" stroke="#e3e2dd" stroke-width="1"/>
+<text x="560.0" y="700" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#52514e" text-anchor="middle">0.50</text>
+<line x1="745.0" y1="70" x2="745.0" y2="684" stroke="#e3e2dd" stroke-width="1"/>
+<text x="745.0" y="700" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#52514e" text-anchor="middle">0.75</text>
+<line x1="930.0" y1="70" x2="930.0" y2="684" stroke="#e3e2dd" stroke-width="1"/>
+<text x="930.0" y="700" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#52514e" text-anchor="middle">1.00</text>
+<text x="178" y="108.0" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" fill="#0b0b0b" text-anchor="end">serilog/serilog</text>
+<rect x="190.0" y="70.0" width="192.5" height="20" rx="3" fill="#6b6b68"/>
+<text x="390.5" y="84.0" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#0b0b0b">0.260</text>
+<rect x="190.0" y="94.0" width="402.3" height="20" rx="3" fill="#eda100"/>
+<text x="600.3" y="108.0" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#0b0b0b">0.544</text>
+<rect x="190.0" y="118.0" width="738.6" height="20" rx="3" fill="#2a78d6"/>
+<text x="936.6" y="132.0" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#0b0b0b">0.998</text>
+<text x="178" y="198.0" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" fill="#0b0b0b" text-anchor="end">App-vNext/Polly</text>
+<rect x="190.0" y="160.0" width="182.4" height="20" rx="3" fill="#6b6b68"/>
+<text x="380.4" y="174.0" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#0b0b0b">0.246</text>
+<rect x="190.0" y="184.0" width="278.5" height="20" rx="3" fill="#eda100"/>
+<text x="476.5" y="198.0" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#0b0b0b">0.376</text>
+<rect x="190.0" y="208.0" width="737.9" height="20" rx="3" fill="#2a78d6"/>
+<text x="935.9" y="222.0" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#0b0b0b">0.997</text>
+<text x="178" y="288.0" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" fill="#0b0b0b" text-anchor="end">FluentValidation</text>
+<rect x="190.0" y="250.0" width="150.4" height="20" rx="3" fill="#6b6b68"/>
+<text x="348.4" y="264.0" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#0b0b0b">0.203</text>
+<rect x="190.0" y="274.0" width="262.1" height="20" rx="3" fill="#eda100"/>
+<text x="460.1" y="288.0" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#0b0b0b">0.354</text>
+<rect x="190.0" y="298.0" width="731.0" height="20" rx="3" fill="#2a78d6"/>
+<text x="929.0" y="312.0" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#0b0b0b">0.988</text>
+<text x="178" y="378.0" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" fill="#0b0b0b" text-anchor="end">jbogard/MediatR</text>
+<rect x="190.0" y="340.0" width="186.8" height="20" rx="3" fill="#6b6b68"/>
+<text x="384.9" y="354.0" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#0b0b0b">0.253</text>
+<rect x="190.0" y="364.0" width="460.4" height="20" rx="3" fill="#eda100"/>
+<text x="658.4" y="378.0" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#0b0b0b">0.622</text>
+<rect x="190.0" y="388.0" width="740.0" height="20" rx="3" fill="#2a78d6"/>
+<text x="938.0" y="402.0" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#0b0b0b">1.000</text>
+<text x="178" y="468.0" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" fill="#0b0b0b" text-anchor="end">AutoMapper</text>
+<rect x="190.0" y="430.0" width="137.5" height="20" rx="3" fill="#6b6b68"/>
+<text x="335.5" y="444.0" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#0b0b0b">0.186</text>
+<rect x="190.0" y="454.0" width="413.1" height="20" rx="3" fill="#eda100"/>
+<text x="611.1" y="468.0" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#0b0b0b">0.558</text>
+<rect x="190.0" y="478.0" width="708.3" height="20" rx="3" fill="#2a78d6"/>
+<text x="906.3" y="492.0" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#0b0b0b">0.957</text>
+<text x="178" y="558.0" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" fill="#0b0b0b" text-anchor="end">Humanizr/Humanizer</text>
+<rect x="190.0" y="520.0" width="91.1" height="20" rx="3" fill="#6b6b68"/>
+<text x="289.1" y="534.0" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#0b0b0b">0.123</text>
+<rect x="190.0" y="544.0" width="684.1" height="20" rx="3" fill="#eda100"/>
+<text x="882.1" y="558.0" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#0b0b0b">0.924</text>
+<rect x="190.0" y="568.0" width="738.2" height="20" rx="3" fill="#2a78d6"/>
+<text x="936.2" y="582.0" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#0b0b0b">0.998</text>
+<text x="178" y="648.0" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13" fill="#0b0b0b" text-anchor="end">typestack/class-validator</text>
+<line x1="190" y1="620.0" x2="216" y2="620.0" stroke="#52514e" stroke-width="2" stroke-dasharray="3,3"/>
+<text x="224" y="624.0" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#52514e">n/a</text>
+<line x1="190" y1="644.0" x2="216" y2="644.0" stroke="#52514e" stroke-width="2" stroke-dasharray="3,3"/>
+<text x="224" y="648.0" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#52514e">n/a</text>
+<rect x="190.0" y="658.0" width="737.4" height="20" rx="3" fill="#2a78d6"/>
+<text x="935.4" y="672.0" font-family="-apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#0b0b0b">0.997</text>
+</svg>

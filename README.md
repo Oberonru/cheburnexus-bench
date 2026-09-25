@@ -58,8 +58,12 @@ flowchart LR
   actually made — see [Limitations](#limitations), this one is not exhaustive).
 - **An arm** is one engine under test, run through the shared CLI contract in
   `arms/ARCHITECTURE.md`. `grep` and `repowise` are free and run live for anyone. `cheburnexus` is
-  our own closed product: live for us, **replayed** from committed `edges.jsonl` rows for everyone
-  else — see "Auditable, not rerunnable" below.
+  our own product; the rows below are **replayed** from committed `edges.jsonl` so they are
+  auditable without a copy of the engine — see "Auditable, not rerunnable" below. As of engine
+  commit `c00c1945` (2026-09-24), call-graph analysis (the feature this benchmark measures —
+  `who_calls`, class dependencies) shipped in **CheburNexus's Free tier**: no licence key is
+  needed to run it. Anyone can point `CHEBURNEXUS_ENGINE` at the free engine and run this arm
+  live too — see [Quickstart](#quickstart).
 - **The grader** (`grader/grade.py`) matches an arm's edges against the oracle's, by a fixed
   identity key, and reports precision/recall per cell. The matching rules — what counts as the
   same edge, what is excluded from the comparable set, what virtual-dispatch override map is
@@ -70,12 +74,13 @@ flowchart LR
 
 ### Auditable, not rerunnable
 
-The Cheburnexus engine itself is a commercial product; its binary is not published here. What is
-published, for every arm including ours: the corpus pins, the oracle builder, the grader, and the
-raw per-edge output. A sceptic rebuilds the answer key from the pinned commit, re-grades every
-published row with their own copy of `grader/grade.py`, and runs the two free arms end to end.
-What they cannot do without a licence is regenerate our rows from scratch — the claim made here is
-that the numbers are **auditable, not rerunnable**.
+The Cheburnexus engine binary is still not published in this repository — it is a separate
+download (see the Free-tier note above). What is published here, for every arm including ours:
+the corpus pins, the oracle builder, the grader, and the raw per-edge output. A sceptic rebuilds
+the answer key from the pinned commit and re-grades every published row with their own copy of
+`grader/grade.py`, whether or not they bother installing an engine at all — the numbers are
+**auditable, not rerunnable, by construction**, even now that `grep`, `repowise` and the free
+CheburNexus engine can all three be run live end to end by anyone.
 
 ### How to read the numbers
 
@@ -99,36 +104,56 @@ that the numbers are **auditable, not rerunnable**.
 ## Results
 
 > [!NOTE]
-> Numbers below are placeholders. Real results live in `results/published/<arm>/<repo>/<cell>/edges.jsonl`,
-> committed to this repository once a run is complete. Rebuild the oracle from the pinned commit,
-> point `grader/grade.py` at a published `edges.jsonl`, and you get the same precision/recall this
-> table would show — nobody has to take our numbers on faith.
+> Real, regradable rows live in `results/published/<arm>/<repo>/<cell>/` (`edges.jsonl` +
+> `result.json` + `manifest.json`), committed to this repository — see
+> `results/published/SUMMARY.md` for provenance (engine commit, bench commit, date, host).
+> Rebuild the oracle from the pinned commit, point `grader/grade.py` at a published
+> `edges.jsonl`, and you get the same precision/recall this table shows — nobody has to take
+> our numbers on faith. `zod`'s `cheburnexus-ts` row is held back pending an open investigation
+> (see the table note); its `grep`/`repowise` rows are published as usual.
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/results-dark.svg">
     <source media="(prefers-color-scheme: light)" srcset="assets/results-light.svg">
-    <img alt="precision and recall by arm, primary cell" src="assets/results-light.svg" width="700">
+    <img alt="precision by repo and arm, primary cell" src="assets/results-light.svg" width="700">
   </picture>
 </p>
 
-Precision / recall, primary cell, `without-tests`:
+Precision / recall, primary cell, best arm **bold**:
 
-| repo | language | license | grep | repowise | cheburnexus |
-|---|---|---|---|---|---|
-| serilog/serilog | C# | Apache-2.0 | TBD | TBD | TBD |
-| App-vNext/Polly | C# | BSD-3-Clause | TBD | TBD | TBD |
-| FluentValidation/FluentValidation | C# | Apache-2.0 | TBD | TBD | TBD |
-| Humanizr/Humanizer | C# | MIT | TBD | TBD | TBD |
-| jbogard/MediatR | C# | RPL-1.5 ⚠️ | TBD | TBD | TBD |
-| AutoMapper/AutoMapper | C# | RPL-1.5 ⚠️ | TBD | TBD | TBD |
-| typestack/class-validator | TypeScript | MIT | TBD | — | TBD (cheburnexus-ts) |
-| colinhacks/zod | TypeScript | MIT | TBD | — | TBD (cheburnexus-ts) |
-| vuejs/core | TypeScript | MIT | TBD | — | TBD (cheburnexus-ts) |
+| repo | language | license | cell | grep | repowise | cheburnexus |
+|---|---|---|---|---|---|---|
+| serilog/serilog | C# | Apache-2.0 | without-tests | 0.260 / 0.542 | 0.544 / 0.348 | **0.998 / 1.000** |
+| serilog/serilog | C# | Apache-2.0 | with-tests | 0.321 / 0.744 | 0.592 / 0.273 | **0.995 / 0.999** |
+| App-vNext/Polly | C# | BSD-3-Clause | without-tests | 0.247 / 0.248 | 0.376 / 0.191 | **0.997 / 0.984** |
+| FluentValidation/FluentValidation | C# | Apache-2.0 | without-tests | 0.203 / 0.385 | 0.354 / 0.183 | **0.988 / 0.918** |
+| jbogard/MediatR | C# | RPL-1.5 | without-tests | 0.253 / 0.400 | 0.622 / 0.224 | **1.000 / 0.920** |
+| AutoMapper/AutoMapper | C# | RPL-1.5 | without-tests | 0.186 / 0.410 | 0.558 / 0.224 | **0.957 / 0.685** |
+| Humanizr/Humanizer | C# | MIT | without-tests | 0.123 / 0.238 | 0.925 / 0.239 | **0.998 / 0.400** |
+| typestack/class-validator | TypeScript | MIT | with-tests | — / 0.000 | — / 0.000 | **0.997 / 0.563** (cheburnexus-ts) |
+| colinhacks/zod | TypeScript | MIT | with-tests | — / 0.000 | — / 0.000 | under investigation (cheburnexus-ts) |
 
-`repowise` only reads C#, so TypeScript rows show `—`. Two entries carry the **RPL-1.5** licence
-(a copyleft licence, not permissive) — see [License](#license) for what that means for those two
-rows specifically.
+> [!NOTE]
+> **Cells.** `with-tests` only exists as its own row for `serilog` — every other C# repo's
+> `with-tests` cell is `unavailable` on the pinned SDK (recorded, not skipped; see
+> `corpus.json`'s own notes per repo). The two TypeScript repos are **with-tests only**: their
+> oracle is a runtime shadow-stack (`oracle/typescript`), so it needs the test suite to actually
+> run — there is no meaningful "without tests" reading for a key that only exists while tests
+> execute.
+
+`grep` and `repowise` both show `— / 0.000` on the TypeScript rows, for two different reasons,
+not one shared bug: `grep`'s rules (`arms/grep/RULES.md`) only scan `.cs` files, so it emits zero
+edges on TypeScript by construction — a real "genuinely found nothing" result. `repowise` does
+emit edges on both TS repos (18 on class-validator, 126 on zod), but the TypeScript oracle only
+credits a caller the test suite actually executed, and none of `repowise`'s callers land in that
+executed set — see `results/published/SUMMARY.md` for the full breakdown.
+
+Two entries (`jbogard/MediatR`, `AutoMapper/AutoMapper`) carry the **RPL-1.5** licence — a
+reciprocal/copyleft licence, not a permissive one. This repository does not redistribute their
+source: `corpus/` is git-ignored, and `corpus.json` pins only a URL and a commit SHA that the
+reader fetches themselves — see [License](#license) for what RPL-1.5 means if you reuse anything
+built from those two checkouts beyond running this benchmark.
 
 ## Quickstart
 
@@ -162,6 +187,22 @@ This builds the answer key for `serilog`/`without-tests` from the checkout you j
 `repo / cell / arm / mode / precision / recall / declared` table — see
 ["How to read the numbers"](#how-to-read-the-numbers). Drop `--only serilog --arms grep` to run
 every pinned repository against every live arm.
+
+### Running the `cheburnexus` arm live
+
+Since engine commit `c00c1945` (2026-09-24), the call-graph feature this benchmark measures ships
+in CheburNexus's Free tier — no licence key needed. Download the free engine
+(<!-- TODO(owner): confirm this is still the canonical public releases link before publishing -->
+`https://github.com/Oberonru/cheburnexus-releases`), then point the runner at the executable:
+
+```sh
+CHEBURNEXUS_ENGINE=/path/to/arch-computer.exe \
+  python3 runner/run.py --checkouts corpus --only serilog --arms cheburnexus --cells without-tests
+```
+
+Without `CHEBURNEXUS_ENGINE` set, `arms/cheburnexus/run.py` falls back to the replayed rows
+published under `results/published/cheburnexus/` — see
+["Auditable, not rerunnable"](#auditable-not-rerunnable).
 
 ## Add your engine
 
@@ -273,8 +314,11 @@ replay path.
 >   locator, a DI container wiring an interface to an implementation, `Activator.CreateInstance`
 >   — has no static call instruction in the IL, so the oracle never sees it either. This is a
 >   shared blind spot between the answer key and every arm, not a defect scored against one engine.
-> - **The `cheburnexus` arm is replay-only for anyone without a licence.** Its rows are published
->   and regradable, but not regeneratable from scratch on this machine — see
+> - **The `cheburnexus` arm ships replayed rows by default.** As of engine commit `c00c1945`
+>   (2026-09-24), the free CheburNexus engine can run this arm live for anyone (no licence key
+>   needed for call-graph analysis — see [Quickstart](#quickstart)); without `CHEBURNEXUS_ENGINE`
+>   set, or on a machine that hasn't installed the engine at all, the runner falls back to the
+>   published rows — always regradable, not always regeneratable on that particular machine — see
 >   ["Auditable, not rerunnable"](#auditable-not-rerunnable).
 > - **The TypeScript oracle's recall is bounded by test coverage.** It is not an exhaustive static
 >   key like the C# one: it instruments the corpus with a runtime shadow-stack
