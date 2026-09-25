@@ -1,0 +1,59 @@
+{
+  "cells": [
+    {
+      "cell": "primary \u2014 first-party ordinary calls and constructors",
+      "oracle_edges": 2332,
+      "arm_edges_in_cell": 1076,
+      "matched": 637,
+      "precision": 0.592,
+      "recall": 0.2732
+    },
+    {
+      "cell": "excluded \u2014 callee outside the corpus",
+      "oracle_edges": 3595,
+      "arm_edges_in_cell": 12,
+      "matched": 12,
+      "precision": 1.0,
+      "recall": 0.0033
+    },
+    {
+      "cell": "excluded \u2014 property accessors",
+      "oracle_edges": 746,
+      "arm_edges_in_cell": 0,
+      "matched": 0,
+      "precision": null,
+      "recall": 0.0
+    },
+    {
+      "cell": "excluded \u2014 foreach protocol",
+      "oracle_edges": 25,
+      "arm_edges_in_cell": 12,
+      "matched": 11,
+      "precision": 0.9167,
+      "recall": 0.44
+    },
+    {
+      "cell": "excluded \u2014 compiler-generated callee",
+      "oracle_edges": 536,
+      "arm_edges_in_cell": 0,
+      "matched": 0,
+      "precision": null,
+      "recall": 0.0
+    },
+    {
+      "cell": "excluded \u2014 indirect call op (calli / ldvirtftn)",
+      "oracle_edges": 14,
+      "arm_edges_in_cell": 0,
+      "matched": 0,
+      "precision": null,
+      "recall": 0.0
+    }
+  ],
+  "stats": {
+    "rows": 10733,
+    "unremappable_caller": 543,
+    "no_source_anchor": 392,
+    "unparsed_row": 0,
+    "arm_dropped": 0
+  }
+}

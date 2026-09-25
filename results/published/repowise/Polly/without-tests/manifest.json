@@ -1,0 +1,34 @@
+{
+  "repo": "App-vNext/Polly",
+  "sha": "173d6d1d2e28a4697f1ac1d22da68f77ff19a0c9",
+  "cell": "without-tests",
+  "arm": {
+    "name": "repowise",
+    "version": "0.45.0",
+    "mode": "live"
+  },
+  "mode": "live",
+  "note": "",
+  "seconds": 0.26599999999598367,
+  "coverage_declared_by_arm": {},
+  "oracle_coverage": "exhaustive-static",
+  "first_party": [
+    "Polly.Core",
+    "Polly.Extensions",
+    "Polly.RateLimiting",
+    "Polly.Testing"
+  ],
+  "oracle_assemblies": [
+    "artifacts\\bin\\Polly.Core\\release_net8.0\\Polly.Core.dll",
+    "artifacts\\bin\\Polly.Extensions\\release_net8.0\\Polly.Extensions.dll",
+    "artifacts\\bin\\Polly.RateLimiting\\release_net8.0\\Polly.RateLimiting.dll",
+    "artifacts\\bin\\Polly.Testing\\release_net8.0\\Polly.Testing.dll"
+  ],
+  "missing_declared_assemblies": [],
+  "host": {
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.8",
+    "dotnet_sdk": "10.0.400"
+  },
+  "utc": "2026-09-25T153018Z"
+}

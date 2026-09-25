@@ -1,0 +1,26 @@
+{
+  "repo": "typestack/class-validator",
+  "sha": "2e1a5c27dbd65b80e27fe96b49bd6e6641fa3603",
+  "cell": "with-tests",
+  "arm": {
+    "name": "repowise",
+    "version": "0.45.0",
+    "mode": "live"
+  },
+  "mode": "live",
+  "note": "",
+  "seconds": 10.26600000000326,
+  "coverage_declared_by_arm": {},
+  "oracle_coverage": "executed-tests-only",
+  "first_party": [
+    "class-validator"
+  ],
+  "oracle_assemblies": [],
+  "missing_declared_assemblies": [],
+  "host": {
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.8",
+    "dotnet_sdk": "10.0.400"
+  },
+  "utc": "2026-09-25T150843Z"
+}

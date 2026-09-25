@@ -1,0 +1,27 @@
+{
+  "repo": "jbogard/MediatR",
+  "sha": "916ef1b3d68ccdc96db8f914eaf1b32fc7db52c5",
+  "cell": "without-tests",
+  "arm": {
+    "name": "grep",
+    "version": "pure-python-1",
+    "mode": "live"
+  },
+  "mode": "live",
+  "note": "",
+  "seconds": 0.10900000000401633,
+  "coverage_declared_by_arm": {},
+  "oracle_coverage": "exhaustive-static",
+  "first_party": [
+    "MediatR"
+  ],
+  "oracle_assemblies": [
+    "src\\MediatR\\bin\\Release\\net8.0\\MediatR.dll"
+  ],
+  "host": {
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.8",
+    "dotnet_sdk": "10.0.400"
+  },
+  "utc": "2026-09-25T144628Z"
+}

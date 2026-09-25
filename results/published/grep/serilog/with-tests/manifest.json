@@ -1,0 +1,35 @@
+{
+  "repo": "serilog/serilog",
+  "sha": "4c9a312bc72e335897553472d0a2e91819bc51b1",
+  "cell": "with-tests",
+  "arm": {
+    "name": "grep",
+    "version": "pure-python-1",
+    "mode": "live"
+  },
+  "mode": "live",
+  "note": "",
+  "seconds": 0.35899999999674037,
+  "coverage_declared_by_arm": {},
+  "oracle_coverage": "exhaustive-static",
+  "first_party": [
+    "AotTestApp",
+    "Serilog",
+    "Serilog.ApprovalTests",
+    "Serilog.PerformanceTests",
+    "Serilog.Tests"
+  ],
+  "oracle_assemblies": [
+    "src\\Serilog\\bin\\Release\\net8.0\\Serilog.dll",
+    "test\\Serilog.ApprovalTests\\bin\\Release\\net8.0\\Serilog.ApprovalTests.dll",
+    "test\\Serilog.Tests\\bin\\Release\\net8.0\\Serilog.Tests.dll",
+    "test\\Serilog.PerformanceTests\\bin\\Release\\net8.0\\Serilog.PerformanceTests.dll",
+    "test\\AotTestApp\\bin\\Release\\net8.0\\AotTestApp.dll"
+  ],
+  "host": {
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.8",
+    "dotnet_sdk": "10.0.400"
+  },
+  "utc": "2026-09-25T144628Z"
+}

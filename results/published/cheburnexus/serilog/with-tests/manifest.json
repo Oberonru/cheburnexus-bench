@@ -1,0 +1,37 @@
+{
+  "repo": "serilog/serilog",
+  "sha": "4c9a312bc72e335897553472d0a2e91819bc51b1",
+  "cell": "with-tests",
+  "arm": {
+    "name": "cheburnexus",
+    "version": "ArchitectureAnalyzer.Core.dll built 2026-09-25 sha256:33ae50036c10 at D:\\DEV\\LLM-CheburNexus\\dist-all\\_bench-engine-publish-2026-09-25\\arch-computer.exe (ArchitectureAnalyzer.CLI --solution, Roslyn semantic front end)",
+    "mode": "live"
+  },
+  "mode": "live",
+  "note": "",
+  "seconds": 4.73399999999674,
+  "coverage_declared_by_arm": {
+    "note": "combined solution mode: one engine invocation over 5 in-scope project(s) via synthetic solution D:\\DEV\\cheburnexus-bench\\arms\\cheburnexus\\.work\\serilog\\with-tests\\_combined\\serilog-with-tests.sln"
+  },
+  "oracle_coverage": "exhaustive-static",
+  "first_party": [
+    "AotTestApp",
+    "Serilog",
+    "Serilog.ApprovalTests",
+    "Serilog.PerformanceTests",
+    "Serilog.Tests"
+  ],
+  "oracle_assemblies": [
+    "src\\Serilog\\bin\\Release\\net8.0\\Serilog.dll",
+    "test\\Serilog.ApprovalTests\\bin\\Release\\net8.0\\Serilog.ApprovalTests.dll",
+    "test\\Serilog.Tests\\bin\\Release\\net8.0\\Serilog.Tests.dll",
+    "test\\Serilog.PerformanceTests\\bin\\Release\\net8.0\\Serilog.PerformanceTests.dll",
+    "test\\AotTestApp\\bin\\Release\\net8.0\\AotTestApp.dll"
+  ],
+  "host": {
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.8",
+    "dotnet_sdk": "10.0.400"
+  },
+  "utc": "2026-09-25T144628Z"
+}

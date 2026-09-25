@@ -1,0 +1,29 @@
+{
+  "repo": "AutoMapper/AutoMapper",
+  "sha": "dfa6dd587c5854b4beee5934beb39ba6e9569b84",
+  "cell": "without-tests",
+  "arm": {
+    "name": "cheburnexus",
+    "version": "ArchitectureAnalyzer.Core.dll built 2026-09-25 sha256:33ae50036c10 at D:\\DEV\\LLM-CheburNexus\\dist-all\\_bench-engine-publish-2026-09-25\\arch-computer.exe (ArchitectureAnalyzer.CLI --solution, Roslyn semantic front end)",
+    "mode": "live"
+  },
+  "mode": "live",
+  "note": "",
+  "seconds": 5.5939999999973224,
+  "coverage_declared_by_arm": {
+    "note": "combined solution mode: one engine invocation over 1 in-scope project(s) via synthetic solution D:\\DEV\\cheburnexus-bench\\arms\\cheburnexus\\.work\\AutoMapper\\without-tests\\_combined\\AutoMapper-without-tests.sln"
+  },
+  "oracle_coverage": "exhaustive-static",
+  "first_party": [
+    "AutoMapper"
+  ],
+  "oracle_assemblies": [
+    "src\\AutoMapper\\bin\\Release\\net8.0\\AutoMapper.dll"
+  ],
+  "host": {
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.8",
+    "dotnet_sdk": "10.0.400"
+  },
+  "utc": "2026-09-25T144628Z"
+}

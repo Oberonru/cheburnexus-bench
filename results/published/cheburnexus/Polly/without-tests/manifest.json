@@ -1,0 +1,36 @@
+{
+  "repo": "App-vNext/Polly",
+  "sha": "173d6d1d2e28a4697f1ac1d22da68f77ff19a0c9",
+  "cell": "without-tests",
+  "arm": {
+    "name": "cheburnexus",
+    "version": "ArchitectureAnalyzer.Core.dll built 2026-09-25 sha256:33ae50036c10 at D:\\DEV\\LLM-CheburNexus\\dist-all\\_bench-engine-publish-2026-09-25\\arch-computer.exe (ArchitectureAnalyzer.CLI --solution, Roslyn semantic front end)",
+    "mode": "live"
+  },
+  "mode": "live",
+  "note": "",
+  "seconds": 10.578000000001339,
+  "coverage_declared_by_arm": {
+    "note": "combined solution mode: one engine invocation over 4 in-scope project(s) via synthetic solution D:\\DEV\\cheburnexus-bench\\arms\\cheburnexus\\.work\\Polly\\without-tests\\_combined\\Polly-without-tests.sln"
+  },
+  "oracle_coverage": "exhaustive-static",
+  "first_party": [
+    "Polly.Core",
+    "Polly.Extensions",
+    "Polly.RateLimiting",
+    "Polly.Testing"
+  ],
+  "oracle_assemblies": [
+    "artifacts\\bin\\Polly.Core\\release_net8.0\\Polly.Core.dll",
+    "artifacts\\bin\\Polly.Extensions\\release_net8.0\\Polly.Extensions.dll",
+    "artifacts\\bin\\Polly.RateLimiting\\release_net8.0\\Polly.RateLimiting.dll",
+    "artifacts\\bin\\Polly.Testing\\release_net8.0\\Polly.Testing.dll"
+  ],
+  "missing_declared_assemblies": [],
+  "host": {
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.8",
+    "dotnet_sdk": "10.0.400"
+  },
+  "utc": "2026-09-25T151136Z"
+}

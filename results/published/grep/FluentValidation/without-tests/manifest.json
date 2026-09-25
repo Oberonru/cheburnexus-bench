@@ -1,0 +1,27 @@
+{
+  "repo": "FluentValidation/FluentValidation",
+  "sha": "daa00b795450881c233253488e3ddeb362f59f56",
+  "cell": "without-tests",
+  "arm": {
+    "name": "grep",
+    "version": "pure-python-1",
+    "mode": "live"
+  },
+  "mode": "live",
+  "note": "",
+  "seconds": 0.25,
+  "coverage_declared_by_arm": {},
+  "oracle_coverage": "exhaustive-static",
+  "first_party": [
+    "FluentValidation"
+  ],
+  "oracle_assemblies": [
+    "src\\FluentValidation\\bin\\Release\\net8.0\\FluentValidation.dll"
+  ],
+  "host": {
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.8",
+    "dotnet_sdk": "10.0.400"
+  },
+  "utc": "2026-09-25T144628Z"
+}

@@ -7,7 +7,7 @@ corpus/
 # Корпус выкачивается локально по пину из corpus.json; сами чекауты не коммитим.
 __pycache__/
 *.pyc
-results/
+results/*
 !results/published/
 .venv/
 .index/

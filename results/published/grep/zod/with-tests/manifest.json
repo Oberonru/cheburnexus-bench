@@ -1,0 +1,26 @@
+{
+  "repo": "colinhacks/zod",
+  "sha": "7a00236683c79000dbab0d92f6faf0b7fba39f59",
+  "cell": "with-tests",
+  "arm": {
+    "name": "grep",
+    "version": "pure-python-1",
+    "mode": "live"
+  },
+  "mode": "live",
+  "note": "",
+  "seconds": 1.5780000000013388,
+  "coverage_declared_by_arm": {},
+  "oracle_coverage": "executed-tests-only",
+  "first_party": [
+    "zod"
+  ],
+  "oracle_assemblies": [],
+  "missing_declared_assemblies": [],
+  "host": {
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.8",
+    "dotnet_sdk": "10.0.400"
+  },
+  "utc": "2026-09-25T152425Z"
+}

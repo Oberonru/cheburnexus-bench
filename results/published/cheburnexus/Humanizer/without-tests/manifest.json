@@ -1,0 +1,29 @@
+{
+  "repo": "Humanizr/Humanizer",
+  "sha": "ffc2b77c0f30d2fb176875841424379319d0ae9b",
+  "cell": "without-tests",
+  "arm": {
+    "name": "cheburnexus",
+    "version": "ArchitectureAnalyzer.Core.dll built 2026-09-25 sha256:33ae50036c10 at D:\\DEV\\LLM-CheburNexus\\dist-all\\_bench-engine-publish-2026-09-25\\arch-computer.exe (ArchitectureAnalyzer.CLI --solution, Roslyn semantic front end)",
+    "mode": "live"
+  },
+  "mode": "live",
+  "note": "",
+  "seconds": 7.8439999999973224,
+  "coverage_declared_by_arm": {
+    "note": "combined solution mode: one engine invocation over 1 in-scope project(s) via synthetic solution D:\\DEV\\cheburnexus-bench\\arms\\cheburnexus\\.work\\Humanizer\\without-tests\\_combined\\Humanizer-without-tests.sln"
+  },
+  "oracle_coverage": "exhaustive-static",
+  "first_party": [
+    "Humanizer"
+  ],
+  "oracle_assemblies": [
+    "artifacts\\bin\\Humanizer\\release_net8.0\\Humanizer.dll"
+  ],
+  "host": {
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.8",
+    "dotnet_sdk": "10.0.400"
+  },
+  "utc": "2026-09-25T144628Z"
+}

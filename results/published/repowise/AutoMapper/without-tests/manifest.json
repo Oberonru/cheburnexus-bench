@@ -1,0 +1,28 @@
+{
+  "repo": "AutoMapper/AutoMapper",
+  "sha": "dfa6dd587c5854b4beee5934beb39ba6e9569b84",
+  "cell": "without-tests",
+  "arm": {
+    "name": "repowise",
+    "version": "0.45.0",
+    "mode": "live"
+  },
+  "mode": "live",
+  "note": "",
+  "seconds": 42.32800000000134,
+  "coverage_declared_by_arm": {},
+  "oracle_coverage": "exhaustive-static",
+  "first_party": [
+    "AutoMapper"
+  ],
+  "oracle_assemblies": [
+    "src\\AutoMapper\\bin\\Release\\net8.0\\AutoMapper.dll"
+  ],
+  "missing_declared_assemblies": [],
+  "host": {
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.8",
+    "dotnet_sdk": "10.0.400"
+  },
+  "utc": "2026-09-25T150843Z"
+}
