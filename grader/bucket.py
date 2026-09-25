@@ -40,6 +40,16 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 
+# Windows consoles often run a legacy codepage (cp1251 etc.) that cannot encode the ✅/⛔ markers
+# below. Force UTF-8 on stdout/stderr where the runtime allows it; anything that still can't
+# encode falls back to replacement characters instead of crashing the run.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except (ValueError, OSError):
+            pass
+
 
 def _load_grader():
     """Import `grade.py` as a module. The bucketing MUST agree with the published number key for
