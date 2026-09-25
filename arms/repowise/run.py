@@ -39,8 +39,25 @@ import armkit  # noqa: E402
 
 ARM_DIR = Path(__file__).resolve().parent
 VENV_DIR = ARM_DIR / ".venv"
-VENV_PYTHON = VENV_DIR / "bin" / "python"
 INDEX_ROOT = ARM_DIR / ".index"
+
+
+def _venv_executable(name: str) -> Path:
+    """The pinned venv's ``name`` executable, whichever layout this platform's ``venv`` used to
+    build it: POSIX puts executables in ``bin/``; Windows puts them in ``Scripts/`` with a ``.exe``
+    suffix. Checked in that order; when neither exists yet (venv not installed) the POSIX shape is
+    returned so the resulting "not found" error still names a real, inspectable path.
+    """
+    posix = VENV_DIR / "bin" / name
+    if posix.is_file():
+        return posix
+    windows = VENV_DIR / "Scripts" / f"{name}.exe"
+    if windows.is_file():
+        return windows
+    return posix
+
+
+VENV_PYTHON = _venv_executable("python")
 
 # Directories that never carry hand-written source and are excluded from the scratch copy purely
 # to save time/disk on the copy — repowise's own ``blocked_dirs`` for C# already skips bin/obj/.vs
@@ -51,6 +68,15 @@ _COPY_EXCLUDE = {"bin", "obj", ".vs", "node_modules"}
 # ── Locating the pinned install ──────────────────────────────────────────────────────────────
 
 def _site_packages() -> Path | None:
+    """The pinned venv's site-packages directory, on whichever layout built it.
+
+    Windows ``venv`` lays this out directly as ``Lib/site-packages``; POSIX nests it one level
+    deeper, under a python-version directory (``lib/python3.12/site-packages``). Both are checked
+    so this resolves under whichever platform actually created ``.venv``.
+    """
+    direct = VENV_DIR / "Lib" / "site-packages"
+    if direct.is_dir():
+        return direct
     lib = VENV_DIR / "lib"
     if not lib.is_dir():
         return None
@@ -129,7 +155,7 @@ def _ensure_scratch_copy(repo_root: Path, index_dir: Path) -> Path:
 # ── Step 2: run their indexer ────────────────────────────────────────────────────────────────
 
 def _run_repowise_init(checkout_copy: Path) -> None:
-    repowise_bin = VENV_DIR / "bin" / "repowise"
+    repowise_bin = _venv_executable("repowise")
     cmd = [
         str(repowise_bin), "init", str(checkout_copy),
         "--mode", "fast",          # structural graph only: no LLM key, no prose, no spend

@@ -24,7 +24,39 @@ sys.path.insert(0, str(ROOT / "arms" / "_lib"))
 sys.path.insert(0, str(HERE))
 
 import armkit  # noqa: E402
-from run import _node_class_bare  # noqa: E402
+from run import _node_class_bare, _venv_executable  # noqa: E402
+
+
+def check_venv_executable_resolves_both_layouts(tmp_path: Path) -> list[str]:
+    """POSIX ``venv`` lays out ``bin/name``; Windows lays out ``Scripts/name.exe``. The arm must
+    find whichever one this platform's ``.venv`` actually has, never just the POSIX shape — that
+    was the whole bug: hardcoded ``bin/`` made the arm FileNotFoundError on every Windows run."""
+    import run
+
+    failures = []
+    real_venv_dir = run.VENV_DIR
+    try:
+        run.VENV_DIR = tmp_path / "posix-venv"
+        (run.VENV_DIR / "bin").mkdir(parents=True)
+        (run.VENV_DIR / "bin" / "repowise").write_text("", encoding="utf-8")
+        got = _venv_executable("repowise")
+        if got != run.VENV_DIR / "bin" / "repowise":
+            failures.append(f"POSIX layout: got {got}, expected bin/repowise")
+
+        run.VENV_DIR = tmp_path / "windows-venv"
+        (run.VENV_DIR / "Scripts").mkdir(parents=True)
+        (run.VENV_DIR / "Scripts" / "repowise.exe").write_text("", encoding="utf-8")
+        got = _venv_executable("repowise")
+        if got != run.VENV_DIR / "Scripts" / "repowise.exe":
+            failures.append(f"Windows layout: got {got}, expected Scripts/repowise.exe")
+
+        run.VENV_DIR = tmp_path / "no-venv"
+        got = _venv_executable("repowise")
+        if got != run.VENV_DIR / "bin" / "repowise":
+            failures.append(f"missing venv: got {got}, expected the POSIX shape as a fallback name")
+    finally:
+        run.VENV_DIR = real_venv_dir
+    return failures
 
 
 def check_node_id_shapes() -> list[str]:
@@ -98,7 +130,11 @@ def check_drops_are_counted_not_hidden() -> list[str]:
 
 
 def main() -> int:
-    failures = check_node_id_shapes()
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        failures = check_venv_executable_resolves_both_layouts(Path(tmp))
+    failures += check_node_id_shapes()
     failures += check_cell_filter_matches_every_other_arm()
     failures += check_drops_are_counted_not_hidden()
 
