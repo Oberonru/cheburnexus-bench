@@ -75,12 +75,21 @@ def targets_framework(relative: str, wanted: str) -> bool:
     return False
 
 
-def assemblies_for(entry: dict, checkout: Path, cell: str) -> list[Path]:
+def assemblies_for(entry: dict, checkout: Path, cell: str,
+                    missing_out: list[str] | None = None) -> list[Path]:
     """The assemblies the answer key is built from, for this cell.
 
     Only the probed target framework is used. A multi-targeted repository produces the same types
     several times over, and counting net6.0 and net8.0 copies of one method as different edges would
     inflate the answer key with duplicates no arm could ever match twice.
+
+    A declared assembly (matching the probed framework) that isn't on disk is dropped silently from
+    the return value, same as always — an arm still needs to run against whatever actually built.
+    But a build_command that doesn't build everything corpus.json declares must not vanish without a
+    trace: that's exactly what happened to Polly (build_command built only Polly.Core while
+    product_assemblies listed four DLLs, so the answer key covered one of them and the other three
+    silently became "false positives" against arms that correctly analyzed all four). Pass
+    `missing_out` to collect the dropped relative paths instead of losing them.
     """
     wanted = entry.get("target_framework_probed")
     chosen: list[Path] = []
@@ -96,6 +105,8 @@ def assemblies_for(entry: dict, checkout: Path, cell: str) -> list[Path]:
             candidate = checkout / relative
             if candidate.is_file():
                 chosen.append(candidate)
+            elif missing_out is not None:
+                missing_out.append(relative)
     return chosen
 
 
@@ -145,7 +156,15 @@ def unmatched_test_scope_projects(entry: dict, cell: str) -> list[str]:
 def build_oracle_csharp(entry: dict, checkout: Path, cell: str, out_dir: Path) -> tuple[Path, Path, list[str]] | None:
     """Extract the answer key for one repository and cell, via the C#/IL oracle. Returns
     (edges, overrides, first_party). Registered in ORACLE_BUILDERS as the "csharp" language."""
-    assemblies = assemblies_for(entry, checkout, cell)
+    missing: list[str] = []
+    assemblies = assemblies_for(entry, checkout, cell, missing)
+    if missing:
+        print(
+            f"WARNING: {entry.get('name', '<unnamed>')}/{cell}: build_command did not produce "
+            f"{len(missing)} declared assembly(ies) — dropped from the answer key, NOT from what "
+            f"the arms analyze: {', '.join(missing)}",
+            file=sys.stderr,
+        )
     if not assemblies:
         return None
 
@@ -556,6 +575,9 @@ def main() -> int:
                                  "no built assemblies matched target_framework_probed", {}))
                 continue
             oracle, overrides, first_party = built
+            missing_assemblies: list[str] = []
+            oracle_assemblies = [str(a.relative_to(checkout))
+                                  for a in assemblies_for(entry, checkout, cell, missing_assemblies)]
 
             for arm_name in args.arms:
                 arm_dir = cell_dir / arm_name
@@ -587,8 +609,13 @@ def main() -> int:
                                         if entry.get("language", DEFAULT_LANGUAGE) == "typescript"
                                         else "exhaustive-static"),
                     "first_party": first_party,
-                    "oracle_assemblies": [str(a.relative_to(checkout))
-                                          for a in assemblies_for(entry, checkout, cell)],
+                    "oracle_assemblies": oracle_assemblies,
+                    # Declared in corpus.json's product_assemblies/test_assemblies (at the probed
+                    # framework) but not found on disk — build_command didn't build them, so they
+                    # were dropped from the answer key above. Non-empty here means the oracle is
+                    # under-covering relative to what corpus.json claims; see assemblies_for's
+                    # docstring for why this must be visible instead of silent.
+                    "missing_declared_assemblies": missing_assemblies,
                     "host": {"platform": platform.platform(), "python": platform.python_version(),
                              "dotnet_sdk": sdk},
                     "utc": stamp,

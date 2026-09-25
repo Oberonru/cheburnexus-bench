@@ -84,6 +84,29 @@ def check_assembly_selection(tmp: Path) -> list[str]:
     entry_missing = dict(entry, product_assemblies=["src/App/bin/Release/net8.0/Absent.dll"])
     if assemblies_for(entry_missing, checkout, "without-tests"):
         failures.append("an assembly that does not exist on disk was selected")
+
+    # Polly: build_command built only one of four declared product_assemblies, and the drop was
+    # invisible — assemblies_for() silently shrank the answer key while the manifest still claimed
+    # to cover the repository. missing_out must report exactly what was dropped, so a build_command
+    # that doesn't build everything corpus.json declares shows up instead of being read as the arm
+    # inventing false positives.
+    missing: list[str] = []
+    got = assemblies_for(entry_missing, checkout, "without-tests", missing)
+    if got:
+        failures.append("missing_out variant still selected a nonexistent assembly")
+    if missing != ["src/App/bin/Release/net8.0/Absent.dll"]:
+        failures.append(f"missing_out = {missing!r}, expected the one absent declared assembly")
+
+    # A present assembly must never be reported as missing alongside a genuinely absent one.
+    entry_mixed = dict(entry, product_assemblies=[
+        "src/App/bin/Release/net8.0/App.dll",
+        "src/App/bin/Release/net8.0/Absent.dll",
+    ])
+    missing_mixed: list[str] = []
+    assemblies_for(entry_mixed, checkout, "without-tests", missing_mixed)
+    if missing_mixed != ["src/App/bin/Release/net8.0/Absent.dll"]:
+        failures.append(f"missing_out = {missing_mixed!r} for a mixed present/absent list, "
+                        "expected only the absent one")
     return failures
 
 

@@ -66,7 +66,7 @@
     "clone_date_utc": "2026-08-23T15:24:00Z",
     "license": "BSD-3-Clause",
     "license_file": "LICENSE",
-    "build_command": "dotnet build src/Polly.Core/Polly.Core.csproj -c Release",
+    "build_command": "dotnet build src/Polly.Core/Polly.Core.csproj -c Release && dotnet build src/Polly.Extensions/Polly.Extensions.csproj -c Release && dotnet build src/Polly.RateLimiting/Polly.RateLimiting.csproj -c Release && dotnet build src/Polly.Testing/Polly.Testing.csproj -c Release",
     "build_modifications": "global.json sdk.version changed from 10.0.400 (unavailable) to 8.0.100 with rollForward=latestFeature added, so the local SDK 8.0.421 is selected. Plus the src/Snippets retarget recorded in restore_modifications below \u2014 see corpus-patches/Polly.patch for both hunks.",
     "build_caveat": "The legacy src/Polly/Polly.csproj (the older, pre-Polly.Core API surface) does NOT build under our SDK: Context.Dictionary.cs uses the C# 13 'field' keyword (auto-property backing field access), which requires the .NET 10 SDK/compiler. This project was excluded from the corpus; Polly.Core (the actively developed, modern API) and its satellite packages (Polly.Extensions, Polly.RateLimiting, Polly.Testing) all build cleanly and were probed/verified.",
     "restore_command": "dotnet restore src/Snippets/Snippets.csproj",
