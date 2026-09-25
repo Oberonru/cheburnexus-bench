@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300" role="img" aria-label="cheburnexus-bench: Honest call-graph accuracy benchmark">
+  <title>cheburnexus-bench</title>
+  <defs>
+    <marker id="arrow-d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#7c8797"/>
+    </marker>
+    <marker id="arrow-d-hit" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#6c9bff"/>
+    </marker>
+    <marker id="arrow-d-miss" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#ffa94d"/>
+    </marker>
+  </defs>
+
+  <text x="72" y="140" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="64" font-weight="700" fill="#f4f5f7">cheburnexus-bench</text>
+  <text x="72" y="182" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="24" font-weight="400" fill="#a7b0bd">Honest call-graph accuracy benchmark</text>
+
+  <!-- graph motif: caller/callee edges, one confirmed (blue), one unmatched (dashed orange) -->
+  <g stroke-width="2" fill="none">
+    <line x1="808" y1="86" x2="928" y2="60" stroke="#7c8797" marker-end="url(#arrow-d)"/>
+    <line x1="808" y1="86" x2="858" y2="168" stroke="#6c9bff" marker-end="url(#arrow-d-hit)"/>
+    <line x1="928" y1="60" x2="1058" y2="96" stroke="#7c8797" marker-end="url(#arrow-d)"/>
+    <line x1="858" y1="168" x2="1000" y2="156" stroke="#7c8797" marker-end="url(#arrow-d)"/>
+    <line x1="858" y1="168" x2="938" y2="234" stroke-dasharray="6 5" stroke="#ffa94d" marker-end="url(#arrow-d-miss)"/>
+    <line x1="1000" y1="156" x2="1110" y2="204" stroke="#7c8797" marker-end="url(#arrow-d)"/>
+  </g>
+  <g fill="#1c1f26" stroke="#6c9bff" stroke-width="2.5">
+    <circle cx="808" cy="86" r="9"/>
+    <circle cx="928" cy="60" r="9"/>
+    <circle cx="1058" cy="96" r="9"/>
+    <circle cx="858" cy="168" r="9"/>
+    <circle cx="1000" cy="156" r="9"/>
+    <circle cx="938" cy="234" r="9" stroke="#ffa94d"/>
+    <circle cx="1110" cy="204" r="9"/>
+  </g>
+</svg>
