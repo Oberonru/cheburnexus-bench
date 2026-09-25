@@ -207,7 +207,7 @@ writes to the real checkout regardless of whatever else a given repowise version
 ## Version
 
 Pinned to `repowise==0.45.0` via `pip install` into `arms/repowise/.venv` — this is the exact
-version the reference clone at `/Users/alexey/dev/repowise` is checked out at
+version the reference clone at `<repowise-checkout>` is checked out at
 (`pyproject.toml: version = "0.45.0"`), and it was available on PyPI, so no fallback to a nearby
 version was needed.
 

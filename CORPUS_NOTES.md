@@ -5,7 +5,7 @@ No .NET 10 SDK is installed anywhere on this machine. Several of today's upstrea
 now assume .NET 10 (global.json pins it, and/or the code uses C# 13 preview-only syntax). This was
 the single biggest source of friction across all candidates tried.
 
-Oracle tool used for verification: `/Users/alexey/dev/cheburnexus-bench/oracle/csharp` (Mono.Cecil-based,
+Oracle tool used for verification: `<bench-root>/oracle/csharp` (Mono.Cecil-based,
 reads PDBs, emits caller->callee edges as JSONL). It was NOT modified. It requires a *separate* .pdb
 file next to the .dll — embedded PDBs are invisible to it (see FluentValidation below).
 

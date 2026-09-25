@@ -5,7 +5,7 @@
 Runs our own product's C# analyzer (`ArchitectureAnalyzer.CLI`, the same engine the Unity package
 and the MCP server both wrap) over a checkout and converts its call-graph sidecar into the edge
 contract. Everything below was learned by reading the product's own source at
-`/Users/alexey/dev/Cheburnexus/LLM-CheburNexus` (read-only — nothing there was modified) and by
+`<cheburnexus-engine-root>` (read-only — nothing there was modified) and by
 running the built `dist-all/cheburnexus-all-1.7.0-osx-x64` binary against the bench corpus.
 
 **Headline finding: on this machine (no licence passport, the default state) the engine never
