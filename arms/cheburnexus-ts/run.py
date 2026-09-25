@@ -447,18 +447,60 @@ def _parse_raw_key(raw: str) -> tuple[str, str, str, str, str | None] | None:
 #
 # NOT applied to BaseTypes/Interfaces: this arm never reads those fields (it builds only the calls
 # axis, unlike the C# arm's implements axis) — see this file's header, "the only sidecars this arm
-# actually reads: architecture.calls.json ... architecture.methods.json". `fqn` itself is also left
-# alone everywhere else it appears in this file (TypeIndex.kind_name's key, `owner_fqn` parsed from a
-# raw key) because those are engine-output-to-engine-output lookups — both sides come from the SAME
-# helper the fixing commit introduced (declaredTypeName/typeParamsSuffix), so they still match each
-# other exactly and never touch the oracle's arity-free spelling. Only `simple_name`, read out of
-# `TypeIndex.kind_name` to build the oracle-facing `qualified` join key below, crosses that boundary.
+# actually reads: architecture.calls.json ... architecture.methods.json".
+#
+# UPDATE (2026-09-25): this USED TO be applied only to `simple_name` on the theory that `fqn` /
+# `owner_fqn` never needed it — both are "engine-output-to-engine-output", built by the same
+# declaredTypeName/typeParamsSuffix helper, so they were assumed to always agree verbatim. Zod
+# falsified that: a call site inside a generic class's own body can spell the enclosing type
+# differently from the class's OWN declaration (observed as the bare name with no suffix at all,
+# `packages/zod/src/v3.ZodArray`, against the declaration's `...ZodArray<T extends ZodTypeAny,
+# Cardinality extends ArrayCardinality = "many">` — also seen as `<this>` and a short `<T>`
+# elsewhere). Both `TypeIndex.kind_name`'s key (built here) and `owner_fqn` (looked up in
+# `translate()`) are now stripped the same way, so all spellings of one class collapse onto one join
+# key. Checked for collisions across zod's whole architecture.json: none (see `TypeIndex`'s
+# docstring). This alone turned out NOT to be sufficient — see `_normalize_owner_in_raw_key` below:
+# the SAME spelling mismatch also breaks the methods-sidecar lookup one step earlier in
+# `translate()`, before this fix's code ever runs, so it had to be applied there too. Verified on a
+# real zod run: `translator.drops["no-owner-fqn-in-architecture-json"]` was already 0 before AND
+# after this half of the fix (every affected edge was failing earlier, as
+# "no-methods-sidecar-line") — the counted total only moved once `_normalize_owner_in_raw_key` was
+# added.
 def strip_type_param_suffix(name: str) -> str:
     """A type declaration's own Name/fqn, with its verbatim type-parameter suffix removed for the
     oracle join (`Box<T>` -> `Box`, `Map<K,V>` -> `Map`, `Box<Map<K,V>>` -> `Box`, `Plain` -> `Plain`).
     """
     idx = name.find("<")
     return name if idx == -1 else name[:idx]
+
+
+def _normalize_owner_in_raw_key(raw_key: str) -> str:
+    """The same `{filePath}::{OwnerFqn}::{sig}` shape `_parse_raw_key` reads, with ONLY the
+    `OwnerFqn` piece passed through `strip_type_param_suffix` — the file path and the member
+    signature (name, params, any `static:`/`@L<line>` decoration) are left byte-for-byte alone.
+    A raw key without at least 3 '::'-separated pieces is returned unchanged; `_parse_raw_key`
+    refuses it the same way it always has.
+
+    Needed one level below the TypeIndex fix: `architecture.methods.json` is keyed by a
+    DECLARATION's own raw key, whose owner spells the type's full parameter list exactly as
+    `TypeIndex.kind_name` (built from the same declaration). But a CALL SITE's raw key — caller or
+    `Target` — is built independently by TsAnalyzer's type-checker-resolved reference, and can spell
+    the SAME owner differently. Observed on zod: `element()` declared under
+    `ZodArray<T extends ZodTypeAny, Cardinality extends ArrayCardinality = "many">`, referenced from
+    a call site under the bare `ZodArray`. Left unnormalized, that mismatch bites BEFORE
+    `Translator.translate` ever reaches the owner_fqn/TypeIndex check this file already guards: the
+    two raw keys differ by more than the owner segment's suffix now stripped, so a plain
+    `self.methods.get(raw_key)` on the untouched keys fails first, and the edge is dropped as
+    `no-methods-sidecar-line` — a real drop, but the wrong reason, one step too early to ever reach
+    the fix already in `translate()`. Both `Translator.methods`'s keys (built in `__init__`) and the
+    raw key looked up in `translate()` are normalized this same way so a declaration and every call
+    site that names it, however it spells the owner, land on the identical dict key.
+    """
+    parts = raw_key.split("::")
+    if len(parts) < 3:
+        return raw_key
+    parts[1] = strip_type_param_suffix(parts[1])
+    return "::".join(parts)
 
 
 def _param_count(params: str) -> int:
@@ -491,9 +533,20 @@ def _to_repo_relative(abs_path: str, repo_root: Path) -> str:
 
 
 class TypeIndex:
-    """fqn -> (Kind, simple Name), and fqn -> the set of property names that are get/set accessors
-    (never a plain method or field name — see `extractProperties` in emitCore.ts), built fresh from
-    this run's own architecture.json. Never reads the oracle."""
+    """stripped-fqn -> (Kind, simple Name), and stripped-fqn -> the set of property names that are
+    get/set accessors (never a plain method or field name — see `extractProperties` in emitCore.ts),
+    built fresh from this run's own architecture.json. Never reads the oracle.
+
+    Keyed by `strip_type_param_suffix(fqn)`, not the verbatim `fqn`, since 2026-09-25: a type's own
+    declaration always carries its full type-parameter list as written (`ZodArray<T extends
+    ZodTypeAny, Cardinality extends ArrayCardinality = "many">`), but a CALL SITE inside its own body
+    refers back to the enclosing type with whatever spelling was in scope at that point — observed on
+    zod as the bare name with no suffix at all (`ZodArray`), elsewhere as `<this>` or a short `<T>`.
+    Those are three spellings of one class, and an exact-match lookup on the verbatim fqn silently
+    dropped every edge whose owner_fqn didn't happen to match the declaration's own spelling. See
+    `translate()`, which strips the same way on the owner_fqn side so both sides land on one key.
+    Checked for collisions on zod's own architecture.json: 1143 types, 0 stripped-key collisions.
+    """
 
     def __init__(self, arch: dict) -> None:
         self.kind_name: dict[str, tuple[str, str]] = {}
@@ -503,11 +556,12 @@ class TypeIndex:
                 fqn = t.get("fqn")
                 if not fqn:
                     continue
-                self.kind_name[fqn] = (t.get("Kind", ""), t.get("Name", ""))
+                key = strip_type_param_suffix(fqn)
+                self.kind_name[key] = (t.get("Kind", ""), t.get("Name", ""))
                 names = {p.get("Name") for p in t.get("Properties", []) if p.get("Accessors")}
                 names.discard(None)
                 if names:
-                    self.accessor_names[fqn] = names
+                    self.accessor_names[key] = names
 
 
 _DROP_REASONS = (
@@ -516,6 +570,7 @@ _DROP_REASONS = (
     "unparseable-raw-key",
     "accessor-param-count-neither-0-nor-1",
     "anonymous-closure-tag-line-mismatch",
+    "methods-owner-normalization-collision",
 )
 
 # UPDATE (2026-09-03, second follow-up): the oracle's shadow-stack transformer USED TO label an
@@ -549,12 +604,26 @@ def _anon_join_name(engine_name: str) -> str | None:
     return f"anonL{m.group(2)}" if m else None
 
 
+_AMBIGUOUS_METHOD = object()  # sentinel: two distinct declarations normalized onto the same owner key
+
+
 class Translator:
     """Raw TsAnalyzer key -> oracle-shape key, or a drop reason. Every drop is counted — see this
     file's header, "None of the above is fudged into the join"."""
 
     def __init__(self, methods: dict, types: TypeIndex, repo_root: Path) -> None:
-        self.methods = methods
+        # Keyed by `_normalize_owner_in_raw_key`, not the verbatim raw key — see that function's
+        # docstring for why: a call site can spell a generic owner differently from how its own
+        # declaration spells itself, and this dict must still be found by either spelling. Checked
+        # against zod's own architecture.methods.json: 9010 raw keys, 0 collisions after
+        # normalizing — but a collision is never silently resolved by "first one wins": on the off
+        # chance a future repository does collide two distinct declarations onto one key, both
+        # become permanently unlookupable (`_AMBIGUOUS_METHOD`) rather than one of them silently
+        # borrowing the other's Line number.
+        self.methods: dict[str, dict | object] = {}
+        for raw_key, entry in methods.items():
+            key = _normalize_owner_in_raw_key(raw_key)
+            self.methods[key] = _AMBIGUOUS_METHOD if key in self.methods else entry
         self.types = types
         self.repo_root = repo_root
         self.drops: dict[str, int] = {r: 0 for r in _DROP_REASONS}
@@ -587,7 +656,13 @@ class Translator:
         # `<anon:L..>`/`<iife:L..>` tag — rewritten to the oracle's `anonL<line>` spelling by
         # `_anon_join_name` (see that function's comment) so it falls through the SAME machinery
         # below as every other member, unchanged from here on.
-        entry = self.methods.get(raw_key)
+        # Normalized the same way `self.methods`'s keys were built (see `Translator.__init__` and
+        # `_normalize_owner_in_raw_key`'s docstring) — this raw_key can be a CALL SITE's spelling of
+        # a generic owner, which need not match the declaration's own spelling verbatim.
+        entry = self.methods.get(_normalize_owner_in_raw_key(raw_key))
+        if entry is _AMBIGUOUS_METHOD:
+            self._drop("methods-owner-normalization-collision")
+            return None
         if entry is None or entry.get("Line") is None:
             self._drop("no-methods-sidecar-line")
             return None
@@ -613,7 +688,12 @@ class Translator:
                 return None
             name = anon_name
 
-        info = self.types.kind_name.get(owner_fqn)
+        # Stripped the same way TypeIndex's own keys are built (see its docstring): owner_fqn, read
+        # off a CALL SITE, can spell the enclosing type differently from that type's own declaration
+        # (bare name, `<this>`, a short `<T>`, or the full parameter list) — an exact-match lookup on
+        # the verbatim string silently dropped every edge where the two spellings didn't agree.
+        owner_key = strip_type_param_suffix(owner_fqn)
+        info = self.types.kind_name.get(owner_key)
         if info is None:
             self._drop("no-owner-fqn-in-architecture-json")
             return None
@@ -622,7 +702,7 @@ class Translator:
         qualified = name if kind == "module" else f"{simple_name}.{name}"
 
         suffix = ""
-        accessors = self.types.accessor_names.get(owner_fqn) or set()
+        accessors = self.types.accessor_names.get(owner_key) or set()
         if name in accessors:
             pc = _param_count(params)
             if pc == 0:

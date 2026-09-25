@@ -100,6 +100,79 @@ def check_translate_non_generic_owner_unchanged() -> list[str]:
     return failures
 
 
+def check_translate_mismatched_owner_spelling() -> list[str]:
+    """The zod regression (2026-09-25): a type's own declaration carries its full type-parameter
+    list verbatim (`ZodArray<T extends ZodTypeAny, Cardinality extends ArrayCardinality = "many">`,
+    the ONLY spelling ever stored in architecture.methods.json — one entry per declaration), but a
+    call site inside that class's OWN body can refer back to the enclosing type under a DIFFERENT
+    spelling of the same generic suffix — zod's architecture.calls.json was observed spelling the
+    same class's owner_fqn as a short `<T>`, as `<this>` (elsewhere in the same repo), and as the
+    bare name with no suffix at all.
+
+    Two separate lookups had to agree on this, not one: `TypeIndex.kind_name` (fixed first) AND
+    `Translator.methods`, keyed by the ENTIRE raw key including the owner segment — a call site's
+    raw key differs from the declaration's raw key by more than the owner's suffix, so
+    `self.methods.get(raw_key)` on unnormalized keys fails before `translate()` ever reaches the
+    TypeIndex check. Measured on the real zod run: fixing only TypeIndex left the published numbers
+    byte-identical (`no-owner-fqn-in-architecture-json` stayed 0 the whole time, no matter which
+    spelling was in the input — every one of these calls was dying one step earlier, as
+    `no-methods-sidecar-line`). This test builds `methods` with ONLY the declaration's own spelling
+    (real shape), and translates raw keys spelled the other three ways — the case the TypeIndex-only
+    fix could not have caught."""
+    failures = []
+    repo_root = Path("/repo")
+    declared_fqn = ('packages/zod/src/v3.ZodArray<T extends ZodTypeAny, '
+                     'Cardinality extends ArrayCardinality = "many">')
+    declared_name = 'ZodArray<T extends ZodTypeAny, Cardinality extends ArrayCardinality = "many">'
+    types = _make_types(declared_fqn, "class", declared_name)
+
+    declared_raw_key = f"/repo/packages/zod/src/v3.ts::{declared_fqn}::element()"
+    methods = {declared_raw_key: {"Line": 42}}  # ONE entry, the declaration's own spelling only
+
+    for owner_spelling, why in [
+        (declared_fqn, "the declaration's own verbatim spelling"),
+        ("packages/zod/src/v3.ZodArray<T>", "a short type-parameter spelling"),
+        ("packages/zod/src/v3.ZodArray<this>", "the `<this>` spelling"),
+        ("packages/zod/src/v3.ZodArray", "the bare name, no suffix at all"),
+    ]:
+        raw_key = f"/repo/packages/zod/src/v3.ts::{owner_spelling}::element()"
+        translator = Translator(methods, types, repo_root)
+        got = translator.translate(raw_key)
+        expected = "packages/zod/src/v3.ts::ZodArray.element:42"
+        if got != expected:
+            failures.append(f"owner spelled {owner_spelling!r} ({why}) joined to {got!r}, "
+                             f"expected {expected!r} — the edge would silently drop")
+        if got is not None and sum(translator.drops.values()):
+            failures.append(f"owner spelled {owner_spelling!r} matched but still counted a drop: "
+                             f"{translator.drops}")
+    return failures
+
+
+def check_methods_owner_normalization_collision() -> list[str]:
+    """A collision guard, not an expected real case (measured 0 collisions on zod's whole
+    architecture.methods.json — see this file's header and `_normalize_owner_in_raw_key`'s
+    docstring). If normalizing ever DID collapse two genuinely distinct declarations onto the same
+    key, neither may be silently served under the other's Line number — both must become permanently
+    unlookupable and counted, the same "never fuzz-pick" rule this file already applies to same-line
+    closure collisions."""
+    failures = []
+    repo_root = Path("/repo")
+    types = _make_types("src.Box<T>", "class", "Box<T>")
+    # Two distinct declarations that normalize to the identical methods key.
+    methods = {
+        "/repo/src/box.ts::src.Box<T>::run()": {"Line": 4},
+        "/repo/src/box.ts::src.Box<U>::run()": {"Line": 9},
+    }
+    translator = Translator(methods, types, repo_root)
+    got = translator.translate("/repo/src/box.ts::src.Box<T>::run()")
+    if got is not None:
+        failures.append(f"a colliding methods key resolved to {got!r} instead of being refused")
+    if translator.drops["methods-owner-normalization-collision"] != 1:
+        failures.append("the collision was not counted in "
+                         "drops['methods-owner-normalization-collision']")
+    return failures
+
+
 def check_translate_module_scope_unaffected() -> list[str]:
     """A module-scope function never qualifies with a class name at all — stripping the (unused)
     simple_name must not somehow make one appear."""
@@ -120,6 +193,8 @@ def main() -> int:
     failures = check_strip_type_param_suffix()
     failures += check_translate_strips_generic_owner()
     failures += check_translate_non_generic_owner_unchanged()
+    failures += check_translate_mismatched_owner_spelling()
+    failures += check_methods_owner_normalization_collision()
     failures += check_translate_module_scope_unaffected()
 
     if failures:
