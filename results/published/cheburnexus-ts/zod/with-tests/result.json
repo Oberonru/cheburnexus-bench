@@ -1,0 +1,75 @@
+{
+  "cells": [
+    {
+      "cell": "primary \u2014 first-party ordinary calls and constructors",
+      "oracle_edges": 22718,
+      "arm_edges_in_cell": 13527,
+      "matched": 12631,
+      "precision": 0.9338,
+      "recall": 0.556
+    },
+    {
+      "cell": "excluded \u2014 callee outside the corpus",
+      "oracle_edges": 0,
+      "arm_edges_in_cell": 0,
+      "matched": 0,
+      "precision": null,
+      "recall": null
+    },
+    {
+      "cell": "excluded \u2014 property accessors",
+      "oracle_edges": 0,
+      "arm_edges_in_cell": 0,
+      "matched": 0,
+      "precision": null,
+      "recall": null
+    },
+    {
+      "cell": "excluded \u2014 foreach protocol",
+      "oracle_edges": 0,
+      "arm_edges_in_cell": 0,
+      "matched": 0,
+      "precision": null,
+      "recall": null
+    },
+    {
+      "cell": "excluded \u2014 compiler-generated callee",
+      "oracle_edges": 0,
+      "arm_edges_in_cell": 0,
+      "matched": 0,
+      "precision": null,
+      "recall": null
+    },
+    {
+      "cell": "excluded \u2014 indirect call op (calli / ldvirtftn)",
+      "oracle_edges": 0,
+      "arm_edges_in_cell": 0,
+      "matched": 0,
+      "precision": null,
+      "recall": null
+    },
+    {
+      "cell": "unjudged \u2014 arm's caller has no oracle evidence of executing (runtime key: not wrong, just never observed)",
+      "oracle_edges": 0,
+      "arm_edges_in_cell": 202,
+      "matched": 0,
+      "precision": 0.0,
+      "recall": null
+    }
+  ],
+  "stats": {
+    "rows": 25770,
+    "unremappable_caller": 3052,
+    "no_source_anchor": 0,
+    "unparsed_row": 0,
+    "arm_dropped": 0
+  },
+  "primary_strict_no_filter": {
+    "cell": "primary (strict \u2014 no executed-caller filter)",
+    "oracle_edges": 22718,
+    "arm_edges_in_cell": 13729,
+    "matched": 12631,
+    "precision": 0.92,
+    "recall": 0.556
+  }
+}

@@ -2,9 +2,9 @@
 """Regenerate assets/results-{light,dark}.svg from results/published/.
 
 Grouped horizontal bar chart of PRECISION, primary cell, for the C# repos plus
-class-validator (the one TypeScript repo with a clean grep/repowise/cheburnexus-ts
-triple published so far — zod's cheburnexus-ts is excluded from results/published/
-pending investigation, so it is left out of this chart too).
+both TypeScript repos (class-validator, zod) now that zod's cheburnexus-ts row
+is published too (the 2026-09-13 generic-interface regression is fixed, see
+results/published/SUMMARY.md).
 
 No third-party dependencies on purpose — this repo's own quickstart promises
 "Python 3, standard library only", and a chart script is not an exception. Output
@@ -33,6 +33,7 @@ ROWS = [
     ("AutoMapper", "AutoMapper", "without-tests", "cheburnexus"),
     ("Humanizr/Humanizer", "Humanizer", "without-tests", "cheburnexus"),
     ("typestack/class-validator", "class-validator", "with-tests", "cheburnexus-ts"),
+    ("colinhacks/zod", "zod", "with-tests", "cheburnexus-ts"),
 ]
 
 # arm key in ROWS's last column varies per repo (cheburnexus vs cheburnexus-ts); grep/repowise

@@ -112,8 +112,6 @@ flowchart LR
 > `results/published/SUMMARY.md`: там коммит движка, коммит бенчмарка, дата, хост. Пересобери
 > оракул из закреплённого коммита, натрави `grader/grade.py` на опубликованный `edges.jsonl` —
 > получишь те же точность и полноту, что и в этой таблице. Верить нам на слово не нужно.
-> Строка `cheburnexus-ts` для `zod` пока не публикуется — идёт отдельное расследование (смотри
-> заметку под таблицей); `grep`/`repowise` для `zod` опубликованы как обычно.
 
 <p align="center">
   <picture>
@@ -135,7 +133,7 @@ flowchart LR
 | AutoMapper/AutoMapper | C# | RPL-1.5 | without-tests | 0.186 / 0.410 | 0.558 / 0.224 | **0.957 / 0.685** |
 | Humanizr/Humanizer | C# | MIT | without-tests | 0.123 / 0.238 | 0.925 / 0.239 | **0.998 / 0.400** |
 | typestack/class-validator | TypeScript | MIT | with-tests | — / 0.000 | — / 0.000 | **0.997 / 0.563** (cheburnexus-ts) |
-| colinhacks/zod | TypeScript | MIT | with-tests | — / 0.000 | — / 0.000 | разбираемся (cheburnexus-ts) |
+| colinhacks/zod | TypeScript | MIT | with-tests | — / 0.000 | — / 0.000 | **0.934 / 0.556** (cheburnexus-ts) |
 
 > [!NOTE]
 > **Ячейки.** `with-tests` отдельной строкой существует только для `serilog` — у остальных

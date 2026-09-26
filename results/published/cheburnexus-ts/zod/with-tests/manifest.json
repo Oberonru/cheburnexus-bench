@@ -1,0 +1,31 @@
+{
+  "repo": "colinhacks/zod",
+  "sha": "7a00236683c79000dbab0d92f6faf0b7fba39f59",
+  "cell": "with-tests",
+  "arm": {
+    "name": "cheburnexus-ts",
+    "version": "dist/core/*.js (3 files) built 2026-09-25 sha256:0180fe8a9e09 at D:\\DEV\\LLM-CheburNexus\\TsAnalyzer (TsAnalyzer CLI, ts-morph syntactic+semantic front end)",
+    "mode": "live"
+  },
+  "mode": "live",
+  "note": "",
+  "seconds": 42.35899999999674,
+  "coverage_declared_by_arm": {
+    "is_exact": false,
+    "reason": "key_translation_loss",
+    "unresolved_call_sites": 176,
+    "note": "TsAnalyzer resolved 21584 call sites; 28594 key(s) translated successfully, 176 raw key lookups failed translation (no-methods-sidecar-line=176); 7 same-line named-closure key collision(s) found (2+ distinct closures translating to the identical key), 9 edge(s) touching a colliding key dropped rather than guessed -- see this arm's run.py header for what each reason means. Named AND anonymous/IIFE closures all get their own call-graph node now (engine commit 2a2014e1) and all translate: named ones like any other member, anonymous ones via _anon_join_name against the oracle's own positionally-stable anonLabel() (oracle/typescript/transformer.js, 2026-09-03 follow-up) -- residual drops are almost entirely no-methods-sidecar-line, not a structural closure-identity gap anymore."
+  },
+  "oracle_coverage": "executed-tests-only",
+  "first_party": [
+    "zod"
+  ],
+  "oracle_assemblies": [],
+  "missing_declared_assemblies": [],
+  "host": {
+    "platform": "Windows-10-10.0.19045-SP0",
+    "python": "3.12.8",
+    "dotnet_sdk": "10.0.400"
+  },
+  "utc": "2026-09-26T134444Z"
+}

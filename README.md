@@ -109,8 +109,7 @@ CheburNexus engine can all three be run live end to end by anyone.
 > `results/published/SUMMARY.md` for provenance (engine commit, bench commit, date, host).
 > Rebuild the oracle from the pinned commit, point `grader/grade.py` at a published
 > `edges.jsonl`, and you get the same precision/recall this table shows — nobody has to take
-> our numbers on faith. `zod`'s `cheburnexus-ts` row is held back pending an open investigation
-> (see the table note); its `grep`/`repowise` rows are published as usual.
+> our numbers on faith.
 
 <p align="center">
   <picture>
@@ -132,7 +131,7 @@ Precision / recall, primary cell, best arm **bold**:
 | AutoMapper/AutoMapper | C# | RPL-1.5 | without-tests | 0.186 / 0.410 | 0.558 / 0.224 | **0.957 / 0.685** |
 | Humanizr/Humanizer | C# | MIT | without-tests | 0.123 / 0.238 | 0.925 / 0.239 | **0.998 / 0.400** |
 | typestack/class-validator | TypeScript | MIT | with-tests | — / 0.000 | — / 0.000 | **0.997 / 0.563** (cheburnexus-ts) |
-| colinhacks/zod | TypeScript | MIT | with-tests | — / 0.000 | — / 0.000 | under investigation (cheburnexus-ts) |
+| colinhacks/zod | TypeScript | MIT | with-tests | — / 0.000 | — / 0.000 | **0.934 / 0.556** (cheburnexus-ts) |
 
 > [!NOTE]
 > **Cells.** `with-tests` only exists as its own row for `serilog` — every other C# repo's

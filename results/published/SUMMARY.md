@@ -1,6 +1,6 @@
-# Published results — 2026-09-25
+# Published results — 2026-09-26
 
-Assembled from three runs, latest valid row per arm×repo×cell (a `-fix` row overrides the
+Assembled from four runs, latest valid row per arm×repo×cell (a `-fix` row overrides the
 same cell in the base candidate run):
 
 - `results/published-candidate-2026-09-25/` — base run, all arms except a working `repowise`
@@ -8,25 +8,47 @@ same cell in the base candidate run):
   there is the old, pre-fix one (3 product assemblies instead of 4) — not used for Polly.
 - `results/published-candidate-2026-09-25-fix/` — Polly (`cheburnexus` + `grep` + `repowise`)
   regraded against the fixed 4-assembly oracle; zod (`cheburnexus-ts` + `grep`) rerun the same day.
+  **This zod `cheburnexus-ts` row was itself buggy** (precision 0.687 / recall 0.410) — see the
+  next bullet — and was withheld rather than published on 2026-09-25.
 - `results/published-candidate-2026-09-25-repowise/` — `repowise` for every repo, live. Its own
   Polly row still used the OLD Core-only oracle, so Polly's `repowise` row is taken from the
   `-fix` run instead (generated on top of bench commit 2baf14c specifically to close this gap).
+- `results/published-candidate-2026-09-26-zod-fix/` — zod's `cheburnexus-ts` rerun after fixing
+  a real engine regression (see "zod investigation, resolved" below): precision 0.934 / recall
+  0.556, matching the pre-regression baseline within noise. This is the row published here now.
 
 ## Provenance
 
-- Engine: CheburNexus, commit `d6534f1c` (repo `D:\DEV\LLM-CheburNexus`, branch `main`),
+- Engine (C# arm, `cheburnexus`): commit `d6534f1c` (repo `D:\DEV\LLM-CheburNexus`, branch `main`),
   built as `dist-all/_bench-engine-publish-2026-09-25/arch-computer.exe`.
+- Engine (TS arm, `cheburnexus-ts`, zod row only): commit `44d83dac` (2026-09-26,
+  `fix(ts): вызов члена generic-интерфейса снова находит фабричное тело`), built from
+  `D:\DEV\LLM-CheburNexus\TsAnalyzer` (`dist/core/*.js`, sha256 `0180fe8a9e09`). This is the
+  fix shipped in engine release `v1.8.1`.
 - Bench: this repo, commit `2baf14c` (`fix(grader): bucket.py больше не падает на cp1251-консоли
-  Windows`) — the state the Polly `repowise` rerun and this assembly ran against.
-- Date: 2026-09-25.
+  Windows`) — the state the Polly `repowise` rerun and the C# assembly ran against. The zod rerun
+  on 2026-09-26 used the same bench commit.
+- Date: 2026-09-25 (all rows except zod's `cheburnexus-ts`, which is 2026-09-26).
 - OS: Windows-10-10.0.19045-SP0.
 - .NET SDK: 10.0.400.
 - Python: 3.12.8.
 
+## zod investigation, resolved (2026-09-26)
+
+The 2026-09-25 `cheburnexus-ts` row for zod was withheld ("under investigation") because it looked
+wrong: precision 0.687 / recall 0.410, well under class-validator's 0.997 / 0.563 on the same
+engine. Root cause: a real regression in the TS analyzer's call-graph key building
+(`TsAnalyzer/src/core/emitCore.ts`), introduced 2026-09-13 (`be3f2e62`) and never caught until this
+bench re-check — a generic interface with a declaration-merged factory body (zod's own
+`ZodObject<Shape, Config>` pattern) produced two different candidate-pool keys for the same logical
+owner, one suffixed and one bare, so external `schema.partial()`-style calls resolved to nothing.
+Fixed the same day (`44d83dac`), verified against a minimal repro test and rerun on the full zod
+corpus here. **Released engine `v1.8.0` carries this bug** for TypeScript generic-interface call
+resolution; `v1.8.1` has the fix. Full writeup (LLM-CheburNexus repo,
+`.claude/memory/finding-ts-generic-owner-split-signature-impl-2026-09-26.md`).
+
 ## What's excluded
 
-- `cheburnexus-ts` for **zod** (`colinhacks/zod`) — under investigation in parallel (a read-only
-  issue on the TS arm), not published here yet. `zod`'s `grep` and `repowise` rows are published.
 - `vuejs/core` — not part of this run batch; no fresh 2026-09-25 rows exist for it.
 
 ## Table (primary cell, precision / recall)
@@ -44,7 +66,7 @@ licence notes. Quick reference:
 | AutoMapper | without-tests | 0.186 / 0.410 | 0.558 / 0.224 | 0.957 / 0.685 |
 | Humanizer | without-tests | 0.123 / 0.238 | 0.925 / 0.239 | 0.998 / 0.400 |
 | class-validator | with-tests | — / 0.000 | — / 0.000 | 0.997 / 0.563 |
-| zod | with-tests | — / 0.000 | — / 0.000 | under investigation |
+| zod | with-tests | — / 0.000 | — / 0.000 | 0.934 / 0.556 |
 
 `grep` and `repowise` show `— / 0.000` on the two TypeScript rows for different, genuine
 reasons, not a shared bug:
@@ -60,7 +82,6 @@ reasons, not a shared bug:
 
 ## Sizes
 
-`results/published/` is ~14 MB total; the largest single file is
-`grep/Humanizer/without-tests/edges.jsonl` at ~4.2 MB. Nothing approaches a 50 MB/file
-concern — zod's only published arms here (`grep`, `repowise`) are both small (0 and 126
-edges); the large zod `cheburnexus-ts` row is excluded pending the parallel investigation.
+`results/published/` is ~19 MB total; the largest single file is zod's
+`cheburnexus-ts/zod/with-tests/edges.jsonl` at ~4.7 MB, just ahead of
+`grep/Humanizer/without-tests/edges.jsonl` at ~4.2 MB. Nothing approaches a 50 MB/file concern.
