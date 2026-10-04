@@ -50,8 +50,8 @@ flowchart LR
     grader --> result["precision / recall\nper repo, per cell"]
 ```
 
-- **The corpus** is a short list of pinned, permissively-licensed open-source repositories
-  (`corpus.json`), each locked to one commit SHA. Nobody moves the target after a number is
+- **The corpus** is a short list of pinned open-source repositories, mostly
+  permissively licensed (`corpus.json`), each locked to one commit SHA. Nobody moves the target after a number is
   published.
 - **The oracle** is the compiled answer key: `oracle/csharp` for C# (Mono.Cecil over IL + PDBs),
   `oracle/typescript` for TypeScript (a runtime shadow-stack that records the calls a test run
@@ -155,11 +155,13 @@ emit edges on both TS repos (18 on class-validator, 126 on zod), but the TypeScr
 credits a caller the test suite actually executed, and none of `repowise`'s callers land in that
 executed set — see `results/published/SUMMARY.md` for the full breakdown.
 
-Two entries (`jbogard/MediatR`, `AutoMapper/AutoMapper`) carry the **RPL-1.5** licence — a
-reciprocal/copyleft licence, not a permissive one. This repository does not redistribute their
-source: `corpus/` is git-ignored, and `corpus.json` pins only a URL and a commit SHA that the
-reader fetches themselves — see [License](#license) for what RPL-1.5 means if you reuse anything
-built from those two checkouts beyond running this benchmark.
+Most of the corpus is permissive, but three entries are not: `jbogard/MediatR` and
+`AutoMapper/AutoMapper` carry **RPL-1.5** (reciprocal/copyleft), and `unitystation/unitystation`
+carries **AGPL-3.0** (strong copyleft). This repository does not redistribute their source:
+`corpus/` is git-ignored, and it stores only the URL, the commit SHA, generated project files
+(unitystation's csproj list source file names) and edges (names, paths, line numbers) — no code, see
+`CORPUS_NOTES.md`. The reader fetches the checkouts themselves; see [License](#license) for what
+these licences mean if you reuse anything built from those checkouts beyond running this benchmark.
 
 ## Quickstart
 
@@ -414,8 +416,9 @@ That licence does **not** extend to:
 
 - the pinned repositories under `corpus/` (not committed — fetched by the reader per
   `corpus.json`). Each keeps its own upstream licence: most of this corpus is Apache-2.0,
-  BSD-3-Clause, or MIT, but two entries (`jbogard/MediatR`, `AutoMapper/AutoMapper`) are licensed
-  under **RPL-1.5**, a reciprocal/copyleft licence — check `corpus.json` and that repository's own
+  BSD-3-Clause, or MIT, but three entries are not: `jbogard/MediatR` and `AutoMapper/AutoMapper`
+  are under **RPL-1.5** (reciprocal/copyleft), `unitystation/unitystation` under **AGPL-3.0**
+  (strong copyleft) — check `corpus.json` and that repository's own
   licence file before reusing anything beyond running this benchmark against the pinned commit;
 - the Cheburnexus engine binary, which is closed-source and never distributed here — see
   ["Auditable, not rerunnable"](#auditable-not-rerunnable).
