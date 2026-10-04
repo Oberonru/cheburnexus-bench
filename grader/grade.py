@@ -155,6 +155,23 @@ def strip_generic_arguments(segment: str) -> str:
     return "".join(out)
 
 
+def split_nested(type_name: str) -> list[str]:
+    """Split `Outer/Inner` at the nesting slashes only, never at a `/` inside `<...>`."""
+    parts: list[str] = []
+    depth = 0
+    start = 0
+    for i, char in enumerate(type_name):
+        if char == "<":
+            depth += 1
+        elif char == ">":
+            depth = max(0, depth - 1)
+        elif char == "/" and depth == 0:
+            parts.append(type_name[start:i])
+            start = i + 1
+    parts.append(type_name[start:])
+    return parts
+
+
 def method_key(raw: str) -> str | None:
     """Canonical `Namespace.Type::Method`, or None when the string is not a method reference."""
     match = _CECIL_FULLNAME.match(raw.strip())
@@ -162,7 +179,10 @@ def method_key(raw: str) -> str | None:
         return None
 
     # Nested types are `Outer/Inner`; each part decides for itself whether it is a mangled name.
-    type_name = "/".join(strip_generic_arguments(part) for part in match.group("type").strip().split("/"))
+    # The cut is made only OUTSIDE angle brackets: Cecil writes a nested type used as a generic
+    # argument with the same slash (`ClientMessage`1<X/NetMessage>`), and that slash belongs to the
+    # argument, which is stripped away whole — not to the nesting of the type being named.
+    type_name = "/".join(strip_generic_arguments(part) for part in split_nested(match.group("type").strip()))
     method = strip_generic_arguments(match.group("method").strip())
 
     # `.ctor` and `.cctor` are NOT the same method. An instance constructor runs per object, a static
@@ -219,7 +239,7 @@ def enclosing_user_method(key: str) -> tuple[str, bool]:
     for candidate in (method, type_name):
         name = _extract_enclosing(candidate)
         if name is not None:
-            outer_type = type_name.split("/")[0]
+            outer_type = split_nested(type_name)[0]
             # Roslyn dash-encodes the qualifier of an explicit interface implementation inside a
             # mangled name, because a type-name segment cannot contain a literal '.':
             # `FluentValidation-IValidationRuleInternal<T>-ValidateAsync` stands for
