@@ -194,4 +194,15 @@ NuGet package cache under `~/.nuget/packages`, not the corpus dir itself).
   of grep's edges fall in the new Unity cell (name-based matching hits every `Update` on every
   component), without that cell grep's precision would read 0.058. cheburnexus put no edge in the Unity
   cell. repowise was not run.
+- Same cell on three engine builds (2026-10-04, local, not published; `results/local/unitystation-{2,1.8.1,head}`,
+  `$CHEBURNEXUS_ENGINE` pointed at each `arch-computer.exe`): public `v1.8.0` (commit 28493b74), public
+  `v1.8.1` (a3516a2b, zip sha256 7350e703...) and the engine `main` of 2026-10-04 (ef3d2fe7, built with
+  `dotnet publish -r win-x64 --self-contained -p:PublishSingleFile=false`, as `build-bench-engine.sh` does).
+  All three give primary precision 0.978 and recall 0.801 without tests (32,470 of 40,559 key edges;
+  33,212 arm edges), and 0.978 / 0.801 with tests (33,027 of 41,213). `v1.8.0` and `v1.8.1` write
+  byte-identical edge files; `main` writes the same 33,331 caller/callee pairs, only 65 call-site line
+  numbers differ (the line is now the method-name line of a chain). Engine time per cell 2.5 to 3 min.
+- Of the 8,089 key edges the engine missed, about 79% are calls the engine saw but could not bind
+  (`UnresolvedDetails` in `architecture.calls.json`: 3,466 with an unbound receiver, 2,656 overload
+  resolution failures, 301 without a reason); about 17% have no record at all.
 
