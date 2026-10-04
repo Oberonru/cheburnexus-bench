@@ -50,10 +50,10 @@ flowchart LR
     grader --> result["precision / recall\nper repo, per cell"]
 ```
 
-- **The corpus** is a short list of pinned open-source repositories, mostly
+- **The corpus 📚 is a short list of pinned open-source repositories, mostly
   permissively licensed (`corpus.json`), each locked to one commit SHA. Nobody moves the target after a number is
   published.
-- **The oracle** is the compiled answer key: `oracle/csharp` for C# (Mono.Cecil over IL + PDBs),
+- **The oracle 🔮 is the compiled answer key: `oracle/csharp` for C# (Mono.Cecil over IL + PDBs),
   `oracle/typescript` for TypeScript (a runtime shadow-stack that records the calls a test run
   actually made — see [Limitations](#limitations), this one is not exhaustive).
 - **An arm** is one engine under test, run through the shared CLI contract in
@@ -64,11 +64,11 @@ flowchart LR
   `who_calls`, class dependencies) shipped in **CheburNexus's Free tier**: no licence key is
   needed to run it. Anyone can point `CHEBURNEXUS_ENGINE` at the free engine and run this arm
   live too — see [Quickstart](#quickstart).
-- **The grader** (`grader/grade.py`) matches an arm's edges against the oracle's, by a fixed
+- **The grader ⚖️ (`grader/grade.py`) matches an arm's edges against the oracle's, by a fixed
   identity key, and reports precision/recall per cell. The matching rules — what counts as the
   same edge, what is excluded from the comparable set, what virtual-dispatch override map is
   applied — are fixed in `grader/EDGE_FORMAT.md` before any run, not tuned after seeing a number.
-- **Cells.** Every repository is measured twice: `without-tests` (product code only) and
+- **Cells 🧩 Every repository is measured twice: `without-tests` (product code only) and
   `with-tests` (product + test code), because a tool's numbers usually fall hardest on the
   with-tests cell and that is not allowed to be quietly skipped.
 
@@ -79,25 +79,25 @@ download (see the Free-tier note above). What is published here, for every arm i
 the corpus pins, the oracle builder, the grader, and the raw per-edge output. A sceptic rebuilds
 the answer key from the pinned commit and re-grades every published row with their own copy of
 `grader/grade.py`, whether or not they bother installing an engine at all — the numbers are
-**auditable, not rerunnable, by construction**, even now that `grep`, `repowise` and the free
+**auditable, not rerunnable, by construction ✅, even now that `grep`, `repowise` and the free
 CheburNexus engine can all three be run live end to end by anyone.
 
 ### How to read the numbers
 
 - **Precision** = matched edges ÷ edges the arm emitted, in one cell.
-- **Recall** = matched edges ÷ edges the oracle expects, in that same cell.
-- **The comparable set** excludes, and separately counts, calls to a property accessor
+- 📡 Recall = matched edges ÷ edges the oracle expects, in that same cell.
+- 🗂️ The comparable set excludes, and separately counts, calls to a property accessor
   (`get_`/`set_`), the `foreach` enumerator protocol, compiler-generated callees, and calls outside
   the pinned corpus — see `grader/EDGE_FORMAT.md`, "The comparable set". This boundary moves the
   denominator by roughly 10x, which is why it is written down before any run rather than picked
   afterward.
-- **`declared`** is a column, not a score adjustment: an arm may say next to its edges how many
+- 📋`declared` is a column, not a score adjustment: an arm may say next to its edges how many
   call sites it saw but could not resolve (`<edges>.jsonl.coverage.json`). A blank cell means the
   arm made no statement about its own blind spots — not that it has none.
 - **`dropped`** counts arm rows whose caller couldn't be confidently mapped back to a user-written
   method (the same rule the oracle itself applies to compiler-generated callers like lambdas and
   iterators). Dropped rows count for nobody, on either side.
-- **Identity.** A method key is `Namespace.Type::Method` — parameter types are dropped, so
+- 🔑 Identity.** A method key is `Namespace.Type::Method` — parameter types are dropped, so
   overloads collapse into one node. This inflates every arm's precision a little, ours included; it
   is a stated trade-off, not an oversight — see `grader/EDGE_FORMAT.md`, "Identity".
 
