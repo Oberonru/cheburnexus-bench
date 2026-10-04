@@ -146,3 +146,44 @@ version, these builds should be re-verified.
 Total corpus directory after all three passing builds (checkouts + build outputs, failed
 AutoMapper clone removed): ~44 MB. Free disk before/after: ~14 GB → ~13 GB (most of the drop was
 NuGet package cache under `~/.nuget/packages`, not the corpus dir itself).
+
+## 7. unitystation/unitystation - first Unity project (pinned 9d4dd4cc)
+
+- Repository: https://github.com/unitystation/unitystation, project in the `UnityProject` folder,
+  Unity 6000.2.10f1. Pinned to `9d4dd4ccf571eecfc660b82e7804a56b17f1c9a7` (2026-06-20), the commit the
+  maintainer's checkout sits on, so the generated project files below match it exactly. The asmdef set
+  at that commit is 42 files; the pinned csproj set covers 36 assemblies (see "Left out").
+- License: **AGPL-3.0** (`LICENSE`). It is a strong copyleft licence, and it fits this corpus because the
+  benchmark only reads the code: this repository stores the URL, the sha, and generated project files
+  that list source file names. No unitystation source is stored, copied or redistributed; every user
+  clones it from GitHub themselves. The owner approved the licence for this use.
+- **Needs an installed Unity 6000.2.10f1.** The project files reference `UnityEngine.*.dll` from the
+  Editor install (`UNITY_EDITOR_PATH`) and Mirror and other git packages from `Library/PackageCache`
+  plus `Library/ScriptAssemblies` (`UNITY_LIBRARY_DIR`, default `UnityProject/Library`). A fresh clone has
+  no `Library`; it appears when the project is opened once in the Editor. Verified here only with the
+  Library of the maintainer's imported copy of the same commit; a batch-mode import from scratch was
+  not tried.
+- Build: `python corpus-patches/unitystation/build.py corpus/unitystation`. unitystation git-ignores the
+  Editor-generated `.csproj` files, so `corpus-patches/unitystation/csproj/` holds the Editor's output
+  for this sha with the two machine paths turned into MSBuild properties
+  (`corpus-patches/unitystation/Directory.Build.props`). `dotnet build <project>.csproj --no-restore
+  -p:DebugType=portable`. The csproj says `DebugType=full`, a Windows PDB the oracle cannot read;
+  portable PDBs carry the source lines (3.2% of edges lack one). All 36 projects build in about 32 s
+  (Assets.dll alone about 11 s), no restore needed.
+- Left out of the csproj set: four projects the Editor generated for a local analyzer package that is not
+  part of unitystation, the empty `Assembly-CSharp` and two empty FastScriptReload test projects, and
+  `FastScriptReload.Editor` (a vendored editor plugin; 142 compile errors outside the Editor because its
+  Roslyn references are not in the generated csproj).
+- Answer key: 34 product assemblies, 193,723 edges (196,898 with the two test assemblies Tests and
+  playmodetests). Editor-tooling and vendored plugin assemblies are included on purpose: the arms' source
+  scope is the parent folder of each listed csproj, which for Unity is the whole `UnityProject` folder.
+  Paths are relative to the checkout root (`UnityProject/Assets/...`) on both sides.
+- 1,348 first-party classes derive from MonoBehaviour. The grader's "Unity engine calls it" cell
+  (`grader/EDGE_FORMAT.md`) takes the engine-made calls to their messages out of primary.
+- **Not in the answer key, so not measured:** MonoBehaviour messages called by the engine (own cell, see
+  above); UnityEvent wiring set in the Inspector, stored in scenes and prefabs; calls by string name
+  (`SendMessage`, `Invoke("Name")`, `StartCoroutine("Name")`); Mirror's reflection-dispatched RPC and
+  command calls beyond what its generated IL contains; anything an asset-side caller starts. An arm that
+  finds such a call scores it as a false positive in primary unless it is a plain MonoBehaviour message.
+- Scope leak to know about: source files of `FastScriptReload.Editor` are inside the scope folder but in
+  no built assembly, so grep and repowise may report callers there that the key cannot hold.

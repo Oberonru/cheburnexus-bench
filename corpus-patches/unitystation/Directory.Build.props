@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup>
+    <UnityEditorPath Condition="'$(UnityEditorPath)' == ''">$(UNITY_EDITOR_PATH)</UnityEditorPath>
+    <UnityLibraryDir Condition="'$(UnityLibraryDir)' == ''">$(UNITY_LIBRARY_DIR)</UnityLibraryDir>
+    <UnityLibraryDir Condition="'$(UnityLibraryDir)' == ''">$(MSBuildThisFileDirectory)Library</UnityLibraryDir>
+  </PropertyGroup>
+</Project>
