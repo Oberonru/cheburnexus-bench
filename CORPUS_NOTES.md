@@ -187,6 +187,7 @@ NuGet package cache under `~/.nuget/packages`, not the corpus dir itself).
   finds such a call scores it as a false positive in primary unless it is a plain MonoBehaviour message.
 - Scope leak to know about: source files of `FastScriptReload.Editor` are inside the scope folder but in
   no built assembly, so grep and repowise may report callers there that the key cannot hold.
+- SUPERSEDED, see the table below: recall 0.801 in the next two items is an artifact of the bench csproj files, not the engine's real result.
 - First local run (2026-10-04, engine v1.8.0 public build, `results/local/unitystation-2`, not published):
   primary cell, without-tests / with-tests. cheburnexus: precision 0.978 / 0.978, recall 0.801 / 0.801
   (33,212 arm edges, 32,470 matched of 40,559 key edges; 6 min 18 s for both arms and cells together,
@@ -206,3 +207,25 @@ NuGet package cache under `~/.nuget/packages`, not the corpus dir itself).
   (`UnresolvedDetails` in `architecture.calls.json`: 3,466 with an unbound receiver, 2,656 overload
   resolution failures, 301 without a reason); about 17% have no record at all.
 
+- Corrected numbers (2026-10-04, local, `results/local/unitystation-*`, not published). The 0.801 above came
+  from the bench csproj files: they use `$(UnityEditorPath)`, `$(UnityLibraryDir)` and
+  `$(MSBuildThisFileDirectory)` in `HintPath`, the engine did not expand `$(...)` there, so the `Assets`
+  assembly got 0 references and even `System.String` was undefined. That is a bench artifact, not the
+  engine's real work. Primary cell, without tests (with tests: b 0.963, c and d 0.973):
+
+  | | engine | bench csproj | precision | recall |
+  |---|---|---|---|---|
+  | a | main ef3d2fe7 | with `$(...)` | 0.978 | 0.801 (32,470 / 40,559) |
+  | b | main ef3d2fe7 | full paths, as Unity writes them for a user | 0.982 | 0.963 (39,072 / 40,559) |
+  | c | 3a682807 | full paths | 0.982 | 0.972 (39,440 / 40,559) |
+  | d | 3a682807 | with `$(...)` | 0.982 | 0.972, same as c |
+
+  `v1.8.0` and `v1.8.1` give the same numbers as a. Engine fix 3a682807 (LLM-CheburNexus): `Configuration|Platform`
+  conditions are evaluated as in MSBuild (`DefineConstants` of the `Debug|AnyCPU` group are no longer lost: 204
+  defines instead of 0), `$(Prop)` in `HintPath` is expanded, missing references go to `ReferenceGaps`.
+- Published row: the cheburnexus row for unitystation will appear after the engine release that contains
+  3a682807. Requirement on the engine: expand `$(...)` in `HintPath`; without it the bench csproj files do not
+  work for any arm that reads csproj without MSBuild. The grep arm is not affected.
+- Remaining ~1,119 misses: event subscriptions (`+=` / `-=` to `add_` / `remove_`), delegate calls
+  (`Invoke`), methods of a nested class inside a generic base; about 208 are in files outside the engine's
+  compilation. This is the next engine task.
