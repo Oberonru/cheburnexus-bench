@@ -1,4 +1,4 @@
-# Published results — 2026-09-26
+# Published results — 2026-09-26 (unitystation added 2026-10-04)
 
 Assembled from four runs, latest valid row per arm×repo×cell (a `-fix` row overrides the
 same cell in the base candidate run):
@@ -32,6 +32,24 @@ same cell in the base candidate run):
 - OS: Windows-10-10.0.19045-SP0.
 - .NET SDK: 10.0.400.
 - Python: 3.12.8.
+
+## unitystation (added 2026-10-04)
+
+Run on 2026-10-04, bench commit `80d0f24` (grader fix for a nested type inside a generic argument),
+output `results/published/<arm>/unitystation/{without-tests,with-tests}/`. Needs an installed Unity
+6000.2.10f1 (`UNITY_EDITOR_PATH`, `UNITY_LIBRARY_DIR`), see `CORPUS_NOTES.md` section 7.
+
+- **Engine is NOT a public release.** `cheburnexus` rows here come from a local build of engine
+  commit `52426f77` (`feat(engine): делегаты из исходников ...`, 2026-10-04), built with
+  `build-bench-engine-win.sh` (win-x64, self-contained, multi-file); `ArchitectureAnalyzer.Core.dll`
+  sha256 `98ec7ea68e68`. The public `v1.8.1` scores lower on this repo (recall 0.801 with the bench
+  csproj files). The manifest `note` says the same.
+- `repowise` 0.45.0 ran live (about 26 min per cell).
+- `grep`: its `edges.jsonl` is NOT committed (173 MB and 176 MB, over GitHub's file limit);
+  `result.json` and `manifest.json` are. Regenerate with `python runner/run.py --only unitystation
+  --arms grep` (free).
+- Licence AGPL-3.0: the committed `edges.jsonl` files hold only member names and file paths with
+  line numbers, no source text.
 
 ## zod investigation, resolved (2026-09-26)
 
@@ -67,6 +85,8 @@ licence notes. Quick reference:
 | Humanizer | without-tests | 0.123 / 0.238 | 0.925 / 0.239 | 0.998 / 0.400 |
 | class-validator | with-tests | — / 0.000 | — / 0.000 | 0.997 / 0.563 |
 | zod | with-tests | — / 0.000 | — / 0.000 | 0.934 / 0.556 |
+| unitystation | without-tests | 0.068 / 0.739 | 0.831 / 0.481 | 0.997 / 0.999 (local engine build 52426f77) |
+| unitystation | with-tests | 0.068 / 0.739 | 0.830 / 0.479 | 0.997 / 0.999 (local engine build 52426f77) |
 
 `grep` and `repowise` show `— / 0.000` on the two TypeScript rows for different, genuine
 reasons, not a shared bug:
@@ -82,6 +102,6 @@ reasons, not a shared bug:
 
 ## Sizes
 
-`results/published/` is ~19 MB total; the largest single file is zod's
+`results/published/` is ~53 MB total (unitystation adds ~36 MB: cheburnexus 12 MB per cell, repowise 6 MB); the largest single file is zod's
 `cheburnexus-ts/zod/with-tests/edges.jsonl` at ~4.7 MB, just ahead of
 `grep/Humanizer/without-tests/edges.jsonl` at ~4.2 MB. Nothing approaches a 50 MB/file concern.

@@ -1,0 +1,67 @@
+{
+  "cells": [
+    {
+      "cell": "primary \u2014 first-party ordinary calls and constructors",
+      "oracle_edges": 41212,
+      "arm_edges_in_cell": 449439,
+      "matched": 30444,
+      "precision": 0.0677,
+      "recall": 0.7387
+    },
+    {
+      "cell": "excluded \u2014 callee outside the corpus",
+      "oracle_edges": 72288,
+      "arm_edges_in_cell": 47986,
+      "matched": 551,
+      "precision": 0.0115,
+      "recall": 0.0076
+    },
+    {
+      "cell": "excluded \u2014 property accessors",
+      "oracle_edges": 20880,
+      "arm_edges_in_cell": 0,
+      "matched": 0,
+      "precision": null,
+      "recall": 0.0
+    },
+    {
+      "cell": "excluded \u2014 foreach protocol",
+      "oracle_edges": 81,
+      "arm_edges_in_cell": 1209,
+      "matched": 21,
+      "precision": 0.0174,
+      "recall": 0.2593
+    },
+    {
+      "cell": "excluded \u2014 compiler-generated callee",
+      "oracle_edges": 3194,
+      "arm_edges_in_cell": 0,
+      "matched": 0,
+      "precision": null,
+      "recall": 0.0
+    },
+    {
+      "cell": "excluded \u2014 indirect call op (calli / ldvirtftn)",
+      "oracle_edges": 77,
+      "arm_edges_in_cell": 162,
+      "matched": 1,
+      "precision": 0.0062,
+      "recall": 0.013
+    },
+    {
+      "cell": "excluded \u2014 Unity engine calls a MonoBehaviour message (no call site in IL)",
+      "oracle_edges": 0,
+      "arm_edges_in_cell": 65942,
+      "matched": 0,
+      "precision": 0.0,
+      "recall": null
+    }
+  ],
+  "stats": {
+    "rows": 196898,
+    "unremappable_caller": 1161,
+    "no_source_anchor": 5227,
+    "unparsed_row": 0,
+    "arm_dropped": 0
+  }
+}

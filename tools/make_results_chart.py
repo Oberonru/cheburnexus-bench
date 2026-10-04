@@ -34,6 +34,7 @@ ROWS = [
     ("Humanizr/Humanizer", "Humanizer", "without-tests", "cheburnexus"),
     ("typestack/class-validator", "class-validator", "with-tests", "cheburnexus-ts"),
     ("colinhacks/zod", "zod", "with-tests", "cheburnexus-ts"),
+    ("unitystation", "unitystation", "without-tests", "cheburnexus"),
 ]
 
 # arm key in ROWS's last column varies per repo (cheburnexus vs cheburnexus-ts); grep/repowise

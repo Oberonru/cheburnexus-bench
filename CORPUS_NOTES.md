@@ -223,9 +223,12 @@ NuGet package cache under `~/.nuget/packages`, not the corpus dir itself).
   `v1.8.0` and `v1.8.1` give the same numbers as a. Engine fix 3a682807 (LLM-CheburNexus): `Configuration|Platform`
   conditions are evaluated as in MSBuild (`DefineConstants` of the `Debug|AnyCPU` group are no longer lost: 204
   defines instead of 0), `$(Prop)` in `HintPath` is expanded, missing references go to `ReferenceGaps`.
-- Published row: the cheburnexus row for unitystation will appear after the engine release that contains
-  3a682807. Requirement on the engine: expand `$(...)` in `HintPath`; without it the bench csproj files do not
-  work for any arm that reads csproj without MSBuild. The grep arm is not affected.
-- Remaining ~1,119 misses: event subscriptions (`+=` / `-=` to `add_` / `remove_`), delegate calls
+- Published row (2026-10-04, `results/published/*/unitystation/`): engine = local build of commit 52426f77
+  (not a public release), bench commit 80d0f24. Primary cell, without-tests / with-tests, precision / recall:
+  cheburnexus 0.997 / 0.999 (both cells; 40,501 of 40,558 key edges without tests, 41,153 of 41,212 with);
+  repowise 0.831 / 0.481 and 0.830 / 0.479; grep 0.068 / 0.739 in both. The engine needs `$(...)` expanded in
+  `HintPath`; without it the bench csproj files do not work for any arm that reads csproj without MSBuild.
+  grep's edge files (173 MB) are not committed, only its result and manifest.
+- Misses before 52426f77 (about 1,119, now 57): event subscriptions (`+=` / `-=` to `add_` / `remove_`), delegate calls
   (`Invoke`), methods of a nested class inside a generic base; about 208 are in files outside the engine's
-  compilation. This is the next engine task.
+  compilation. The remaining 57 are not broken down yet.
