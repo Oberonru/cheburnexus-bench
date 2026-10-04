@@ -123,19 +123,19 @@ flowchart LR
 
 Точность / полнота, основная ячейка, лучшая рука **жирным**:
 
-| репо | язык | grep | repowise | cheburnexus | лицензия | ячейка |
+| репо | язык | grep | repowise | cheburnexus | ячейка | лицензия |
 |---|---|---|---|---|---|---|
-| [serilog](https://github.com/serilog/serilog) | C# | 0.260&nbsp;/&nbsp;0.542 | 0.544&nbsp;/&nbsp;0.348 | **0.998&nbsp;/&nbsp;1.000** | Apache&#8209;2.0 | −tests |
-| [serilog](https://github.com/serilog/serilog) | C# | 0.321&nbsp;/&nbsp;0.744 | 0.592&nbsp;/&nbsp;0.273 | **0.995&nbsp;/&nbsp;0.999** | Apache&#8209;2.0 | +tests |
-| [Polly](https://github.com/App-vNext/Polly) | C# | 0.247&nbsp;/&nbsp;0.248 | 0.376&nbsp;/&nbsp;0.191 | **0.997&nbsp;/&nbsp;0.984** | BSD&#8209;3&#8209;Clause | −tests |
-| [FluentValidation](https://github.com/FluentValidation/FluentValidation) | C# | 0.203&nbsp;/&nbsp;0.385 | 0.354&nbsp;/&nbsp;0.183 | **0.988&nbsp;/&nbsp;0.918** | Apache&#8209;2.0 | −tests |
-| [MediatR](https://github.com/jbogard/MediatR) | C# | 0.253&nbsp;/&nbsp;0.400 | 0.622&nbsp;/&nbsp;0.224 | **1.000&nbsp;/&nbsp;0.920** | RPL&#8209;1.5 | −tests |
-| [AutoMapper](https://github.com/AutoMapper/AutoMapper) | C# | 0.186&nbsp;/&nbsp;0.410 | 0.558&nbsp;/&nbsp;0.224 | **0.957&nbsp;/&nbsp;0.685** | RPL&#8209;1.5 | −tests |
-| [Humanizer](https://github.com/Humanizr/Humanizer) | C# | 0.123&nbsp;/&nbsp;0.238 | 0.925&nbsp;/&nbsp;0.239 | **0.998&nbsp;/&nbsp;0.400** | MIT | −tests |
-| [unitystation](https://github.com/unitystation/unitystation) | Unity&nbsp;C# | 0.068&nbsp;/&nbsp;0.739 | 0.831&nbsp;/&nbsp;0.481 | **0.997&nbsp;/&nbsp;0.999**<sup>†</sup> | AGPL&#8209;3.0 | −tests |
-| [unitystation](https://github.com/unitystation/unitystation) | Unity&nbsp;C# | 0.068&nbsp;/&nbsp;0.739 | 0.830&nbsp;/&nbsp;0.479 | **0.997&nbsp;/&nbsp;0.999**<sup>†</sup> | AGPL&#8209;3.0 | +tests |
-| [class-validator](https://github.com/typestack/class-validator) | TS | —&nbsp;/&nbsp;0.000 | —&nbsp;/&nbsp;0.000 | **0.997&nbsp;/&nbsp;0.563**<sup>ts</sup> | MIT | +tests |
-| [zod](https://github.com/colinhacks/zod) | TS | —&nbsp;/&nbsp;0.000 | —&nbsp;/&nbsp;0.000 | **0.934&nbsp;/&nbsp;0.556**<sup>ts</sup> | MIT | +tests |
+| [serilog](https://github.com/serilog/serilog) | C# | 0.260&nbsp;/&nbsp;0.542 | 0.544&nbsp;/&nbsp;0.348 | **0.998&nbsp;/&nbsp;1.000** | −tests | Apache&#8209;2.0 |
+| [serilog](https://github.com/serilog/serilog) | C# | 0.321&nbsp;/&nbsp;0.744 | 0.592&nbsp;/&nbsp;0.273 | **0.995&nbsp;/&nbsp;0.999** | +tests | Apache&#8209;2.0 |
+| [Polly](https://github.com/App-vNext/Polly) | C# | 0.247&nbsp;/&nbsp;0.248 | 0.376&nbsp;/&nbsp;0.191 | **0.997&nbsp;/&nbsp;0.984** | −tests | BSD&#8209;3&#8209;Clause |
+| [FluentValidation](https://github.com/FluentValidation/FluentValidation) | C# | 0.203&nbsp;/&nbsp;0.385 | 0.354&nbsp;/&nbsp;0.183 | **0.988&nbsp;/&nbsp;0.918** | −tests | Apache&#8209;2.0 |
+| [MediatR](https://github.com/jbogard/MediatR) | C# | 0.253&nbsp;/&nbsp;0.400 | 0.622&nbsp;/&nbsp;0.224 | **1.000&nbsp;/&nbsp;0.920** | −tests | RPL&#8209;1.5 |
+| [AutoMapper](https://github.com/AutoMapper/AutoMapper) | C# | 0.186&nbsp;/&nbsp;0.410 | 0.558&nbsp;/&nbsp;0.224 | **0.957&nbsp;/&nbsp;0.685** | −tests | RPL&#8209;1.5 |
+| [Humanizer](https://github.com/Humanizr/Humanizer) | C# | 0.123&nbsp;/&nbsp;0.238 | 0.925&nbsp;/&nbsp;0.239 | **0.998&nbsp;/&nbsp;0.400** | −tests | MIT |
+| [unitystation](https://github.com/unitystation/unitystation) | Unity&nbsp;C# | 0.068&nbsp;/&nbsp;0.739 | 0.831&nbsp;/&nbsp;0.481 | **0.997&nbsp;/&nbsp;0.999**<sup>†</sup> | −tests | AGPL&#8209;3.0 |
+| [unitystation](https://github.com/unitystation/unitystation) | Unity&nbsp;C# | 0.068&nbsp;/&nbsp;0.739 | 0.830&nbsp;/&nbsp;0.479 | **0.997&nbsp;/&nbsp;0.999**<sup>†</sup> | +tests | AGPL&#8209;3.0 |
+| [class-validator](https://github.com/typestack/class-validator) | TS | —&nbsp;/&nbsp;0.000 | —&nbsp;/&nbsp;0.000 | **0.997&nbsp;/&nbsp;0.563**<sup>ts</sup> | +tests | MIT |
+| [zod](https://github.com/colinhacks/zod) | TS | —&nbsp;/&nbsp;0.000 | —&nbsp;/&nbsp;0.000 | **0.934&nbsp;/&nbsp;0.556**<sup>ts</sup> | +tests | MIT |
 
 `−tests` = ячейка `without-tests`, `+tests` = ячейка `with-tests`. <sup>ts</sup> = рука
 `cheburnexus-ts` (TypeScript-движок). <sup>†</sup> = движок — **локальная сборка коммита `52426f77`,
