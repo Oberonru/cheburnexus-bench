@@ -187,3 +187,11 @@ NuGet package cache under `~/.nuget/packages`, not the corpus dir itself).
   finds such a call scores it as a false positive in primary unless it is a plain MonoBehaviour message.
 - Scope leak to know about: source files of `FastScriptReload.Editor` are inside the scope folder but in
   no built assembly, so grep and repowise may report callers there that the key cannot hold.
+- First local run (2026-10-04, engine v1.8.0 public build, `results/local/unitystation-2`, not published):
+  primary cell, without-tests / with-tests. cheburnexus: precision 0.978 / 0.978, recall 0.801 / 0.801
+  (33,212 arm edges, 32,470 matched of 40,559 key edges; 6 min 18 s for both arms and cells together,
+  the engine itself about 3 min per cell). grep: precision 0.067 / 0.067, recall 0.731 / 0.730; 65,711
+  of grep's edges fall in the new Unity cell (name-based matching hits every `Update` on every
+  component), without that cell grep's precision would read 0.058. cheburnexus put no edge in the Unity
+  cell. repowise was not run.
+
