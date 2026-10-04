@@ -18,6 +18,7 @@ SUITES = [
     ("oracle", "oracle/csharp/test_oracle.py", "the answer key: anchors, virtual dispatch, generated callers, no shrinkage"),
     ("armkit", "arms/_lib/test_armkit.py", "shared with-tests/without-tests cell split, dotted test-suffix directories"),
     ("grader", "grader/test_identity.py", "neutrality, key agreement between forms, the override map"),
+    ("grader:unity", "grader/test_unity.py", "Unity-invoked cell: moves arm edges only, key and recall untouched, off by default"),
     ("grader:bucket", "grader/test_bucket.py", "the decomposition tool: it reproduces a published total, or refuses"),
     ("grader:implements", "grader/test_implements.py", "type-level axis: primary/external/generic cell separation, neutrality"),
     ("harness", "runner/test_runner.py", "assembly selection, cell split, determinism, blocked, refused cells"),

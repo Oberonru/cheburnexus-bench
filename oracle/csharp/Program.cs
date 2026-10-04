@@ -158,6 +158,15 @@ internal static class Program
             ? null
             : new StreamWriter(File.Create(implementsPath), new UTF8Encoding(false));
 
+        // Types that derive from UnityEngine.MonoBehaviour, resolved through the base chain. The engine
+        // calls their message methods (Awake, Update, ...) from outside the compiled code, so no IL
+        // call site exists for those calls; the grader needs the list to name that cell. Written only
+        // when at least one is found, so a repository with no Unity code produces no extra file.
+        var unityComponentsPath = outPath is null
+            ? null
+            : Path.Combine(Path.GetDirectoryName(Path.GetFullPath(outPath)) ?? ".", "unity-components.json");
+        var unityComponents = new SortedSet<string>(StringComparer.Ordinal);
+
         var jsonOptions = new JsonSerializerOptions { WriteIndented = false };
         long emitted = 0, withoutDebug = 0, compilerGenerated = 0;
         long implementsEmitted = 0;
@@ -231,6 +240,9 @@ internal static class Program
                 foreach (var module in assembly.Modules)
                 foreach (var type in AllTypes(module))
                 {
+                    if (unityComponentsPath is not null && !IsCompilerGenerated(type) && DerivesFromMonoBehaviour(type))
+                        unityComponents.Add(type.FullName);
+
                     if (implementsWriter is not null && !IsCompilerGenerated(type))
                     {
                         var typeAssembly = assembly.Name.Name;
@@ -320,6 +332,15 @@ internal static class Program
                     new JsonSerializerOptions { WriteIndented = true }),
                 new UTF8Encoding(false));
             Console.Error.WriteLine($"override map    : {overrides.Count} methods -> {overrides.Sum(kv => kv.Value.Count)} declarations");
+        }
+
+        if (unityComponentsPath is not null && unityComponents.Count > 0)
+        {
+            File.WriteAllText(
+                unityComponentsPath,
+                JsonSerializer.Serialize(unityComponents.ToArray(), new JsonSerializerOptions { WriteIndented = true }),
+                new UTF8Encoding(false));
+            Console.Error.WriteLine($"unity components: {unityComponents.Count} MonoBehaviour-derived types");
         }
 
         fileOutput?.Dispose();
@@ -442,6 +463,21 @@ internal static class Program
                     yield return match;
             }
         }
+    }
+
+    /// <summary>
+    /// True when <paramref name="type"/> has UnityEngine.MonoBehaviour somewhere up its base chain.
+    /// The chain is followed through assemblies outside the corpus (Mirror's NetworkBehaviour is
+    /// one such link); when a link cannot be resolved the answer is false, never a guess.
+    /// </summary>
+    private static bool DerivesFromMonoBehaviour(TypeDefinition type)
+    {
+        for (var current = type.BaseType; current is not null; current = SafeResolve(current)?.BaseType)
+        {
+            var name = current is GenericInstanceType generic ? generic.ElementType.FullName : current.FullName;
+            if (name == "UnityEngine.MonoBehaviour") return true;
+        }
+        return false;
     }
 
     /// <summary>

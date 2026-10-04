@@ -115,6 +115,42 @@ Everything excluded is still counted and published as its own cell. On a calibra
 categories were ~90% of all IL edges, which is exactly why the boundary is written down in advance:
 moving it moves the denominator by roughly ten times.
 
+## Unity: calls the engine makes (Unity repositories only)
+
+A Unity game is called from outside its own code. The Editor or the player calls `Awake`, `Update`,
+`OnTriggerEnter` and the other MonoBehaviour messages; nothing in the compiled assembly does. So the
+answer key has no edge into those methods from "the engine", and cannot have one. An arm that reports
+such an edge says something true about the game that the key has no way to hold.
+
+Those edges get their own cell, **`excluded — Unity engine calls a MonoBehaviour message`**, and leave
+the primary precision denominator. The rule is general, with no knowledge of any project:
+
+- the callee's name is one of the messages Unity documents on MonoBehaviour (`UNITY_MESSAGES` in
+  `grade.py`); Mirror's `OnStartServer` and friends are not on the list, they are ordinary virtuals
+  that Mirror calls;
+- the callee's type derives from `UnityEngine.MonoBehaviour`, found by the oracle from the IL by
+  following the base chain through other assemblies (`unity-components.json`, written next to
+  `oracle.jsonl` only when at least one such type exists);
+- **and the key has no such edge.** A real `base.Awake()` in the IL stays in primary and is scored as
+  always.
+
+The caller is not examined, because the engine has no method to name. The cell only moves arm edges:
+no key edge is added, removed or reclassified, so recall does not change. Without
+`--unity-components` (every repository that is not Unity) the grader behaves exactly as before and the
+report has no such cell; the six C# repositories were regraded from `results/published` with the
+change in place and all 21 arm-by-cell rows came out identical to the published `result.json`.
+
+What this costs honestly: an arm edge to a Unity message from a caller that is simply wrong is hidden
+from precision as well. The cell is published with its edge count so that size is visible.
+
+**Not representable: edges whose caller is an asset.** A scene or prefab that wires a button to
+`Foo.OnClick` through the Inspector (UnityEvent), a message sent by string (`SendMessage`,
+`Invoke("Name")`, `StartCoroutine("Name")`), and anything Mirror dispatches by reflection are calls
+with no `Namespace.Type::Method` caller. This contract has no field for an asset caller, and
+`method_key` would read such a caller as a type name and score it as junk in primary. No arm in this
+repository emits them. The key does not hold them either, so they are outside what is measured; they
+are listed in `CORPUS_NOTES.md` as what the unitystation entry cannot answer.
+
 ## What an arm could not resolve
 
 Precision and recall cannot separate two very different behaviours. A tool that **saw a call site

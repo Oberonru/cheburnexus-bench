@@ -491,6 +491,11 @@ def grade(oracle: Path, overrides: Path, arm: ArmRun, first_party: list[str], ou
         "--first-party", *first_party,
         "--json", str(report),
     ]
+    unity_components = oracle.parent / "unity-components.json"
+    if unity_components.is_file():
+        # Written by the C# oracle only when it found MonoBehaviour-derived types, so a repository
+        # without Unity code never gets the extra cell. See grade.py UNITY_MESSAGES.
+        cmd += ["--unity-components", str(unity_components)]
     if executed_only:
         # RUNTIME ORACLES ONLY. The caller sets this from corpus.json's `language`, never guessed
         # here — see grade.py's --executed-only help for why this must never reach the C# cell

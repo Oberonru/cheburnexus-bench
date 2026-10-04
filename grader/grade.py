@@ -56,6 +56,33 @@ COMPARABLE_OPS = frozenset({"call", "callvirt", "newobj", "ldftn"})
 # regardless of set order.
 CELL_PRECEDENCE = ("external", "accessor", "enumerator", "generated", "op_excluded", "primary")
 
+# The messages the Unity engine itself calls on a MonoBehaviour. No IL instruction in the compiled
+# game calls them, so the answer key cannot hold an edge into one from "the engine". An arm that
+# reports such an edge is describing real behaviour the key has no way to express; it is not wrong
+# in the sense the primary cell measures, so it gets a cell of its own (see `unity_invoked_edges`).
+# Only the names Unity documents on MonoBehaviour. Messages of other frameworks (Mirror's
+# OnStartServer and friends are ordinary virtuals that Mirror calls) are deliberately absent: they
+# are not Unity's, and a list that grew by project would be a thumb on the scale.
+UNITY_MESSAGES = frozenset({
+    "Awake", "Start", "Update", "FixedUpdate", "LateUpdate", "Reset", "OnValidate",
+    "OnEnable", "OnDisable", "OnDestroy",
+    "OnApplicationFocus", "OnApplicationPause", "OnApplicationQuit",
+    "OnGUI", "OnDrawGizmos", "OnDrawGizmosSelected",
+    "OnTriggerEnter", "OnTriggerStay", "OnTriggerExit",
+    "OnTriggerEnter2D", "OnTriggerStay2D", "OnTriggerExit2D",
+    "OnCollisionEnter", "OnCollisionStay", "OnCollisionExit",
+    "OnCollisionEnter2D", "OnCollisionStay2D", "OnCollisionExit2D",
+    "OnControllerColliderHit", "OnParticleCollision", "OnParticleTrigger", "OnParticleSystemStopped",
+    "OnMouseDown", "OnMouseUp", "OnMouseUpAsButton", "OnMouseEnter", "OnMouseExit",
+    "OnMouseOver", "OnMouseDrag",
+    "OnBecameVisible", "OnBecameInvisible",
+    "OnPreCull", "OnPreRender", "OnPostRender", "OnRenderObject", "OnWillRenderObject",
+    "OnRenderImage", "OnAnimatorMove", "OnAnimatorIK", "OnJointBreak", "OnJointBreak2D",
+    "OnTransformChildrenChanged", "OnTransformParentChanged", "OnBeforeTransformParentChanged",
+    "OnRectTransformDimensionsChange", "OnCanvasGroupChanged", "OnDidApplyAnimationProperties",
+    "OnAudioFilterRead",
+})
+
 
 def build_callee_cell(cells: dict) -> dict[str, str]:
     """Which oracle cell first claims each callee, built from the answer key itself.
@@ -278,6 +305,52 @@ class Cell:
         }
 
 
+def load_unity_components(path: str) -> set[str]:
+    """Type keys of the first-party classes that derive from UnityEngine.MonoBehaviour.
+
+    Written by the oracle (`unity-components.json`, resolved through the base chain from the IL, so
+    a class reaching MonoBehaviour through another assembly's base class counts). Names go through
+    the same key function as every other type so they join on the grader's own spelling.
+    """
+    with open(path, encoding="utf-8") as handle:
+        names = json.load(handle)
+    types: set[str] = set()
+    for name in names:
+        key = method_key(f"{name}::x")
+        if key is not None:
+            types.add(key.rpartition("::")[0])
+    return types
+
+
+def is_unity_message(callee: str, unity_types: set[str]) -> bool:
+    """Is `callee` (a `Type::Method` key) a Unity message on a MonoBehaviour-derived type?"""
+    type_name, _, method = callee.rpartition("::")
+    return method in UNITY_MESSAGES and type_name in unity_types
+
+
+def edge_in_oracle(edge: tuple[str, str], oracle: set[tuple[str, str]],
+                   overrides: dict[str, set[str]]) -> bool:
+    """The membership test `Cell.score` applies, as a function: the edge itself, or the same call
+    to a declaration the named method overrides."""
+    if edge in oracle:
+        return True
+    caller, callee = edge
+    return any((caller, declared) in oracle for declared in overrides.get(callee, ()))
+
+
+def unity_invoked_edges(edges: set[tuple[str, str]], oracle: set[tuple[str, str]],
+                        overrides: dict[str, set[str]], unity_types: set[str]
+                        ) -> set[tuple[str, str]]:
+    """The arm edges the answer key cannot hold because the Unity engine makes the call.
+
+    An edge qualifies when its callee is a Unity message on a MonoBehaviour-derived type AND the
+    key has no such edge. An edge the key does have (a real `base.Awake()` call in IL) stays where
+    it was and is scored as before. The caller is not looked at: the engine has no method to name.
+    """
+    return {e for e in edges
+            if is_unity_message(e[1], unity_types) and not edge_in_oracle(e, oracle, overrides)}
+
+
 def load_oracle(path: str, first_party: set[str] | None) -> tuple[dict[str, Cell], dict[str, set[str]], dict]:
     """Split the answer key into the primary comparable cell and the excluded cells."""
     cells = {
@@ -417,6 +490,10 @@ def main() -> int:
                         help="assembly names of the corpus; omit to treat every callee as in-corpus")
     parser.add_argument("--overrides", default=None,
                         help="JSON map {override_key: [declared_key, ...]} emitted by the oracle")
+    parser.add_argument("--unity-components", default=None,
+                        help="JSON list of first-party MonoBehaviour-derived types, written by the "
+                             "oracle. Adds the 'invoked by the Unity engine' cell. Omit for any "
+                             "repository without Unity code: nothing else changes.")
     parser.add_argument("--json", default=None)
     parser.add_argument("--executed-only", action="store_true",
                         help="RUNTIME ORACLES ONLY (TypeScript). Score a primary-cell arm edge "
@@ -487,6 +564,19 @@ def main() -> int:
             "unjudged — arm's caller has no oracle evidence of executing (runtime key: not "
             "wrong, just never observed)")
         arm_by_cell["unjudged_caller_not_executed"] = unjudged
+
+    # ── Unity messages (Unity repositories only — see UNITY_MESSAGES) ───────────────────────────
+    # Applied after the strict primary number is taken and before the executed-only filter's
+    # result is scored, and it only MOVES arm edges: no oracle edge is added, removed or
+    # reclassified, so recall is untouched and every repository without the flag grades as before.
+    if args.unity_components:
+        unity_types = load_unity_components(args.unity_components)
+        moved = unity_invoked_edges(arm_by_cell["primary"], cells["primary"].oracle, overrides,
+                                    unity_types)
+        arm_by_cell["primary"] = arm_by_cell["primary"] - moved
+        cells["unity_invoked"] = Cell(
+            "excluded — Unity engine calls a MonoBehaviour message (no call site in IL)")
+        arm_by_cell["unity_invoked"] = moved
 
     results = [cell.score(arm_by_cell[name], overrides) for name, cell in cells.items()]
 
