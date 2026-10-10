@@ -73,8 +73,9 @@ resolution; `v1.8.1` has the fix. Full writeup (LLM-CheburNexus repo,
 
 ## TypeScript re-run (2026-10-10)
 
-All five TypeScript rows (`cheburnexus-ts`, `with-tests`) were re-run on 2026-10-10 against
-byte-identical oracles; the numbers in the table below are from that re-run. Raw output of the
+All five TypeScript rows (`cheburnexus-ts`, `with-tests`) were re-run on 2026-10-10 (oracles of zod, class-validator and
+vuejs/core byte-identical to the earlier ones; react-hook-form's oracle varies by a few edges between
+runs; for react-hook-form and element-plus precision and recall are unchanged); the numbers in the table below are from that re-run. Raw output of the
 re-run: `results/rerun-2026-10-10/` (not committed, `results/` is ignored). Oracle status: ts-jest
 for class-validator and react-hook-form; Vitest for zod, vuejs/core and element-plus (the Vitest
 oracle also instruments the `<script>` / `<script setup>` blocks of `.vue` files). Some corpus

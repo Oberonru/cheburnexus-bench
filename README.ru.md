@@ -141,8 +141,9 @@ flowchart LR
 | [element-plus](https://github.com/element-plus/element-plus) 2.14.7 (`packages/components`, Vue SFC) | TS | —&nbsp;/&nbsp;0.000 | —&nbsp;/&nbsp;0.000 | **0.939&nbsp;/&nbsp;0.056**<sup>ts</sup> | +tests | MIT |
 
 `−tests` = ячейка `without-tests`, `+tests` = ячейка `with-tests`. <sup>ts</sup> = рука
-`cheburnexus-ts` (TypeScript-движок; пять строк TypeScript перепрогнаны 2026-10-10 на побайтно
-тех же оракулах, ячейки `grep` и `repowise` в них — из прежней публикации на двух репозиториях,
+`cheburnexus-ts` (TypeScript-движок; пять строк TypeScript перепрогнаны 2026-10-10; оракулы zod,
+class-validator и vuejs/core побайтно те же, оракул react-hook-form плавает на несколько рёбер, у
+react-hook-form и element-plus точность и полнота те же; ячейки `grep` и `repowise` в них — из прежней публикации на двух репозиториях,
 см. ниже). <sup>†</sup> = движок — **локальная сборка коммита `52426f77`,
 не публичный релиз** (публичный `cheburnexus-releases` v1.8.1 даёт на этом репозитории меньше); см.
 `results/published/SUMMARY.md`. У unitystation файл `edges.jsonl` руки `grep` не закоммичен (173 МБ),

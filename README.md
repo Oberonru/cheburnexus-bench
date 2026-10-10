@@ -139,8 +139,10 @@ Precision / recall, primary cell, best arm **bold**:
 | [element-plus](https://github.com/element-plus/element-plus) 2.14.7 (`packages/components`, Vue SFC) | TS | —&nbsp;/&nbsp;0.000 | —&nbsp;/&nbsp;0.000 | **0.939&nbsp;/&nbsp;0.056**<sup>ts</sup> | +tests | MIT |
 
 `−tests` = `without-tests` cell, `+tests` = `with-tests` cell. <sup>ts</sup> = the `cheburnexus-ts`
-arm (TypeScript engine; the five TypeScript rows were re-run on 2026-10-10 against byte-identical
-oracles; `grep` and `repowise` cells on those rows are from the earlier two-repo publication,
+arm (TypeScript engine; the five TypeScript rows were re-run on 2026-10-10; the oracles of zod, class-validator and
+vuejs/core are byte-identical to the earlier ones, react-hook-form's oracle varies by a few edges
+between runs, and for react-hook-form and element-plus precision and recall are unchanged;
+`grep` and `repowise` cells on those rows are from the earlier two-repo publication,
 see below). <sup>†</sup> = engine is a **local build of commit `52426f77`, not a public
 release** (`cheburnexus-releases` v1.8.1 scores lower on this repo); see `results/published/SUMMARY.md`.
 For unitystation, `grep`'s `edges.jsonl` is not committed (173 MB), only its result and manifest.
