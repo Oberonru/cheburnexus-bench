@@ -132,28 +132,40 @@ Precision / recall, primary cell, best arm **bold**:
 | [Humanizer](https://github.com/Humanizr/Humanizer) | C# | 0.123&nbsp;/&nbsp;0.238 | 0.925&nbsp;/&nbsp;0.239 | **0.998&nbsp;/&nbsp;0.400** | −tests | MIT |
 | [unitystation](https://github.com/unitystation/unitystation) | Unity&nbsp;C# | 0.068&nbsp;/&nbsp;0.739 | 0.831&nbsp;/&nbsp;0.481 | **0.997&nbsp;/&nbsp;0.999**<sup>†</sup> | −tests | AGPL&#8209;3.0 |
 | [unitystation](https://github.com/unitystation/unitystation) | Unity&nbsp;C# | 0.068&nbsp;/&nbsp;0.739 | 0.830&nbsp;/&nbsp;0.479 | **0.997&nbsp;/&nbsp;0.999**<sup>†</sup> | +tests | AGPL&#8209;3.0 |
-| [class-validator](https://github.com/typestack/class-validator) | TS | —&nbsp;/&nbsp;0.000 | —&nbsp;/&nbsp;0.000 | **0.997&nbsp;/&nbsp;0.563**<sup>ts</sup> | +tests | MIT |
-| [zod](https://github.com/colinhacks/zod) | TS | —&nbsp;/&nbsp;0.000 | —&nbsp;/&nbsp;0.000 | **0.934&nbsp;/&nbsp;0.556**<sup>ts</sup> | +tests | MIT |
+| [class-validator](https://github.com/typestack/class-validator) | TS | —&nbsp;/&nbsp;0.000 | —&nbsp;/&nbsp;0.000 | **1.000&nbsp;/&nbsp;0.566**<sup>ts</sup> | +tests | MIT |
+| [zod](https://github.com/colinhacks/zod) | TS | —&nbsp;/&nbsp;0.000 | —&nbsp;/&nbsp;0.000 | **0.980&nbsp;/&nbsp;0.578**<sup>ts</sup> | +tests | MIT |
+| [vuejs/core](https://github.com/vuejs/core) (`packages/reactivity`) | TS | —&nbsp;/&nbsp;0.000 | —&nbsp;/&nbsp;0.000 | **0.989&nbsp;/&nbsp;0.352**<sup>ts</sup> | +tests | MIT |
+| [react-hook-form](https://github.com/react-hook-form/react-hook-form) v7.89.0 | TS | —&nbsp;/&nbsp;0.000 | —&nbsp;/&nbsp;0.000 | **0.997&nbsp;/&nbsp;0.105**<sup>ts</sup> | +tests | MIT |
+| [element-plus](https://github.com/element-plus/element-plus) 2.14.7 (`packages/components`, Vue SFC) | TS | —&nbsp;/&nbsp;0.000 | —&nbsp;/&nbsp;0.000 | **0.939&nbsp;/&nbsp;0.056**<sup>ts</sup> | +tests | MIT |
 
 `−tests` = `without-tests` cell, `+tests` = `with-tests` cell. <sup>ts</sup> = the `cheburnexus-ts`
-arm (TypeScript engine). <sup>†</sup> = engine is a **local build of commit `52426f77`, not a public
+arm (TypeScript engine; the five TypeScript rows were re-run on 2026-10-10 against byte-identical
+oracles; `grep` and `repowise` cells on those rows are from the earlier two-repo publication,
+see below). <sup>†</sup> = engine is a **local build of commit `52426f77`, not a public
 release** (`cheburnexus-releases` v1.8.1 scores lower on this repo); see `results/published/SUMMARY.md`.
 For unitystation, `grep`'s `edges.jsonl` is not committed (173 MB), only its result and manifest.
 
 > [!NOTE]
 > **Cells.** `with-tests` exists as its own row for `serilog` and `unitystation` — every other C# repo's
 > `with-tests` cell is `unavailable` on the pinned SDK (recorded, not skipped; see
-> `corpus.json`'s own notes per repo). The two TypeScript repos are **with-tests only**: their
+> `corpus.json`'s own notes per repo). The five TypeScript repos are **with-tests only**: their
 > oracle is a runtime shadow-stack (`oracle/typescript`), so it needs the test suite to actually
 > run — there is no meaningful "without tests" reading for a key that only exists while tests
 > execute.
 
 `grep` and `repowise` both show `— / 0.000` on the TypeScript rows, for two different reasons,
 not one shared bug: `grep`'s rules (`arms/grep/RULES.md`) only scan `.cs` files, so it emits zero
-edges on TypeScript by construction — a real "genuinely found nothing" result. `repowise` does
-emit edges on both TS repos (18 on class-validator, 126 on zod), but the TypeScript oracle only
-credits a caller the test suite actually executed, and none of `repowise`'s callers land in that
-executed set — see `results/published/SUMMARY.md` for the full breakdown.
+edges on TypeScript by construction — a real "genuinely found nothing" result. `repowise` was
+measured on the first two TypeScript repos only (class-validator, zod): it emitted edges there
+(18 on class-validator, 126 on zod), but the TypeScript oracle only credits a caller the test
+suite actually executed, and none of `repowise`'s callers land in that executed set — see
+`results/published/SUMMARY.md`. There is no `repowise` measurement for vuejs/core, react-hook-form
+or element-plus; their `—` / `0.000` cells are not a result, only the same placeholder.
+
+Oracle sizes (unique edges): class-validator 3270, zod 25770, vuejs/core 4520, react-hook-form
+24647, element-plus 72078. The Vitest oracle also instruments the `<script>` / `<script setup>`
+blocks of `.vue` files, so Vue SFC callers are keyed to the `.vue` file and line
+(see `oracle/typescript/README.md`).
 
 Most of the corpus is permissive, but three entries are not: `jbogard/MediatR` and
 `AutoMapper/AutoMapper` carry **RPL-1.5** (reciprocal/copyleft), and `unitystation/unitystation`
@@ -387,6 +399,11 @@ replay path.
 
 ```
 corpus.json           the pinned repositories: sha, license, build command, product/test scope
+                      TypeScript entries also take: `typescript_harness` (`ts-jest` | `vitest`, required),
+                      `typescript_project_dir` (package to scope the arm's source scan, and the vitest
+                      root when no filter is set), `typescript_test_filter` (vitest path filter, for a
+                      monorepo with one root config), `typescript_jest_config` (corpus's jest config,
+                      relative to the checkout), `package_version` (informational)
 CORPUS_NOTES.md        how each pin was verified to build cleanly
 corpus-patches/         the (documented) source patches a couple of pins needed to build at all
 oracle/csharp/          the C# answer key: IL -> call edges -> source anchors (Mono.Cecil)

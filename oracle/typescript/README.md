@@ -1,14 +1,25 @@
 # oracle/typescript — shadow-stack call-graph oracle
 
-**Status: wired into `runner/run.py` (2026-09-03) — `build_oracle_typescript`, registered in
-`ORACLE_BUILDERS["typescript"]`, produces a real `oracle.jsonl` end to end. Verified against
-`typestack/class-validator` (ts-jest): 3270 unique edges (see "Module-scope frame" below — was
-3255 before that fix), grader consumes the file cleanly (see the corpus.json entry and
-`runner/test_runner.py`'s `check_typescript_key_and_guard`). The Vitest adapter is wired the same
-way but not re-verified through `run.py` this session — see "Not done here" below. No TypeScript
-arm exists yet, so no precision/recall NUMBER against a real arm has been published — see run.py's
-`build_oracle_typescript` docstring for the key contract (both ends) and the recall-scope caveat
-any future arm's grading must account for.**
+**Status: wired into `runner/run.py` (`build_oracle_typescript`, registered in
+`ORACLE_BUILDERS["typescript"]`); produces a real `oracle.jsonl` end to end for five corpora.
+ts-jest: class-validator (3270 unique edges, see "Module-scope frame" below) and react-hook-form.
+Vitest: verified through `run.py` on zod and vuejs/core (2026-10-10), and used for element-plus.
+Some corpus tests fail (zod 16 of 2744, core 3 of 440); `run.py` prints "harness exited 1" but the
+edges are still written and used. The TypeScript arm `cheburnexus-ts` exists and is graded against
+this oracle. See `build_oracle_typescript`'s docstring in `runner/run.py` for the key contract
+(both ends) and the recall-scope caveat: recall is bounded by what the corpus's own tests execute.**
+
+### corpus.json fields for a TypeScript entry
+
+- `typescript_harness` (required): `"ts-jest"` or `"vitest"`. Never auto-detected.
+- `typescript_project_dir`: package directory, relative to the checkout. Scopes the arm's source
+  scan; for Vitest without `typescript_test_filter` it is also the `--root`.
+- `typescript_test_filter`: Vitest only. For a monorepo with no per-package config (one root
+  `vitest.config`), vitest is rooted at the checkout and this value is passed as a positional
+  test-path filter, narrowing the oracle to the same package.
+- `typescript_jest_config`: ts-jest only. The corpus's own jest config, relative to the checkout
+  (default `jest.config.js`); `run.py` passes it as env `ORACLE_TS_JEST_CONFIG`.
+- `package_version`: the corpus's released version. Informational; no code reads it.
 
 ## Module-scope frame (2026-09-03)
 
@@ -370,17 +381,8 @@ mechanism.
 
 ## Not done here
 
-- **Wired for ts-jest, verified; wired for Vitest, unverified through run.py this session.**
-  `build_oracle_typescript` in `runner/run.py` drives either harness from corpus.json
-  (`typescript_harness: "ts-jest" | "vitest"`, plus `typescript_project_dir` to scope a Vitest
-  monorepo package). The ts-jest path was run end to end against class-validator through
-  `run.py`'s own `main()`; the Vitest path was not re-run through `run.py` this session — its
-  standalone adapter was verified separately (zod, see above), but the run.py-level plumbing
-  (env vars, cwd, npx resolution) is new code, untested on that path.
-- No TypeScript arm exists yet to grade against this oracle. `runner/run.py`'s `--arms` still only
-  names `grep`, `repowise`, `cheburnexus` — none of which understand TypeScript source, so a
-  live run against this oracle currently produces 0 arm edges / no precision number. Building a
-  TS arm (most obviously wrapping `TsAnalyzer`) is future work, out of this session's scope.
+- The Vitest path is verified through `run.py` (zod and vuejs/core, 2026-10-10), but a failing
+  test makes the harness exit 1; the oracle is still written.
 - The Vitest adapter's config-loading is a workaround (bundle the corpus's own `.ts` config with
   its own esbuild, drop `test.projects`), not a general "extend any vitest workspace" story — a
   corpus whose config chain is more than two files deep, or that needs its full multi-project
