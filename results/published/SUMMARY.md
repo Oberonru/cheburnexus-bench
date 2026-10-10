@@ -67,7 +67,21 @@ resolution; `v1.8.1` has the fix. Full writeup (LLM-CheburNexus repo,
 
 ## What's excluded
 
-- `vuejs/core` — not part of this run batch; no fresh 2026-09-25 rows exist for it.
+- `vuejs/core`, `react-hook-form`, `element-plus` — not part of the 2026-09-25 batch. Their
+  `cheburnexus-ts` rows in the table come from the 2026-10-10 TypeScript re-run (below); no
+  `grep` or `repowise` run exists for them (the `— / 0.000` cells are a placeholder, not a result).
+
+## TypeScript re-run (2026-10-10)
+
+All five TypeScript rows (`cheburnexus-ts`, `with-tests`) were re-run on 2026-10-10 against
+byte-identical oracles; the numbers in the table below are from that re-run. Raw output of the
+re-run: `results/rerun-2026-10-10/` (not committed, `results/` is ignored). Oracle status: ts-jest
+for class-validator and react-hook-form; Vitest for zod, vuejs/core and element-plus (the Vitest
+oracle also instruments the `<script>` / `<script setup>` blocks of `.vue` files). Some corpus
+tests fail (zod 16 of 2744, core 3 of 440; the `run.py` harness exits 1 on them), the edges are
+still written and used. Oracle sizes (unique edges): class-validator 3270, zod 25770, vuejs/core
+4520, react-hook-form 24641 to 24647 (varies by a few edges between runs, precision and recall did
+not change), element-plus 75063 (72078 in the primary cell).
 
 ## Table (primary cell, precision / recall)
 
@@ -83,18 +97,22 @@ licence notes. Quick reference:
 | MediatR | without-tests | 0.253 / 0.400 | 0.622 / 0.224 | 1.000 / 0.920 |
 | AutoMapper | without-tests | 0.186 / 0.410 | 0.558 / 0.224 | 0.957 / 0.685 |
 | Humanizer | without-tests | 0.123 / 0.238 | 0.925 / 0.239 | 0.998 / 0.400 |
-| class-validator | with-tests | — / 0.000 | — / 0.000 | 0.997 / 0.563 |
-| zod | with-tests | — / 0.000 | — / 0.000 | 0.934 / 0.556 |
+| class-validator | with-tests | — / 0.000 | — / 0.000 | 1.000 / 0.566 |
+| zod | with-tests | — / 0.000 | — / 0.000 | 0.980 / 0.578 |
+| vuejs/core | with-tests | — / 0.000 | — / 0.000 | 0.989 / 0.352 |
+| react-hook-form | with-tests | — / 0.000 | — / 0.000 | 0.997 / 0.105 |
+| element-plus | with-tests | — / 0.000 | — / 0.000 | 0.939 / 0.056 |
 | unitystation | without-tests | 0.068 / 0.739 | 0.831 / 0.481 | 0.997 / 0.999 (local engine build 52426f77) |
 | unitystation | with-tests | 0.068 / 0.739 | 0.830 / 0.479 | 0.997 / 0.999 (local engine build 52426f77) |
 
-`grep` and `repowise` show `— / 0.000` on the two TypeScript rows for different, genuine
+`grep` and `repowise` show `— / 0.000` on the five TypeScript rows for different, genuine
 reasons, not a shared bug:
 
 - `grep`'s rules (`arms/grep/RULES.md`) only scan `.cs` files (`armkit.source_files`'s default
-  suffix) — it never reads a `.ts` source line, so it emits 0 edges on both TS repos by
+  suffix) — it never reads a `.ts` source line, so it emits 0 edges on every TS repo by
   construction. This is a real, reproducible "arm genuinely found nothing" result, not a crash.
-- `repowise` does emit edges on both TS repos (18 on class-validator, 126 on zod) — but the
+- `repowise` was measured on the first two TS repos only (class-validator, zod), where it does
+  emit edges (18 on class-validator, 126 on zod) — but the
   TypeScript oracle is a runtime, executed-only shadow-stack key (see `README.md`'s
   Limitations), and every one of `repowise`'s callers falls in the "no oracle evidence of
   executing" bucket, so none land in the primary cell. `cheburnexus-ts`'s callers do match

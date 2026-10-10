@@ -134,11 +134,16 @@ flowchart LR
 | [Humanizer](https://github.com/Humanizr/Humanizer) | C# | 0.123&nbsp;/&nbsp;0.238 | 0.925&nbsp;/&nbsp;0.239 | **0.998&nbsp;/&nbsp;0.400** | −tests | MIT |
 | [unitystation](https://github.com/unitystation/unitystation) | Unity&nbsp;C# | 0.068&nbsp;/&nbsp;0.739 | 0.831&nbsp;/&nbsp;0.481 | **0.997&nbsp;/&nbsp;0.999**<sup>†</sup> | −tests | AGPL&#8209;3.0 |
 | [unitystation](https://github.com/unitystation/unitystation) | Unity&nbsp;C# | 0.068&nbsp;/&nbsp;0.739 | 0.830&nbsp;/&nbsp;0.479 | **0.997&nbsp;/&nbsp;0.999**<sup>†</sup> | +tests | AGPL&#8209;3.0 |
-| [class-validator](https://github.com/typestack/class-validator) | TS | —&nbsp;/&nbsp;0.000 | —&nbsp;/&nbsp;0.000 | **0.997&nbsp;/&nbsp;0.563**<sup>ts</sup> | +tests | MIT |
-| [zod](https://github.com/colinhacks/zod) | TS | —&nbsp;/&nbsp;0.000 | —&nbsp;/&nbsp;0.000 | **0.934&nbsp;/&nbsp;0.556**<sup>ts</sup> | +tests | MIT |
+| [class-validator](https://github.com/typestack/class-validator) | TS | —&nbsp;/&nbsp;0.000 | —&nbsp;/&nbsp;0.000 | **1.000&nbsp;/&nbsp;0.566**<sup>ts</sup> | +tests | MIT |
+| [zod](https://github.com/colinhacks/zod) | TS | —&nbsp;/&nbsp;0.000 | —&nbsp;/&nbsp;0.000 | **0.980&nbsp;/&nbsp;0.578**<sup>ts</sup> | +tests | MIT |
+| [vuejs/core](https://github.com/vuejs/core) (`packages/reactivity`) | TS | —&nbsp;/&nbsp;0.000 | —&nbsp;/&nbsp;0.000 | **0.989&nbsp;/&nbsp;0.352**<sup>ts</sup> | +tests | MIT |
+| [react-hook-form](https://github.com/react-hook-form/react-hook-form) v7.89.0 | TS | —&nbsp;/&nbsp;0.000 | —&nbsp;/&nbsp;0.000 | **0.997&nbsp;/&nbsp;0.105**<sup>ts</sup> | +tests | MIT |
+| [element-plus](https://github.com/element-plus/element-plus) 2.14.7 (`packages/components`, Vue SFC) | TS | —&nbsp;/&nbsp;0.000 | —&nbsp;/&nbsp;0.000 | **0.939&nbsp;/&nbsp;0.056**<sup>ts</sup> | +tests | MIT |
 
 `−tests` = ячейка `without-tests`, `+tests` = ячейка `with-tests`. <sup>ts</sup> = рука
-`cheburnexus-ts` (TypeScript-движок). <sup>†</sup> = движок — **локальная сборка коммита `52426f77`,
+`cheburnexus-ts` (TypeScript-движок; пять строк TypeScript перепрогнаны 2026-10-10 на побайтно
+тех же оракулах, ячейки `grep` и `repowise` в них — из прежней публикации на двух репозиториях,
+см. ниже). <sup>†</sup> = движок — **локальная сборка коммита `52426f77`,
 не публичный релиз** (публичный `cheburnexus-releases` v1.8.1 даёт на этом репозитории меньше); см.
 `results/published/SUMMARY.md`. У unitystation файл `edges.jsonl` руки `grep` не закоммичен (173 МБ),
 только result и manifest.
@@ -146,17 +151,25 @@ flowchart LR
 > [!NOTE]
 > **Ячейки.** `with-tests` отдельной строкой существует для `serilog` и `unitystation` — у остальных
 > C#-репозиториев ячейка `with-tests` недоступна на закреплённом SDK (это зафиксировано, а не
-> тихо пропущено — смотри заметки по каждому репозиторию в `corpus.json`). Оба TypeScript-репо —
+> тихо пропущено — смотри заметки по каждому репозиторию в `corpus.json`). Все пять TypeScript-репо —
 > только `with-tests`: их оракул — рантайм-стек вызовов (`oracle/typescript`), ключ существует,
 > только пока реально выполняются тесты, так что осмысленной ячейки «без тестов» для него
 > попросту нет.
 
 `grep` и `repowise` в строках TypeScript оба показывают «— / 0.000», но по разным причинам, а не
 из-за одной общей ошибки: правила `grep` (`arms/grep/RULES.md`) сканируют только файлы `.cs`, так
-что на TypeScript он честно не находит ни одного ребра — по конструкции. `repowise` рёбра
-находит (18 на class-validator, 126 на zod), но TypeScript-оракул засчитывает только вызывающего,
-которого тестовый набор реально выполнил, а ни один вызывающий `repowise` в это множество не
-попадает — полный разбор в `results/published/SUMMARY.md`.
+что на TypeScript он честно не находит ни одного ребра — по конструкции. `repowise` измеряли
+только на первых двух TypeScript-репозиториях (class-validator, zod): рёбра он там находит (18 на
+class-validator, 126 на zod), но TypeScript-оракул засчитывает только вызывающего, которого
+тестовый набор реально выполнил, а ни один вызывающий `repowise` в это множество не попадает —
+полный разбор в `results/published/SUMMARY.md`. Для vuejs/core, react-hook-form и element-plus
+измерения `repowise` нет; «— / 0.000» в их ячейках — не результат, а тот же знак-заполнитель.
+
+Размеры оракулов (уникальные рёбра): class-validator 3270, zod 25770, vuejs/core 4520,
+react-hook-form от 24641 до 24647 (число слегка плавает между прогонами, точность и полнота не
+менялись), element-plus 75063 (из них 72078 в основной ячейке). Оракул Vitest также инструментирует
+блоки `<script>` / `<script setup>` в файлах `.vue`, поэтому вызывающие из Vue SFC привязаны к
+файлу `.vue` и строке (см. `oracle/typescript/README.md`).
 
 В основном корпус разрешающий, но три репозитория — нет: `jbogard/MediatR` и
 `AutoMapper/AutoMapper` идут под **RPL-1.5** (реципрокная, copyleft), `unitystation/unitystation` —

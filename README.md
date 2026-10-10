@@ -163,7 +163,8 @@ suite actually executed, and none of `repowise`'s callers land in that executed 
 or element-plus; their `—` / `0.000` cells are not a result, only the same placeholder.
 
 Oracle sizes (unique edges): class-validator 3270, zod 25770, vuejs/core 4520, react-hook-form
-24647, element-plus 72078. The Vitest oracle also instruments the `<script>` / `<script setup>`
+24641 to 24647 (the count moves by a few edges between runs; precision and recall did not change),
+element-plus 75063 (72078 of them in the primary cell). The Vitest oracle also instruments the `<script>` / `<script setup>`
 blocks of `.vue` files, so Vue SFC callers are keyed to the `.vue` file and line
 (see `oracle/typescript/README.md`).
 
