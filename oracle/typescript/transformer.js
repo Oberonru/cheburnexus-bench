@@ -180,7 +180,7 @@ function hasDirectSuperCall(ts, block) {
 // but every converted default now runs AFTER ALL parameters are bound (at the top of the wrapped
 // body), not interleaved at its original position. Only observable if two defaults with side
 // effects are mixed in one signature; not exercised by class-validator in the scale run.
-function hoistDefaultParams(ts, factory, parameters) {
+function hoistDefaultParams(ts, factory, parameters, fileName) {
   const hoistStatements = [];
   const newParams = parameters.map((param) => {
     if (
@@ -218,6 +218,27 @@ function hoistDefaultParams(ts, factory, parameters) {
     }
     return param;
   });
+  // TS-ONLY SIGNATURE FIXUP (2026-10-10, found on element-plus): stripping `= init` leaves a
+  // REQUIRED parameter after an optional one for `f(a?: T, b = 1)` -> `f(a?: T, b)`, which
+  // tsc/esbuild tolerate but oxc (Vite 8's transformer) rejects as a PARSE_ERROR. Types are
+  // erased, so marking the hoisted parameter (and any required one that follows it) optional is
+  // runtime-neutral. Only in TS sources: `?` on a parameter is not valid JS.
+  if (hoistStatements.length && parameters.length && /\.[cm]?tsx?$/.test(fileName || '')) {
+    let seenOptional = false;
+    for (let i = 0; i < newParams.length; i++) {
+      const np = newParams[i], orig = parameters[i];
+      const hoisted = np !== orig;
+      if (hoisted || np.questionToken) { seenOptional = true; }
+      if (hoisted && !np.questionToken) {
+        newParams[i] = factory.updateParameterDeclaration(np, np.modifiers, np.dotDotDotToken, np.name,
+          factory.createToken(ts.SyntaxKind.QuestionToken), np.type, undefined);
+      } else if (seenOptional && !hoisted && !np.questionToken && !np.initializer && !np.dotDotDotToken
+        && ts.isIdentifier(np.name) && np.name.text !== 'this') {
+        newParams[i] = factory.updateParameterDeclaration(np, np.modifiers, np.dotDotDotToken, np.name,
+          factory.createToken(ts.SyntaxKind.QuestionToken), np.type, undefined);
+      }
+    }
+  }
   return { newParams, hoistStatements };
 }
 
@@ -417,7 +438,7 @@ function makeTransformer(ts, fileTag) {
       ) {
         counter++;
         const label = labelFor(visited, 'constructor');
-        const { newParams, hoistStatements } = hoistDefaultParams(ts, factory, visited.parameters);
+        const { newParams, hoistStatements } = hoistDefaultParams(ts, factory, visited.parameters, sourceFile.fileName);
         const superIdx = findDirectSuperStatementIndex(ts, visited.body.statements);
         const beforeAndSuper = visited.body.statements.slice(0, superIdx + 1);
         const afterBlock = factory.createBlock(visited.body.statements.slice(superIdx + 1), true);
@@ -448,7 +469,7 @@ function makeTransformer(ts, fileTag) {
           ? '(set)'
           : '';
         const label = labelFor(visited, name, kindSuffix);
-        const { newParams, hoistStatements } = hoistDefaultParams(ts, factory, visited.parameters);
+        const { newParams, hoistStatements } = hoistDefaultParams(ts, factory, visited.parameters, sourceFile.fileName);
         const bodyWithDefaults = hoistStatements.length
           ? factory.createBlock([...hoistStatements, ...visited.body.statements], true)
           : visited.body;
@@ -489,7 +510,7 @@ function makeTransformer(ts, fileTag) {
         counter++;
         const name = nameOf(ts, visited, null) ?? anonLabel(visited);
         const label = labelFor(visited, name);
-        const { newParams, hoistStatements } = hoistDefaultParams(ts, factory, visited.parameters);
+        const { newParams, hoistStatements } = hoistDefaultParams(ts, factory, visited.parameters, sourceFile.fileName);
         const bodyWithDefaults = hoistStatements.length
           ? factory.createBlock([...hoistStatements, ...visited.body.statements], true)
           : visited.body;
@@ -506,7 +527,7 @@ function makeTransformer(ts, fileTag) {
         // target) when one exists, matching the engine's describeCallable -- see arrowStaticName
         // above. Falls back to the old positional anonLabel() only when no static root exists.
         const label = labelFor(visited, arrowStaticName(ts, node) ?? anonLabel(visited));
-        const { newParams, hoistStatements } = hoistDefaultParams(ts, factory, visited.parameters);
+        const { newParams, hoistStatements } = hoistDefaultParams(ts, factory, visited.parameters, sourceFile.fileName);
         const bodyWithDefaults = hoistStatements.length
           ? factory.createBlock([...hoistStatements, ...visited.body.statements], true)
           : visited.body;
@@ -583,6 +604,23 @@ function makeTransformer(ts, fileTag) {
     function isWrappableTopLevelStatement(node) {
       if (!ts.isExpressionStatement(node)) return false;
       if (ts.isStringLiteralLike(node.expression)) return false; // possible directive prologue
+      // vitest/jest module-mock calls are HOISTED by the test runner's own transform and it
+      // refuses them anywhere but the module's top level (vitest: "was defined outside of the
+      // module's top level scope", reproduced on element-plus). Never nest them in the frame.
+      const e = node.expression;
+      if (ts.isCallExpression(e) && ts.isPropertyAccessExpression(e.expression)
+        && ts.isIdentifier(e.expression.expression)
+        && (e.expression.expression.text === 'vi' || e.expression.expression.text === 'jest')
+        && /^(mock|unmock|hoisted|deepUnmock|enableAutomock|disableAutomock)$/.test(e.expression.name.text)) {
+        return false;
+      }
+      // Vue <script setup> compiler macros are recognised by plugin-vue only as TOP-LEVEL
+      // statements; nested in the frame closure they stay in the output and throw
+      // "defineOptions is not defined" at runtime (reproduced on element-plus).
+      if (ts.isCallExpression(e) && ts.isIdentifier(e.expression)
+        && /^(defineProps|defineEmits|defineExpose|defineOptions|defineSlots|defineModel|withDefaults)$/.test(e.expression.text)) {
+        return false;
+      }
       return true;
     }
 

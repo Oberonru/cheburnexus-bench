@@ -324,7 +324,8 @@ def build_oracle_typescript(entry: dict, checkout: Path, cell: str, out_dir: Pat
         if test_filter:
             cmd.append(test_filter)
 
-    result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(checkout), env=env)
+    result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                            cwd=str(checkout), env=env)
     (out_dir / "harness.stdout.txt").write_text(result.stdout, encoding="utf-8")
     (out_dir / "harness.stderr.txt").write_text(result.stderr, encoding="utf-8")
 

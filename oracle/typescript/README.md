@@ -401,3 +401,17 @@ mechanism.
 - no ts-jest in the corpus (it uses @swc/jest): this package's ts-jest is used, pinned to the
   corpus's own typescript by path, with `diagnostics: false` (the corpus never type-checked its tests).
   A corpus that has its own ts-jest keeps diagnostics as before.
+
+## Vue SFC (.vue) support (2026-10-10, element-plus)
+
+`vite_shadow_stack_plugin.js` also instruments `.vue` files: it sees the raw SFC text (enforce 'pre'), parses
+`<script>`/`<script setup>` blocks with the corpus's own `vue/compiler-sfc`, instruments each block as a
+blank buffer (everything outside the block replaced by spaces, newlines kept) so labels carry the real
+`.vue` line numbers, and splices the printed block back; template and style stay untouched. Label file =
+the `.vue` path. Three harness fixes found on this corpus, all generic: (1) `transformer.js` hoisted
+default parameters left a required parameter after an optional one, which oxc (Vite 8) rejects -- the
+hoisted parameter is now marked `?` in TS sources; (2) top-level `vi.mock/unmock/hoisted` (and `jest.*`)
+and `<script setup>` macros (`defineProps`, `defineOptions`, ...) are no longer moved into the
+module-scope frame (the runner / plugin-vue only accept them at top level); (3) `runner/run.py` decodes
+harness output as UTF-8. The arm's key translation treats engine Kind `component` (the per-file type of
+an SFC) like `module`.

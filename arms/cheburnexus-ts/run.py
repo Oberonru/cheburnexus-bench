@@ -699,7 +699,9 @@ class Translator:
             return None
         kind, simple_name = info
         simple_name = strip_type_param_suffix(simple_name)
-        qualified = name if kind == "module" else f"{simple_name}.{name}"
+        # "component" is the engine's Kind for the per-file synthetic type of a .vue/.svelte SFC
+        # (same role as "module" for a .ts file: top-level functions, no class qualifier).
+        qualified = name if kind in ("module", "component") else f"{simple_name}.{name}"
 
         suffix = ""
         accessors = self.types.accessor_names.get(owner_key) or set()

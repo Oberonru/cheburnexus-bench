@@ -21,7 +21,7 @@
 const path = require('path');
 const { makeTransformer } = require('./transformer');
 
-const SCRIPT_EXT_RE = /\.(ts|tsx|mts|cts)$/;
+const SCRIPT_EXT_RE = /\.(ts|tsx|mts|cts|vue)$/;
 
 function normSlash(p) {
   return p.replace(/\\/g, '/');
@@ -38,6 +38,12 @@ function shadowStackPlugin(options = {}) {
   // Resolve TypeScript FROM THE CORPUS -- see transformer.js header for the full "two TypeScript
   // instances" incident this guards against.
   const ts = require(require.resolve('typescript', { paths: [corpusRootAbs] }));
+
+  let vueSfcMod = null;
+  function getVueSfc() {
+    if (!vueSfcMod) vueSfcMod = require(require.resolve('vue/compiler-sfc', { paths: [corpusRootAbs] }));
+    return vueSfcMod;
+  }
 
   let wrappedTotal = 0;
   let printedDebugSample = false;
@@ -88,6 +94,35 @@ function shadowStackPlugin(options = {}) {
       // Anchor every tag relative to the corpus ROOT, forward-slashed, never an absolute machine
       // path (constraint #5) -- same scheme ts_jest_ast_transformer.js uses.
       const tag = normSlash(path.relative(corpusRootAbs, filePath));
+
+      // Vue SFC: this pre-plugin sees the raw .vue text (plugin-vue runs later). Instrument the
+      // <script>/<script setup> blocks IN PLACE: each block is parsed as a blank buffer (every
+      // char outside the block replaced by a space, newlines kept) so node line numbers equal
+      // the real .vue lines, then only the block's text is replaced by the printed result. The
+      // template/style stay byte-identical, so plugin-vue compiles as usual and the label file
+      // is the .vue path itself (same convention as the engine's SFC script extraction).
+      if (filePath.endsWith('.vue')) {
+        const vueSfc = getVueSfc();
+        const { descriptor } = vueSfc.parse(code, { filename: filePath });
+        const blocks = [descriptor.script, descriptor.scriptSetup].filter(Boolean)
+          .sort((a, b) => b.loc.start.offset - a.loc.start.offset);
+        let outCode = code;
+        for (const b of blocks) {
+          const start = b.loc.start.offset, end = b.loc.end.offset;
+          const lang = b.lang || 'js';
+          const kind = lang === 'tsx' ? ts.ScriptKind.TSX : lang === 'jsx' ? ts.ScriptKind.JSX
+            : lang === 'ts' ? ts.ScriptKind.TS : ts.ScriptKind.JS;
+          const virt = code.slice(0, start).replace(/[^\n]/g, ' ') + code.slice(start, end);
+          const sf = ts.createSourceFile(filePath + '.' + lang, virt, ts.ScriptTarget.Latest, true, kind);
+          const { transform, wrapped } = makeTransformer(ts, tag);
+          const res = ts.transform(sf, [transform]);
+          const printed = ts.createPrinter({ newLine: ts.NewLineKind.LineFeed }).printFile(res.transformed[0]);
+          res.dispose();
+          wrappedTotal += wrapped();
+          outCode = outCode.slice(0, start) + '\n' + printed + '\n' + outCode.slice(end);
+        }
+        return { code: outCode, map: null };
+      }
       const scriptKind = /\.tsx$/.test(filePath) ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
       const sourceFile = ts.createSourceFile(filePath, code, ts.ScriptTarget.Latest, true, scriptKind);
 

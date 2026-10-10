@@ -370,6 +370,20 @@
     "note": "Fourth TS corpus, added 2026-10-10: React hooks + TSX, tests via @testing-library/react under jsdom. The corpus's own jest config uses @swc/jest and fans out into two projects (web/jsdom, server/node); the oracle config swaps each project's transform for ts-jest + the shadow-stack AST transformer (generic `projects` support in jest.instrumented.config.js). Single package, install with `pnpm install --frozen-lockfile` (pnpm 10). Scope: src/."
   },
   {
+    "name": "element-plus/element-plus",
+    "language": "typescript",
+    "typescript_harness": "vitest",
+    "typescript_project_dir": "packages/components",
+    "typescript_test_filter": "packages/components",
+    "url": "https://github.com/element-plus/element-plus.git",
+    "sha": "77d5c32c4ebcfffde67e51f6325c6d350ca668a0",
+    "commit_date": "2026-09-30T19:18:52+08:00",
+    "license": "MIT",
+    "package_version": "2.14.7",
+    "test": "vitest",
+    "note": "Fifth TS corpus, added 2026-10-10: the first Vue SFC (.vue) corpus. Tag 2.14.7, pnpm monorepo, one ROOT vitest.config.mts (plugin-vue + vue-jsx, jsdom). Scope: packages/components (arm scan + vitest test filter). Install: `pnpm install --frozen-lockfile --ignore-scripts` (pnpm 12.8.1, the packageManager pin). The oracle plugin (vite_shadow_stack_plugin.js) instruments <script>/<script setup> blocks of .vue files in place (blank-buffer parse, so labels carry real .vue line numbers)."
+  },
+  {
     "name": "unitystation/unitystation",
     "language": "csharp",
     "url": "https://github.com/unitystation/unitystation",
