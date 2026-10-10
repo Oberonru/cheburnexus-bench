@@ -390,3 +390,14 @@ mechanism.
 - No precision/recall grading against a second oracle.
 - The known holes above are not fixed, only documented and (where they previously crashed the
   whole module) made to fail safely instead.
+
+## Jest corpus with its own `projects` and swc (react-hook-form, 2026-10-10)
+
+`jest.instrumented.config.js` was generalised three ways (class-validator re-measured: still
+3270 edges, 0.997 / 0.563):
+- corpus config path: `typescript_jest_config` in corpus.json (default `jest.config.js`).
+- `projects` fan-out: every project keeps its own settings, its transform is swapped for the
+  instrumented one and the stack setup is added per project.
+- no ts-jest in the corpus (it uses @swc/jest): this package's ts-jest is used, pinned to the
+  corpus's own typescript by path, with `diagnostics: false` (the corpus never type-checked its tests).
+  A corpus that has its own ts-jest keeps diagnostics as before.

@@ -304,6 +304,8 @@ def build_oracle_typescript(entry: dict, checkout: Path, cell: str, out_dir: Pat
         cmd = ["node", str(jest_bin),
                "--config", str(ORACLE_TS_DIR / "jest.instrumented.config.js"),
                "--runInBand", "--no-cache"]
+        if entry.get("typescript_jest_config"):
+            env["ORACLE_TS_JEST_CONFIG"] = entry["typescript_jest_config"]
     else:
         # typescript_test_filter is for a monorepo with NO per-package vitest config (vue: one
         # root vitest.config.ts with a `test.projects` fan-out) — the root is what vitest must be

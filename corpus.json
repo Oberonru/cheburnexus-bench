@@ -357,6 +357,19 @@
     "note": "Third TS corpus, added 2026-09-04. Shape differs from zod: NO per-package vitest config — a single ROOT vitest.config.ts with a `test.projects` fan-out, so vitest must be rooted at the checkout root, not at the package. `typescript_project_dir` here does its usual job of scoping the ARM's own source-file scan (packages/reactivity only); the NEW `typescript_test_filter` field tells build_oracle_typescript to root vitest at the checkout instead and pass this value as a positional test-path filter, narrowing the answer key to the same package. This first cell is scoped to packages/reactivity only (not the whole monorepo). CHECKOUT LIVES OUTSIDE corpus/, same out-of-corpus arrangement as zod: run it as `--checkouts D:\\DEV\\TsTest --only core` (or `vuejs/core`), where `pnpm install` has already been done at the repo root. Required the 2026-09-04 vitest.instrumented.config.mts fix (own import.meta.url per inlined config, setupFiles string normalized to array, our stack setup ordered first) — see that file's commit. Verified standalone: 2462 bodies wrapped, 4520 unique edges, 433/440 tests pass."
   },
   {
+    "name": "react-hook-form/react-hook-form",
+    "language": "typescript",
+    "typescript_harness": "ts-jest",
+    "typescript_jest_config": "scripts/jest/jest.config.js",
+    "typescript_project_dir": "src",
+    "url": "https://github.com/react-hook-form/react-hook-form.git",
+    "sha": "4722d22fbbafd52b3186e737e62bd530659f1b24",
+    "commit_date": "2026-09-26T10:35:40+10:00",
+    "license": "MIT",
+    "package_version": "7.89.0",
+    "note": "Fourth TS corpus, added 2026-10-10: React hooks + TSX, tests via @testing-library/react under jsdom. The corpus's own jest config uses @swc/jest and fans out into two projects (web/jsdom, server/node); the oracle config swaps each project's transform for ts-jest + the shadow-stack AST transformer (generic `projects` support in jest.instrumented.config.js). Single package, install with `pnpm install --frozen-lockfile` (pnpm 10). Scope: src/."
+  },
+  {
     "name": "unitystation/unitystation",
     "language": "csharp",
     "url": "https://github.com/unitystation/unitystation",
