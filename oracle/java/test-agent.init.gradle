@@ -1,0 +1,18 @@
+// Gradle init script: run every Test task with the call-recording javaagent. Passed with -I so the
+// subject checkout's build files are never edited. Reads JAVA_ORACLE_AGENT (jar) and
+// JAVA_ORACLE_ARGS (agent argument string) from the environment.
+allprojects {
+    tasks.withType(Test).configureEach {
+        def agent = System.getenv("JAVA_ORACLE_AGENT")
+        def agentArgs = System.getenv("JAVA_ORACLE_ARGS")
+        if (agent == null || agentArgs == null) {
+            throw new GradleException("JAVA_ORACLE_AGENT / JAVA_ORACLE_ARGS not set")
+        }
+        jvmArgs("-javaagent:" + agent + "=" + agentArgs)
+        // Always rerun: an up-to-date test task would record nothing.
+        outputs.upToDateWhen { false }
+        // Keep going over red tests; the runner decides what a failure means.
+        ignoreFailures = true
+        testLogging { events "failed" }
+    }
+}

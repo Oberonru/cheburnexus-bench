@@ -1,0 +1,11 @@
+// Gradle init script: prints the main compile classpath, one line, os-path-separated.
+// gradlew -q -I oracle/java/classpath.init.gradle printCompileClasspath
+allprojects {
+    afterEvaluate { p ->
+        if (p.plugins.hasPlugin("java")) {
+            p.tasks.register("printCompileClasspath") {
+                doLast { println p.sourceSets.main.compileClasspath.asPath }
+            }
+        }
+    }
+}
