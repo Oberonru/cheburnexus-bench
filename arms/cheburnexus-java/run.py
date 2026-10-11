@@ -9,7 +9,7 @@ through its own CLI:
 
 and reads `architecture.json` (types, to rebuild the type spelling) plus `architecture.calls.json`
 (caller raw key -> [{Target, Line, Kind}]). Engine raw key: `{abs file}::{type fqn}::{name}({param
-types})`, where a default constructor is `<init>` and an explicit one is named after the type.
+types})`, where an implicit constructor is `.ctor` and an explicit one is named after the type.
 
 Oracle key spelling (oracle/java/README.md): `pkg.Type::method` (overloads collapse), nested
 `pkg.Outer/Inner`, anonymous `Outer/1`, `.ctor`/`.cctor`.
@@ -19,8 +19,9 @@ Mapping, all read from the engine's own output, nothing project-specific:
 * type: the engine spells a nested type `pkg.Outer.Inner` (dots all the way). The package is the
   file's `Namespace` in architecture.json, so `fqn[len(Namespace)+1:]` is the nesting chain and its
   dots become `/`. A type absent from architecture.json is a counted drop, never guessed.
-* method: parameter list dropped (overloads collapse, as in the oracle). `<init>` or a method named
-  like its type that architecture.json marks `IsConstructor` -> `.ctor`; `<clinit>` -> `.cctor`.
+* method: parameter list dropped (overloads collapse, as in the oracle). `.ctor` (compiler-made
+  constructors, since the engine spells them so itself), `<init>` (older engines) or a method named
+  like its type that architecture.json marks `IsConstructor` -> `.ctor`; `<clinit>`/`.cctor` -> `.cctor`.
 * NOT converted, on purpose: the callee owner. The engine names the DECLARING type of the resolved
   method; the oracle names the owner javac wrote in the instruction (the receiver's static type).
   The two differ whenever a method is inherited or called through a subtype. There is no override
@@ -33,7 +34,9 @@ without the classpath resolves far fewer calls and would be a plausible wrong nu
 Environment:
   JAVA_ENGINE_JDT_HOME  JavaEngineJdt checkout (has src/ and build/libs/java-engine-jdt.jar). Required.
   AA_JAVA_CLASSPATH     the corpus compile classpath (runner sets it from the oracle's classpath.txt).
-  CHEBURNEXUS_JAVA      java executable (default: `java`).
+  CHEBURNEXUS_JAVA      java executable that runs the engine. Wins over everything when set.
+                        Otherwise `<java_home>/bin/java` of the project's corpus.json entry (the same
+                        JDK the oracle used, so JDT sees the same JDK API); otherwise `java` on PATH.
 """
 
 from __future__ import annotations
@@ -130,10 +133,35 @@ def _reset_work_dir(out_dir: Path) -> None:
     resolved.mkdir(parents=True, exist_ok=True)
 
 
+def corpus_entry(repo_root: Path) -> dict:
+    for entry in armkit._load_corpus_entries():
+        if str(entry.get("name", "")).split("/")[-1] == repo_root.name:
+            return entry
+    return {}
+
+
+def java_executable(repo_root: Path) -> str:
+    """CHEBURNEXUS_JAVA (explicit) > <java_home>/bin/java from corpus.json > `java`."""
+    explicit = os.environ.get(JAVA_ENV)
+    if explicit:
+        return explicit
+    home = corpus_entry(repo_root).get("java_home")
+    return str(Path(home) / "bin" / "java") if home else "java"
+
+
+def java_identity(java_exe: str) -> str:
+    try:
+        out = subprocess.run([java_exe, "-version"], capture_output=True, text=True, timeout=30).stderr
+        first = out.splitlines()[0] if out else "no version output"
+    except (OSError, subprocess.SubprocessError) as exc:
+        first = f"unreadable ({exc})"
+    return f"{java_exe} [{first}]"
+
+
 def _run_engine(engine_dir: Path, repo_root: Path, out_dir: Path, classpath: str) -> dict:
     _reset_work_dir(out_dir)
     invoked_at = time.time()
-    cmd = [os.environ.get(JAVA_ENV) or "java", "-jar", str(_jar(engine_dir)),
+    cmd = [java_executable(repo_root), "-jar", str(_jar(engine_dir)),
            "--path", str(repo_root), "--output-dir", str(out_dir), "--classpath", classpath]
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
@@ -299,7 +327,7 @@ def collect(repo_root: Path, cell: str):
     unresolved = int(m.group(3)) if m else None
     dropped = sum(translator.drops.values())
     breakdown = ", ".join(f"{k}={v}" for k, v in translator.drops.items() if v) or "none"
-    note = (f"JavaEngineJdt resolved {total_calls} project call sites ({engine_note}); "
+    note = (f"engine run by {java_identity(java_executable(repo_root))}; JavaEngineJdt resolved {total_calls} project call sites ({engine_note}); "
             f"{dropped} key translation drops ({breakdown}). Callee is the DECLARING type, the "
             f"oracle's is the instruction owner (receiver static type): not converted, see header.")
     print(f"cheburnexus-java: {note}", file=sys.stderr)

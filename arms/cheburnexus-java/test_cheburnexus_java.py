@@ -155,6 +155,33 @@ CHECKS = [check_type_spelling, check_constructors, check_unknown_type_is_counted
           check_missing_engine_and_classpath_refuse]
 
 
+def check_java_selection() -> list[str]:
+    out = []
+    saved = os.environ.pop(arm.JAVA_ENV, None)
+    real = arm.corpus_entry
+    try:
+        arm.corpus_entry = lambda root: {"java_home": "/jdk/26"}
+        got = arm.java_executable(Path("/x/proj"))
+        if got != str(Path("/jdk/26") / "bin" / "java"):
+            out.append(f"java_home not used: {got!r}")
+        os.environ[arm.JAVA_ENV] = "/explicit/java"
+        if arm.java_executable(Path("/x/proj")) != "/explicit/java":
+            out.append("CHEBURNEXUS_JAVA must win over java_home")
+        del os.environ[arm.JAVA_ENV]
+        arm.corpus_entry = lambda root: {}
+        if arm.java_executable(Path("/x/proj")) != "java":
+            out.append("no java_home must give plain `java`")
+    finally:
+        arm.corpus_entry = real
+        os.environ.pop(arm.JAVA_ENV, None)
+        if saved is not None:
+            os.environ[arm.JAVA_ENV] = saved
+    return out
+
+
+CHECKS.append(check_java_selection)
+
+
 def main() -> int:
     failures = []
     for check in CHECKS:
