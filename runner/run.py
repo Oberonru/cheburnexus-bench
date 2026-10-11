@@ -758,6 +758,11 @@ def main() -> int:
             oracle_assemblies = [str(a.relative_to(checkout))
                                   for a in assemblies_for(entry, checkout, cell, missing_assemblies)]
 
+            # Java arms need the corpus compile classpath; the oracle just printed it (classpath.txt).
+            java_cp = cell_dir / "_oracle" / "classpath.txt"
+            if entry.get("language") == "java" and java_cp.is_file():
+                os.environ["AA_JAVA_CLASSPATH"] = java_cp.read_text(encoding="utf-8").strip()
+
             for arm_name in args.arms:
                 arm_dir = cell_dir / arm_name
                 arm_dir.mkdir(parents=True, exist_ok=True)
