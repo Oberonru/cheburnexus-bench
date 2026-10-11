@@ -511,7 +511,7 @@
       "org.springframework.samples.petclinic"
     ],
     "java_test_command": "gradlew -I {init_script} test --console=plain",
-    "java_classpath_command": "gradlew -q -I {classpath_init_script} printCompileClasspath",
-    "note": "Java oracle verification corpus (oracle/java, javaagent call-site recording). The checkout is never edited: the agent is attached through a Gradle init script passed with -I. java_classpath_command prints the main compile classpath (OS path separator); stage-2 arms pass it as AA_JAVA_CLASSPATH. Tests that need Docker (MySql/Postgres integration) are skipped by their own conditions when Docker is absent."
+    "java_classpath_command": "gradlew -q -I {classpath_init_script} {classpath_task}",
+    "note": "Java oracle verification corpus (oracle/java, javaagent call-site recording). The checkout is never edited: the agent is attached through a Gradle init script passed with -I. java_classpath_command prints the compile classpath of the task the runner picks per cell (with-tests: printTestCompileClasspath, without-tests: printCompileClasspath; OS path separator); stage-2 arms pass it as AA_JAVA_CLASSPATH. Tests that need Docker (MySql/Postgres integration) are skipped by their own conditions when Docker is absent."
   }
 ]

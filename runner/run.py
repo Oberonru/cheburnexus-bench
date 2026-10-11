@@ -417,11 +417,18 @@ def _java_command(template: str, checkout: Path) -> list[str]:
     return parts
 
 
-def java_classpath(entry: dict, checkout: Path) -> str:
-    """The compile classpath of a Java corpus entry (what stage-2 arms pass as AA_JAVA_CLASSPATH)."""
+# Which source roots a cell scans decides which classpath its calls resolve against: with-tests scans
+# src/test too, so it needs the test compile classpath (junit, assertj, mockito, spring-test ...).
+JAVA_CLASSPATH_TASK = {"without-tests": "printCompileClasspath", "with-tests": "printTestCompileClasspath"}
+
+
+def java_classpath(entry: dict, checkout: Path, cell: str) -> str:
+    """The compile classpath of a Java corpus entry for a cell (what stage-2 arms pass as
+    AA_JAVA_CLASSPATH): main compile classpath without tests, test compile classpath with tests."""
     command = entry.get("java_classpath_command")
     if not command:
         raise SystemExit(f"{entry['name']}: java entries need java_classpath_command in corpus.json")
+    command = command.replace("{classpath_task}", JAVA_CLASSPATH_TASK[cell])
     result = subprocess.run(_java_command(command, checkout), capture_output=True, text=True,
                             encoding="utf-8", errors="replace", cwd=str(checkout))
     lines = [ln.strip() for ln in result.stdout.splitlines() if ln.strip()]
@@ -447,6 +454,7 @@ def _java_oracle_identity(entry: dict, checkout: Path, agent_sha: str) -> dict:
     return {
         "agent_jar_sha256": agent_sha,
         "oracle_sources_sha256": digest.hexdigest(),
+        "classpath_scope": JAVA_CLASSPATH_TASK["with-tests"],
         "subject_head": head,
         "subject_expected_sha": entry.get("sha"),
         "subject_tracked_files_dirty": bool(dirty),
@@ -541,7 +549,7 @@ def build_oracle_java(entry: dict, checkout: Path, cell: str, out_dir: Path) -> 
     (out_dir / "oracle_identity.json").write_text(json.dumps(
         {**_java_oracle_identity(entry, checkout, agent_sha), "test_exit_code": result.returncode, **info},
         indent=2), encoding="utf-8")
-    (out_dir / "classpath.txt").write_text(java_classpath(entry, checkout), encoding="utf-8")
+    (out_dir / "classpath.txt").write_text(java_classpath(entry, checkout, cell), encoding="utf-8")
 
     module_id = repo_dir_name(entry)
     edges_path = out_dir / "oracle.jsonl"

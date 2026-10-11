@@ -1,10 +1,15 @@
-// Gradle init script: prints the main compile classpath, one line, os-path-separated.
-// gradlew -q -I oracle/java/classpath.init.gradle printCompileClasspath
+// Gradle init script: prints a compile classpath, one line, os-path-separated.
+//   gradlew -q -I oracle/java/classpath.init.gradle printCompileClasspath       (main sources only)
+//   gradlew -q -I oracle/java/classpath.init.gradle printTestCompileClasspath   (main + test sources:
+//       adds junit/assertj/mockito/spring-test; the cell that scans src/test needs this one)
 allprojects {
     afterEvaluate { p ->
         if (p.plugins.hasPlugin("java")) {
             p.tasks.register("printCompileClasspath") {
                 doLast { println p.sourceSets.main.compileClasspath.asPath }
+            }
+            p.tasks.register("printTestCompileClasspath") {
+                doLast { println p.sourceSets.test.compileClasspath.asPath }
             }
         }
     }
