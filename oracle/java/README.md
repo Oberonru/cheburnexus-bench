@@ -5,11 +5,11 @@ Runtime answer key for Java repositories. Wired into `runner/run.py` as `build_o
 
 ## Mechanism
 
-`-javaagent` (ASM 9.7.1, pinned by version and sha256 in `build.py`, shaded into the agent jar)
+`-javaagent` (ASM 9.9.1 (older ASM cannot read JDK 26 class files, format 70), pinned by version and sha256 in `build.py`, shaded into the agent jar)
 rewrites every *project* class as it loads. Before each invoke instruction whose **declared owner
 is also a project class**, it inserts `Recorder.hit(siteId)`. At JVM shutdown the sites that were
 reached are written as `caller<TAB>callee<TAB>op` lines (`edges.<pid>.tsv`) plus
-`stats.<pid>.json` (classes instrumented / failed, sites, sites hit).
+`stats.<pid>.json` (classes instrumented / failed, sites, sites hit, and `first_failure`: the first class that failed to instrument and why).
 
 This is the same idea as the C# oracle (static caller, *declared* callee of the instruction),
 gated by "the instruction actually ran", not a shadow stack like the TypeScript oracle. Consequences
@@ -79,7 +79,7 @@ Java getters are ordinary methods here; the grader's accessor cell is C# `get_`/
 ## Failing loudly
 
 The runner (`read_java_raw`) aborts the oracle build if: no stats file was written (agent never
-ran), zero classes were instrumented (wrong `java_packages`), any class failed to instrument, or
+ran), zero classes were instrumented (wrong `java_packages`), any class failed to instrument (`classes_failed > 0`; the error names `first_failure`), or
 zero edges were recorded. `oracle_identity.json` next to the key records the agent jar sha256, a
 hash of all oracle sources + init scripts, subject HEAD vs. the pinned sha, a dirty-tracked-files
 flag, Java version, test command and the agent's counters.

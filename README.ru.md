@@ -139,6 +139,8 @@ flowchart LR
 | [vuejs/core](https://github.com/vuejs/core) (`packages/reactivity`) | TS | —&nbsp;/&nbsp;0.000 | —&nbsp;/&nbsp;0.000 | **0.989&nbsp;/&nbsp;0.352**<sup>ts</sup> | +tests | MIT |
 | [react-hook-form](https://github.com/react-hook-form/react-hook-form) v7.89.0 | TS | —&nbsp;/&nbsp;0.000 | —&nbsp;/&nbsp;0.000 | **0.997&nbsp;/&nbsp;0.105**<sup>ts</sup> | +tests | MIT |
 | [element-plus](https://github.com/element-plus/element-plus) 2.14.7 (`packages/components`, Vue SFC) | TS | —&nbsp;/&nbsp;0.000 | —&nbsp;/&nbsp;0.000 | **0.939&nbsp;/&nbsp;0.056**<sup>ts</sup> | +tests | MIT |
+| [spring-petclinic](https://github.com/spring-projects/spring-petclinic) | Java | 0.708&nbsp;/&nbsp;0.857<sup>j</sup> | 0.971&nbsp;/&nbsp;0.825<sup>j</sup> | **0.996&nbsp;/&nbsp;1.000**<sup>j</sup> | +tests | Apache&#8209;2.0 |
+| [RxJava](https://github.com/ReactiveX/RxJava) (`io.reactivex.rxjava4`) | Java | 0.008&nbsp;/&nbsp;0.879<sup>j,g</sup> | 0.462&nbsp;/&nbsp;0.591<sup>j</sup> | **0.994&nbsp;/&nbsp;1.000**<sup>j</sup> | +tests | Apache&#8209;2.0 |
 
 `−tests` = ячейка `without-tests`, `+tests` = ячейка `with-tests`. <sup>ts</sup> = рука
 `cheburnexus-ts` (TypeScript-движок; пять строк TypeScript перепрогнаны 2026-10-10; оракулы zod,
@@ -165,6 +167,27 @@ class-validator, 126 на zod), но TypeScript-оракул засчитыва�
 тестовый набор реально выполнил, а ни один вызывающий `repowise` в это множество не попадает —
 полный разбор в `results/published/SUMMARY.md`. Для vuejs/core, react-hook-form и element-plus
 измерения `repowise` нет; «— / 0.000» в их ячейках — не результат, а тот же знак-заполнитель.
+
+Java (spring-petclinic, RxJava; только `with-tests`, оценка только по выполненному, как у TypeScript). <sup>j</sup> — руки
+для Java: `cheburnexus-java` (JavaEngineJdt, локальная сборка, jar sha256:f9a101fef982; Java-движок — не публичный
+релиз) и Java-сёстры бесплатных рук: `grep-java` (чистый Python, те же два прохода и тот же разлёт кандидатов, что у `grep`,
+переписанные под синтаксис Java) и `repowise-java` (repowise 0.45.0 сам поддерживает Java; тот же
+`repowise init --mode fast`, без ключа LLM, ключ пересобран из `package` файла и вложенности типов). C#-руки `grep` и
+`repowise` под Java не правили; они ничего не выдали бы, а это отсутствующая рука, не результат.
+Размеры оракулов: petclinic 280 рёбер (79 классов под агентом, 1 тестовая JVM), RxJava 99119 сравнимых рёбер (17542 класса,
+12 тестовых JVM, JDK 26). Время рук: petclinic 0.5 с / 5.6 с / 1.8 с (grep-java / repowise-java / cheburnexus-java),
+RxJava: 160 с у repowise-java и 31 с у `cheburnexus-java`. Прогон 2026-10-11, коммит стенда после `9fb0bcc`.
+<sup>g</sup> — `grep-java` на RxJava оценён по рёбрам от вызывающих, которых оракул видел выполненными, потому что
+полный вывод не помещается на диск: разлёт кандидатов выдал 4.7 ГБ строк меньше чем за минуту, а один только фильтр
+выполненных вызывающих оставляет 10.9 млн уникальных пар (вызывающий, вызываемый) (точность 0.008). Оценщик считает руку
+множеством пар (вызывающий, вызываемый) и не учитывает рёбра вызывающих, которые не запускались, поэтому числа равны
+полному прогону; побочный скрипт лишь не писал отброшенную часть.
+
+Как заведена Java: оракул — `-javaagent` (ASM 9.9.1, читает классы JDK 26), который пишет выполненные места вызова
+классов проекта (`java_packages` в `corpus.json`); тесты идут через Gradle wrapper самого чекаута, init-скрипт
+передаётся через `-I`, так что чекаут не правится; JDK берётся из необязательного поля `java_home` (экспортируется как
+`JAVA_HOME`), а compile classpath печатает второй init-скрипт и отдаёт его руке Java-движка. Maven не поддержан.
+Вызываемые из библиотек в ключ не попадают, как и внешние в C#-оракуле. См. `oracle/java/README.md` и `CORPUS_NOTES.md`.
 
 Размеры оракулов (уникальные рёбра): class-validator 3270, zod 25770, vuejs/core 4520,
 react-hook-form от 24641 до 24647 (число слегка плавает между прогонами, точность и полнота не
@@ -418,11 +441,15 @@ CORPUS_NOTES.md         как проверялось, что каждый ко�
 corpus-patches/         (задокументированные) патчи исходников, без которых пара коммитов не собралась бы
 oracle/csharp/          ответ для C#: IL -> рёбра вызовов -> привязка к исходнику (Mono.Cecil)
 oracle/typescript/      ответ для TypeScript: рантайм-инструментирование стеком вызовов
+oracle/java/            ответ для Java: javaagent пишет выполненные места вызова (spring-petclinic, RxJava)
 arms/ARCHITECTURE.md    контракт руки, live vs. replay, ячейки — читать перед arms/<имя>/
 arms/grep/               базовая рука — самая простая, читай как образец
 arms/repowise/           конкурент, закреплён по версии
 arms/cheburnexus/        рука нашего C#-движка (движок закрыт, обвязка открыта)
 arms/cheburnexus-ts/     рука нашего TypeScript-движка
+arms/grep-java/         Java-сестра базовой руки grep (те же правила, синтаксис Java)
+arms/repowise-java/     Java-сестра руки repowise (repowise сам поддерживает Java)
+arms/cheburnexus-java/  рука Java-движка (JavaEngineJdt); нужен $JAVA_ENGINE_JDT_HOME и classpath корпуса (раннер ставит AA_JAVA_CLASSPATH)
 arms/_lib/armkit.py      общая обвязка: CLI, разбивка по ячейкам, запись строк
 grader/grade.py          сам грейдер; grader/EDGE_FORMAT.md — все его правила
 grader/bucket.py         раскладывает опубликованный result.json по причинам, не пересчитывая его
