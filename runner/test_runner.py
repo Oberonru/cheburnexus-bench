@@ -456,10 +456,39 @@ public class Helper {
     public static int twice(int x) { return x * 2; }
     public static String name() { return "n"; }
 }""",
+    "demo/Base.java": """package demo;
+public class Base {
+    public String getName() { return "b"; }
+    public int put(int x) { return x; }
+    public int put(String x) { return 0; }
+}""",
+    "demo/Pet.java": """package demo;
+public class Pet extends Base {
+    @Override public int put(String x) { return 1; }
+}""",
+    "demo/Bag.java": "package demo; public class Bag extends java.util.ArrayList<String> { }",
+    "demo/Named.java": """package demo;
+public interface Named {
+    String label();
+    default String hello() { return "hi " + label(); }
+}""",
+    "demo/Impl.java": """package demo;
+public class Impl extends Both { public String label() { return "l"; } }""",
+    "demo/Both.java": """package demo;
+public abstract class Both implements Named { }""",
     "demo/Main.java": """package demo;
 import java.util.List;
 public class Main {
     public static void main(String[] a) {
+        Pet pet = new Pet();
+        pet.getName();
+        pet.put(1);
+        pet.put("s");
+        new Bag().size();
+        Impl impl = new Impl();
+        impl.hello();
+        Both both = impl;
+        both.label();
         Service s = new Service(id -> id);
         s.run(1);
         s.viaLambda(List.of(1, 2));
@@ -589,7 +618,18 @@ def check_java_key_guards_and_agent(tmp: Path) -> list[str]:
         ("demo.Service/Inner::twice", "demo.Helper::twice"),  # nested class spelling
         ("demo.Service/1::toString", "demo.Helper::name"),    # anonymous class spelling
         ("demo.Main::main", "demo.Service/Inner::twice"),
+        # declaring-type resolution (owner javac wrote -> first project type that declares name+descriptor)
+        ("demo.Main::main", "demo.Base::getName"),             # inherited getter, instruction owner is Pet
+        ("demo.Main::main", "demo.Base::put"),                 # overload put(int) is only in Base
+        ("demo.Main::main", "demo.Pet::put"),                  # overload put(String) is redeclared in Pet
+        ("demo.Main::main", "demo.Named::hello"),              # interface default method via Impl
+        ("demo.Main::main", "demo.Named::label"),              # abstract interface method via abstract Both
     }
+    for wrong in ("demo.Pet::getName", "demo.Impl::hello", "demo.Both::label"):
+        if ("demo.Main::main", wrong) in got:
+            failures.append(f"callee kept the instruction owner instead of the declaring type: {wrong}")
+    if ("demo.Main::main", "demo.Bag::size") not in got:
+        failures.append("method declared only in a library superclass must keep the instruction owner (Bag::size, declared in ArrayList)")
     for edge in sorted(expected):
         present = edge in got
         if edge[1].startswith("java.") and present:

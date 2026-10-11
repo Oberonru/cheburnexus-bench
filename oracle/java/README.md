@@ -38,9 +38,19 @@ test classes alike). CGLIB/proxy classes (`$$` in the name) are never instrument
 
 No key contains `<`, so nothing is dropped as an unattributable caller. `Op` values are all in
 `COMPARABLE_OPS`. `CalleeAssembly` is the repo directory name (the single first-party module).
-The callee is the owner javac wrote into the instruction, i.e. the receiver's *static* type, which
-may be a subtype of where the method is declared (`OwnerRepository::save`, declared in
-`CrudRepository`). There is no override map (`overrides.json` is `{}`).
+The callee is the **declaring type**, the C# convention (the C# compiler emits the declaring method
+reference). javac writes the receiver's static type into the instruction (`Pet::getName`), so at JVM
+exit each recorded callee is resolved: starting at the instruction owner, walk the superclass chain
+and then the superinterfaces (depth first, declaration order) and take the first *project* type that
+declares a non-synthetic method with the same name and descriptor (`NamedEntity::getName`). Class
+shapes are read from the class bytes as they are loaded (ASM, no reflection). Overloads are told
+apart by descriptor, then collapse in the key as before. Interface default and abstract methods
+resolve to the interface. Constructors are never inherited and keep their owner. If no project type
+declares the method (Spring Data `OwnerRepository::save`, declared in the library `CrudRepository`;
+or `Bag::size` where `Bag extends ArrayList`), the instruction owner is kept. This is a choice: the
+declaring type is a library type, which the key does not record, and the owner is the nearest
+project type. Methods declared in `Object` are emitted by javac with owner `java/lang/Object` and
+are therefore never recorded. There is no override map (`overrides.json` is `{}`).
 
 Skipped on purpose: bridge and other synthetic methods (they would produce self-edges),
 abstract/native methods, calls whose owner is a library class (those are the `external` cell

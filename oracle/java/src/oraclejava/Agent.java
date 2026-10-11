@@ -132,6 +132,7 @@ public final class Agent {
             }
             try {
                 ClassReader reader = new ClassReader(bytes);
+                Recorder.noteClass(reader);
                 ClassWriter writer = new ClassWriter(reader, ClassWriter.COMPUTE_MAXS);
                 reader.accept(new ClassVisitor(Opcodes.ASM9, writer) {
                     @Override
@@ -145,8 +146,8 @@ public final class Agent {
                         }
                         String caller = typeKey(className) + "::" + methodKey(name);
                         return new MethodVisitor(Opcodes.ASM9, mv) {
-                            private void site(String callee, String op) {
-                                int id = Recorder.register(caller, callee, op);
+                            private void site(String owner, String n, String d, String op) {
+                                int id = Recorder.register(caller, owner, n, d, op);
                                 super.visitLdcInsn(id);
                                 super.visitMethodInsn(Opcodes.INVOKESTATIC, "oraclejava/Recorder", "hit", "(I)V", false);
                             }
@@ -156,7 +157,7 @@ public final class Agent {
                                 if (isProject(owner, prefixes)) {
                                     String kind = n.equals("<init>") ? "newobj"
                                             : (op == Opcodes.INVOKEVIRTUAL || op == Opcodes.INVOKEINTERFACE) ? "callvirt" : "call";
-                                    site(typeKey(owner) + "::" + methodKey(n), kind);
+                                    site(owner, n, d, kind);
                                 }
                                 super.visitMethodInsn(op, owner, n, d, itf);
                             }
@@ -167,7 +168,7 @@ public final class Agent {
                                         && args[1] instanceof Handle) {
                                     Handle impl = (Handle) args[1];
                                     if (isProject(impl.getOwner(), prefixes) && !impl.getName().startsWith("lambda$")) {
-                                        site(typeKey(impl.getOwner()) + "::" + methodKey(impl.getName()), "ldftn");
+                                        site(impl.getOwner(), impl.getName(), impl.getDesc(), "ldftn");
                                     }
                                 }
                                 super.visitInvokeDynamicInsn(n, d, bsm, args);
