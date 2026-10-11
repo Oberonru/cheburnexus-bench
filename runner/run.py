@@ -403,6 +403,11 @@ def _java_key(raw: str) -> str:
     return key
 
 
+def java_home_env(entry: dict) -> dict[str, str]:
+    """Optional corpus field `java_home`: JDK for this project's commands (JAVA_HOME)."""
+    return {"JAVA_HOME": entry["java_home"]} if entry.get("java_home") else {}
+
+
 def _java_command(template: str, checkout: Path) -> list[str]:
     """Split a corpus.json command and resolve a leading `gradlew`/`mvnw` to the checkout's own
     wrapper for this OS. `{init_script}` expands to oracle/java/test-agent.init.gradle and
@@ -430,7 +435,8 @@ def java_classpath(entry: dict, checkout: Path, cell: str) -> str:
         raise SystemExit(f"{entry['name']}: java entries need java_classpath_command in corpus.json")
     command = command.replace("{classpath_task}", JAVA_CLASSPATH_TASK[cell])
     result = subprocess.run(_java_command(command, checkout), capture_output=True, text=True,
-                            encoding="utf-8", errors="replace", cwd=str(checkout))
+                            encoding="utf-8", errors="replace", cwd=str(checkout),
+                            env={**os.environ, **java_home_env(entry)})
     lines = [ln.strip() for ln in result.stdout.splitlines() if ln.strip()]
     if result.returncode != 0 or not lines:
         raise SystemExit(f"{entry['name']}: classpath command failed (exit {result.returncode}): "
@@ -450,7 +456,8 @@ def _java_oracle_identity(entry: dict, checkout: Path, agent_sha: str) -> dict:
         digest.update(f.read_bytes())
     head = run(["git", "rev-parse", "HEAD"], cwd=str(checkout)).stdout.strip()
     dirty = run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=str(checkout)).stdout.strip()
-    java_v = subprocess.run(["java", "-version"], capture_output=True, text=True).stderr.splitlines()[:1]
+    java_exe = str(Path(entry["java_home"]) / "bin" / "java") if entry.get("java_home") else "java"
+    java_v = subprocess.run([java_exe, "-version"], capture_output=True, text=True).stderr.splitlines()[:1]
     return {
         "agent_jar_sha256": agent_sha,
         "oracle_sources_sha256": digest.hexdigest(),
@@ -459,6 +466,7 @@ def _java_oracle_identity(entry: dict, checkout: Path, agent_sha: str) -> dict:
         "subject_expected_sha": entry.get("sha"),
         "subject_tracked_files_dirty": bool(dirty),
         "java": java_v[0] if java_v else "",
+        "java_home": entry.get("java_home"),
         "test_command": entry.get("java_test_command"),
         "packages": entry.get("java_packages"),
     }
@@ -477,12 +485,15 @@ def read_java_raw(raw_dir: Path, name: str, out_dir: Path) -> tuple[list[tuple[s
         data = json.loads(f.read_text(encoding="utf-8"))
         for k in ("classes_instrumented", "classes_failed", "sites", "sites_hit"):
             totals[k] += data.get(k, 0)
+        if data.get("first_failure") and "first_failure" not in totals:
+            totals["first_failure"] = data["first_failure"]
+    first = f" First failure: {totals['first_failure']}" if "first_failure" in totals else ""
     if totals["classes_instrumented"] == 0:
-        raise SystemExit(f"{name}: the Java agent instrumented ZERO classes -- wrong java_packages? "
-                         f"A config mistake, not an empty answer key.")
+        raise SystemExit(f"{name}: the Java agent instrumented ZERO classes (failed: {totals['classes_failed']}) "
+                         f"-- wrong java_packages, or class files newer than the bundled ASM reads?{first}")
     if totals["classes_failed"]:
         raise SystemExit(f"{name}: the Java agent failed to instrument {totals['classes_failed']} class(es); "
-                         f"the key would silently miss their calls. See {out_dir / 'harness.stderr.txt'}")
+                         f"the key would silently miss their calls.{first} See {out_dir / 'harness.stderr.txt'}")
     seen: dict[tuple[str, str, str], None] = {}
     for f in sorted(raw_dir.glob("edges.*.tsv")):
         for line in f.read_text(encoding="utf-8").splitlines():
@@ -535,6 +546,7 @@ def build_oracle_java(entry: dict, checkout: Path, cell: str, out_dir: Path) -> 
 
     packages = ",".join(entry["java_packages"])
     env = {**os.environ,
+           **java_home_env(entry),
            "JAVA_ORACLE_AGENT": jar.as_posix(),
            "JAVA_ORACLE_ARGS": f"out={raw_dir.as_posix()};prefix={packages}"}
     result = subprocess.run(_java_command(entry["java_test_command"], checkout), capture_output=True,

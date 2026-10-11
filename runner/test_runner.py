@@ -569,6 +569,18 @@ def check_java_key_guards_and_agent(tmp: Path) -> list[str]:
         except SystemExit:
             pass
 
+    try:
+        read_java_raw(raw_dir("j_ff", {**ok_stats, "classes_instrumented": 0, "classes_failed": 2,
+                                       "first_failure": "a/B: Unsupported class file major version 70"},
+                              ["a.B::c	a.D::e	call"]), "x/x", tmp)
+        failures.append("zero instrumented + failed must abort")
+    except SystemExit as e:
+        if "major version 70" not in str(e):
+            failures.append(f"abort message must carry first_failure: {e}")
+    from run import java_home_env
+    if java_home_env({"java_home": "X"}) != {"JAVA_HOME": "X"} or java_home_env({}) != {}:
+        failures.append("java_home_env wrong")
+
     good = raw_dir("j_good", ok_stats, ["a.B::c\ta.D::e\tcall", "a.B::c\ta.D::e\tcall", "a.B::c\ta.D::f\tcallvirt"])
     edges, totals = read_java_raw(good, "x/x", tmp)
     if len(edges) != 2 or totals["unique_edges"] != 2:

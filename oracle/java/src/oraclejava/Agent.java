@@ -180,6 +180,9 @@ public final class Agent {
                 return writer.toByteArray();
             } catch (Throwable t) {
                 Recorder.classesFailed++;
+                if (Recorder.firstFailure == null) {
+                    Recorder.firstFailure = className + ": " + t;
+                }
                 System.err.println("JAVA-ORACLE: failed to instrument " + className + ": " + t);
                 return null;
             }

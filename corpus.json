@@ -513,5 +513,22 @@
     "java_test_command": "gradlew -I {init_script} test --console=plain",
     "java_classpath_command": "gradlew -q -I {classpath_init_script} {classpath_task}",
     "note": "Java oracle verification corpus (oracle/java, javaagent call-site recording). The checkout is never edited: the agent is attached through a Gradle init script passed with -I. java_classpath_command prints the compile classpath of the task the runner picks per cell (with-tests: printTestCompileClasspath, without-tests: printCompileClasspath; OS path separator); stage-2 arms pass it as AA_JAVA_CLASSPATH. Tests that need Docker (MySql/Postgres integration) are skipped by their own conditions when Docker is absent."
+  },
+  {
+    "name": "ReactiveX/RxJava",
+    "language": "java",
+    "url": "https://github.com/ReactiveX/RxJava.git",
+    "sha": "06769f5bc254ce5d88709374ddf141927e9f0197",
+    "commit_date": "2026-07-21T07:25:19+02:00",
+    "license": "Apache-2.0",
+    "license_file": "LICENSE",
+    "build_tool": "gradle (checkout's own gradlew); built with JDK 26 via Gradle toolchain, class files format 70 (needs ASM >= 9.9)",
+    "java_home": "D:/DEV/Soft/jdk-26",
+    "java_packages": [
+      "io.reactivex.rxjava4"
+    ],
+    "java_test_command": "gradlew -Porg.gradle.java.installations.paths=D:/DEV/Soft/jdk-26 -I {init_script} test --console=plain",
+    "java_classpath_command": "gradlew -q -Porg.gradle.java.installations.paths=D:/DEV/Soft/jdk-26 -I {classpath_init_script} {classpath_task}",
+    "note": "Second Java oracle corpus: large reactive library, full test suite. Same agent and init scripts as petclinic. java_home is an optional corpus field the runner exports as JAVA_HOME for this project's commands."
   }
 ]

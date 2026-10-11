@@ -17,8 +17,10 @@ import zipfile
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-ASM_VERSION = "9.7.1"
-ASM_SHA256 = "8cadd43ac5eb6d09de05faecca38b917a040bb9139c7edeb4cc81c740b713281"
+ASM_VERSION = "9.9.1"
+# 9.9.1 reads class files up to format 70 (JDK 26); 9.7.1 fails on them. Pin checked against the
+# official asm-9.9.1.jar.sha1 and .sha512 from Maven Central.
+ASM_SHA256 = "6f3828a215c920059a5efa2fb55c233d6c54ec5cadca99ce1b1bdd10077c7ddd"
 ASM_URL = f"https://repo1.maven.org/maven2/org/ow2/asm/asm/{ASM_VERSION}/asm-{ASM_VERSION}.jar"
 LIB = HERE / "lib" / f"asm-{ASM_VERSION}.jar"
 BUILD = HERE / "build"

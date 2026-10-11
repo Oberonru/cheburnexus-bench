@@ -38,6 +38,7 @@ public final class Recorder {
     static volatile int classesInstrumented;
     static volatile int classesFailed;
     static volatile int classesSkippedGenerated;
+    static volatile String firstFailure;
     static volatile Path outDir;
 
     private Recorder() {
@@ -148,6 +149,7 @@ public final class Recorder {
             Path stats = outDir.resolve("stats." + pid + ".json");
             Files.writeString(stats, "{\"classes_instrumented\":" + classesInstrumented
                     + ",\"classes_failed\":" + classesFailed
+                    + ",\"first_failure\":" + jsonString(firstFailure)
                     + ",\"classes_skipped_generated\":" + classesSkippedGenerated
                     + ",\"sites\":" + CALLER.size()
                     + ",\"sites_hit\":" + sitesHit
@@ -156,6 +158,23 @@ public final class Recorder {
             // A failed dump must be visible: the runner treats a missing stats file as fatal.
             System.err.println("JAVA-ORACLE: dump failed: " + e);
         }
+    }
+
+    static String jsonString(String s) {
+        if (s == null) {
+            return "null";
+        }
+        StringBuilder b = new StringBuilder("\"");
+        for (char c : s.toCharArray()) {
+            if (c == '"' || c == (char) 92) {
+                b.append((char) 92).append(c);
+            } else if (c < 0x20) {
+                b.append(' ');
+            } else {
+                b.append(c);
+            }
+        }
+        return b.append('"').toString();
     }
 
     static Path pathOf(String s) {
