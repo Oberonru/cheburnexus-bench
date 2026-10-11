@@ -442,7 +442,7 @@ def load_executed_callers(path: str) -> set[str]:
     `normalize_caller`). A Callee is proof the callee ran; a Caller is proof too (it had to run to
     make the call). Union of both, because either role is enough evidence of execution.
 
-    ⛔⛔ RUNTIME ORACLES ONLY (TypeScript's shadow-stack key). Do NOT call this for the C# oracle:
+    ⛔⛔ RUNTIME ORACLES ONLY (TypeScript shadow-stack key, Java call-site recording). Do NOT call this for the C# oracle:
     Cecil's IL key is EXHAUSTIVE — it lists every call the compiler emitted, executed or not — so
     there is no such thing as "never observed executing" there, and filtering by this set would
     silently discard genuine false positives instead of coverage gaps.
@@ -450,7 +450,7 @@ def load_executed_callers(path: str) -> set[str]:
     There is NO guard inside this file: the grader cannot tell the two answer keys apart from their
     rows alone (both carry Caller/Callee/Op/CalleeAssembly). The protection is structural and lives
     one level up — runner/run.py passes --executed-only only when corpus.json says the cell's
-    language is TypeScript. If you ever invoke grade.py by hand, that is on you.
+    language is a runtime-oracle one (TypeScript, Java). If you ever invoke grade.py by hand, that is on you.
 
     This is the same computation `diagnose_precision.py` already does by hand (bucket a); pulled
     in here, named, so a published number can apply it instead of a one-off diagnostic script.
@@ -516,7 +516,7 @@ def main() -> int:
                              "repository without Unity code: nothing else changes.")
     parser.add_argument("--json", default=None)
     parser.add_argument("--executed-only", action="store_true",
-                        help="RUNTIME ORACLES ONLY (TypeScript). Score a primary-cell arm edge "
+                        help="RUNTIME ORACLES ONLY (TypeScript, Java). Score a primary-cell arm edge "
                              "only when the oracle has direct evidence its CALLER executed "
                              "(the oracle is a record of one test run, not an exhaustive key — "
                              "see load_executed_callers). An edge whose caller the key never saw "

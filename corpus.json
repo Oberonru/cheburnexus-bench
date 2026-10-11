@@ -354,7 +354,7 @@
     "license": "MIT",
     "package_version": "3.5.40",
     "test": "vitest",
-    "note": "Third TS corpus, added 2026-09-04. Shape differs from zod: NO per-package vitest config — a single ROOT vitest.config.ts with a `test.projects` fan-out, so vitest must be rooted at the checkout root, not at the package. `typescript_project_dir` here does its usual job of scoping the ARM's own source-file scan (packages/reactivity only); the NEW `typescript_test_filter` field tells build_oracle_typescript to root vitest at the checkout instead and pass this value as a positional test-path filter, narrowing the answer key to the same package. This first cell is scoped to packages/reactivity only (not the whole monorepo). CHECKOUT LIVES OUTSIDE corpus/, same out-of-corpus arrangement as zod: run it as `--checkouts D:\\DEV\\TsTest --only core` (or `vuejs/core`), where `pnpm install` has already been done at the repo root. Required the 2026-09-04 vitest.instrumented.config.mts fix (own import.meta.url per inlined config, setupFiles string normalized to array, our stack setup ordered first) — see that file's commit. Verified standalone: 2462 bodies wrapped, 4520 unique edges, 433/440 tests pass."
+    "note": "Third TS corpus, added 2026-09-04. Shape differs from zod: NO per-package vitest config \u2014 a single ROOT vitest.config.ts with a `test.projects` fan-out, so vitest must be rooted at the checkout root, not at the package. `typescript_project_dir` here does its usual job of scoping the ARM's own source-file scan (packages/reactivity only); the NEW `typescript_test_filter` field tells build_oracle_typescript to root vitest at the checkout instead and pass this value as a positional test-path filter, narrowing the answer key to the same package. This first cell is scoped to packages/reactivity only (not the whole monorepo). CHECKOUT LIVES OUTSIDE corpus/, same out-of-corpus arrangement as zod: run it as `--checkouts D:\\DEV\\TsTest --only core` (or `vuejs/core`), where `pnpm install` has already been done at the repo root. Required the 2026-09-04 vitest.instrumented.config.mts fix (own import.meta.url per inlined config, setupFiles string normalized to array, our stack setup ordered first) \u2014 see that file's commit. Verified standalone: 2462 bodies wrapped, 4520 unique edges, 433/440 tests pass."
   },
   {
     "name": "react-hook-form/react-hook-form",
@@ -497,5 +497,21 @@
       "build_seconds_all_36_projects": 32
     },
     "with_tests_cell": "available: Tests.dll and playmodetests.dll built from the same csproj set"
+  },
+  {
+    "name": "spring-projects/spring-petclinic",
+    "language": "java",
+    "url": "https://github.com/spring-projects/spring-petclinic.git",
+    "sha": "f182358d02e4a68e52bdbabf55ca7800288511e7",
+    "commit_date": "2026-07-16T18:57:23+01:00",
+    "license": "Apache-2.0",
+    "license_file": "LICENSE.txt",
+    "build_tool": "gradle (checkout's own gradlew, wrapper pins Gradle 9.5.1); JDK 17 toolchain",
+    "java_packages": [
+      "org.springframework.samples.petclinic"
+    ],
+    "java_test_command": "gradlew -I {init_script} test --console=plain",
+    "java_classpath_command": "gradlew -q -I {classpath_init_script} printCompileClasspath",
+    "note": "Java oracle verification corpus (oracle/java, javaagent call-site recording). The checkout is never edited: the agent is attached through a Gradle init script passed with -I. java_classpath_command prints the main compile classpath (OS path separator); stage-2 arms pass it as AA_JAVA_CLASSPATH. Tests that need Docker (MySql/Postgres integration) are skipped by their own conditions when Docker is absent."
   }
 ]

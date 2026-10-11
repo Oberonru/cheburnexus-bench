@@ -386,6 +386,176 @@ def build_oracle_typescript(entry: dict, checkout: Path, cell: str, out_dir: Pat
     return edges_path, overrides_path, [module_id]
 
 
+ORACLE_JAVA_DIR = ROOT / "oracle" / "java"
+# Runtime oracles: the key only knows what a test run executed, so grading passes --executed-only
+# and manifests say "executed-tests-only". C# (static IL key) is deliberately NOT in this set.
+RUNTIME_ORACLE_LANGUAGES = ("typescript", "java")
+
+
+def _java_key(raw: str) -> str:
+    """The Java agent already writes `pkg.Outer/Inner::method` (nested `$` -> `/`, constructors
+    `.ctor`/`.cctor`, lambda bodies folded into the enclosing method) -- the spelling grade.py's
+    `method_key()` parses. This only refuses a key grade.py would treat as unattributable or
+    unparsable, so a spelling bug in the agent fails the build instead of silently erasing edges."""
+    key = raw.strip()
+    if "::" not in key or "<" in key or key.startswith("::") or key.endswith("::"):
+        raise ValueError(f"java oracle produced a key grade.py cannot use: {key!r}")
+    return key
+
+
+def _java_command(template: str, checkout: Path) -> list[str]:
+    """Split a corpus.json command and resolve a leading `gradlew`/`mvnw` to the checkout's own
+    wrapper for this OS. `{init_script}` expands to oracle/java/test-agent.init.gradle and
+    `{classpath_init_script}` to classpath.init.gradle (forward slashes, which Gradle accepts)."""
+    import shlex
+    text = (template.replace("{init_script}", (ORACLE_JAVA_DIR / "test-agent.init.gradle").as_posix())
+            .replace("{classpath_init_script}", (ORACLE_JAVA_DIR / "classpath.init.gradle").as_posix()))
+    parts = shlex.split(text, posix=True)
+    if parts and parts[0] in ("gradlew", "mvnw"):
+        suffix = (".bat" if parts[0] == "gradlew" else ".cmd") if os.name == "nt" else ""
+        parts[0] = str(checkout / (parts[0] + suffix))
+    return parts
+
+
+def java_classpath(entry: dict, checkout: Path) -> str:
+    """The compile classpath of a Java corpus entry (what stage-2 arms pass as AA_JAVA_CLASSPATH)."""
+    command = entry.get("java_classpath_command")
+    if not command:
+        raise SystemExit(f"{entry['name']}: java entries need java_classpath_command in corpus.json")
+    result = subprocess.run(_java_command(command, checkout), capture_output=True, text=True,
+                            encoding="utf-8", errors="replace", cwd=str(checkout))
+    lines = [ln.strip() for ln in result.stdout.splitlines() if ln.strip()]
+    if result.returncode != 0 or not lines:
+        raise SystemExit(f"{entry['name']}: classpath command failed (exit {result.returncode}): "
+                         f"{result.stderr[-500:]}")
+    return lines[-1]
+
+
+def _java_oracle_identity(entry: dict, checkout: Path, agent_sha: str) -> dict:
+    """Everything the java answer key depends on, in one place (cf. fba2cfe: an identity that
+    hashes only a thin wrapper is silent about the edits that matter)."""
+    import hashlib
+    inputs = [*sorted((ORACLE_JAVA_DIR / "src").rglob("*.java")), ORACLE_JAVA_DIR / "build.py",
+              ORACLE_JAVA_DIR / "test-agent.init.gradle", ORACLE_JAVA_DIR / "classpath.init.gradle"]
+    digest = hashlib.sha256()
+    for f in inputs:
+        digest.update(f.name.encode())
+        digest.update(f.read_bytes())
+    head = run(["git", "rev-parse", "HEAD"], cwd=str(checkout)).stdout.strip()
+    dirty = run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=str(checkout)).stdout.strip()
+    java_v = subprocess.run(["java", "-version"], capture_output=True, text=True).stderr.splitlines()[:1]
+    return {
+        "agent_jar_sha256": agent_sha,
+        "oracle_sources_sha256": digest.hexdigest(),
+        "subject_head": head,
+        "subject_expected_sha": entry.get("sha"),
+        "subject_tracked_files_dirty": bool(dirty),
+        "java": java_v[0] if java_v else "",
+        "test_command": entry.get("java_test_command"),
+        "packages": entry.get("java_packages"),
+    }
+
+
+def read_java_raw(raw_dir: Path, name: str, out_dir: Path) -> tuple[list[tuple[str, str, str]], dict]:
+    """Merge the agent's per-JVM files into deduplicated (caller, callee, op) rows, enforcing the
+    "recorded nothing is an error" rules. Pure file logic, unit-tested without a JDK."""
+    stats_files = sorted(raw_dir.glob("stats.*.json"))
+    if not stats_files:
+        raise SystemExit(f"{name}: the Java agent wrote no stats file -- it never ran (or its JVM was "
+                         f"killed before shutdown). See {out_dir / 'harness.stderr.txt'}")
+    totals = {"classes_instrumented": 0, "classes_failed": 0, "sites": 0, "sites_hit": 0,
+              "jvms": len(stats_files)}
+    for f in stats_files:
+        data = json.loads(f.read_text(encoding="utf-8"))
+        for k in ("classes_instrumented", "classes_failed", "sites", "sites_hit"):
+            totals[k] += data.get(k, 0)
+    if totals["classes_instrumented"] == 0:
+        raise SystemExit(f"{name}: the Java agent instrumented ZERO classes -- wrong java_packages? "
+                         f"A config mistake, not an empty answer key.")
+    if totals["classes_failed"]:
+        raise SystemExit(f"{name}: the Java agent failed to instrument {totals['classes_failed']} class(es); "
+                         f"the key would silently miss their calls. See {out_dir / 'harness.stderr.txt'}")
+    seen: dict[tuple[str, str, str], None] = {}
+    for f in sorted(raw_dir.glob("edges.*.tsv")):
+        for line in f.read_text(encoding="utf-8").splitlines():
+            parts = line.split("\t")
+            if len(parts) != 3:
+                continue
+            seen[(_java_key(parts[0]), _java_key(parts[1]), parts[2])] = None
+    if not seen:
+        raise SystemExit(f"{name}: the Java agent instrumented {totals['classes_instrumented']} classes "
+                         f"but recorded no edge at all -- the tests did not reach project code")
+    totals["unique_edges"] = len(seen)
+    return list(seen), totals
+
+
+def build_oracle_java(entry: dict, checkout: Path, cell: str, out_dir: Path) -> tuple[Path, Path, list[str]] | None:
+    """Answer key for one Java repository: a RUNTIME call-site recording (oracle/java, javaagent).
+
+    The agent rewrites project classes as they load so that every invoke instruction aimed at a
+    project class reports "I was reached"; at JVM exit it writes the static
+    (enclosing method -> declared callee) pair of each reached instruction. Same contract as the
+    TypeScript oracle: with-tests only (there is no key without running something), and an edge
+    exists only if the test suite executed it, so recall is meaningful on the executed slice only
+    (`oracle_coverage: executed-tests-only`). Key spelling: oracle/java/README.md.
+
+    Fails loudly, never with an empty key: no stats file, zero instrumented classes, any class the
+    agent failed to rewrite, or zero recorded edges all abort the build.
+    """
+    if cell != "with-tests":
+        raise CellNotMeasurable(
+            "the Java oracle is a runtime call-site recording: it only knows calls the tests "
+            "executed, so a 'without-tests' key does not exist. Only 'with-tests' is measurable."
+        )
+    for field_name in ("java_test_command", "java_packages", "java_classpath_command"):
+        if not entry.get(field_name):
+            raise SystemExit(f"{entry['name']}: language: java entries need {field_name} in corpus.json")
+
+    sys.path.insert(0, str(ORACLE_JAVA_DIR))
+    try:
+        import build as java_agent_build  # oracle/java/build.py
+        jar = java_agent_build.build()
+        agent_sha = java_agent_build.sha256(jar)
+    finally:
+        sys.path.remove(str(ORACLE_JAVA_DIR))
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    raw_dir = out_dir / "raw"
+    if raw_dir.exists():
+        shutil.rmtree(raw_dir)
+    raw_dir.mkdir()
+
+    packages = ",".join(entry["java_packages"])
+    env = {**os.environ,
+           "JAVA_ORACLE_AGENT": jar.as_posix(),
+           "JAVA_ORACLE_ARGS": f"out={raw_dir.as_posix()};prefix={packages}"}
+    result = subprocess.run(_java_command(entry["java_test_command"], checkout), capture_output=True,
+                            text=True, encoding="utf-8", errors="replace", cwd=str(checkout), env=env)
+    (out_dir / "harness.stdout.txt").write_text(result.stdout, encoding="utf-8")
+    (out_dir / "harness.stderr.txt").write_text(result.stderr, encoding="utf-8")
+
+    edges, info = read_java_raw(raw_dir, entry["name"], out_dir)
+    if result.returncode != 0:
+        print(f"note: {entry['name']} Java test command exited {result.returncode} (edges were "
+              f"recorded; likely some tests failed) -- see {out_dir / 'harness.stderr.txt'}", file=sys.stderr)
+    (out_dir / "oracle_identity.json").write_text(json.dumps(
+        {**_java_oracle_identity(entry, checkout, agent_sha), "test_exit_code": result.returncode, **info},
+        indent=2), encoding="utf-8")
+    (out_dir / "classpath.txt").write_text(java_classpath(entry, checkout), encoding="utf-8")
+
+    module_id = repo_dir_name(entry)
+    edges_path = out_dir / "oracle.jsonl"
+    overrides_path = out_dir / "overrides.json"
+    overrides_path.write_text("{}", encoding="utf-8")  # no override map: the key names declared callees
+    with edges_path.open("w", encoding="utf-8") as out:
+        for caller, callee, op in edges:
+            out.write(json.dumps({
+                "Caller": caller, "Callee": callee, "Op": op, "CalleeAssembly": module_id,
+                "CallerCompilerGenerated": False, "CalleeCompilerGenerated": False, "NoDebugInfo": False,
+            }) + "\n")
+    return edges_path, overrides_path, [module_id]
+
+
 # Which oracle builds the answer key for a corpus.json `language`. Routing through this registry
 # rather than a hardcoded `dotnet run --project oracle/csharp` is what lets a second language add
 # itself (`oracle/typescript` -> `build_oracle_typescript`) without touching this dispatch again.
@@ -393,6 +563,7 @@ def build_oracle_typescript(entry: dict, checkout: Path, cell: str, out_dir: Pat
 ORACLE_BUILDERS: dict[str, Callable[[dict, Path, str, Path], tuple[Path, Path, list[str]] | None]] = {
     "csharp": build_oracle_csharp,
     "typescript": build_oracle_typescript,
+    "java": build_oracle_java,
 }
 
 
@@ -597,7 +768,7 @@ def main() -> int:
                 # compiled whether it ran or not. Gated on corpus.json's own `language` field, not
                 # guessed from the arm, so it can never silently drift onto the C# cell.
                 report = grade(oracle, overrides, arm, first_party, arm_dir,
-                                executed_only=(entry.get("language", DEFAULT_LANGUAGE) == "typescript"))
+                                executed_only=(entry.get("language", DEFAULT_LANGUAGE) in RUNTIME_ORACLE_LANGUAGES))
 
                 (arm_dir / "manifest.json").write_text(json.dumps({
                     "repo": entry["name"],
@@ -614,7 +785,7 @@ def main() -> int:
                     # a recall oracle only on the slice the test suite reached. See
                     # build_oracle_typescript's docstring in this file.
                     "oracle_coverage": ("executed-tests-only"
-                                        if entry.get("language", DEFAULT_LANGUAGE) == "typescript"
+                                        if entry.get("language", DEFAULT_LANGUAGE) in RUNTIME_ORACLE_LANGUAGES
                                         else "exhaustive-static"),
                     "first_party": first_party,
                     "oracle_assemblies": oracle_assemblies,

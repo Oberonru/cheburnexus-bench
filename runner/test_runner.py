@@ -379,8 +379,8 @@ def check_oracle_builder_routing() -> list[str]:
     # build_oracle_typescript in run.py. This assertion used to require exactly {"csharp"} "until a
     # second language's oracle exists"; that day arrived 2026-09-03, so the set check moves to
     # naming both known languages explicitly rather than being deleted outright.
-    if set(ORACLE_BUILDERS) != {"csharp", "typescript"}:
-        failures.append(f"ORACLE_BUILDERS should register exactly 'csharp' and 'typescript', "
+    if set(ORACLE_BUILDERS) != {"csharp", "typescript", "java"}:
+        failures.append(f"ORACLE_BUILDERS should register exactly 'csharp', 'typescript' and 'java', "
                         f"got {sorted(ORACLE_BUILDERS)}")
 
     return failures
@@ -434,6 +434,173 @@ def check_typescript_key_and_guard() -> list[str]:
     return failures
 
 
+# ── java oracle: key spelling, loud-failure guards, and a real agent run on a tiny fixture ────
+
+JAVA_FIXTURE = {
+    "demo/Repo.java": "package demo; public interface Repo { int find(int id); }",
+    "demo/Service.java": """package demo;
+import java.util.List;
+public class Service {
+    static { Helper.boot(); }
+    private final Repo repo;
+    public Service(Repo repo) { this.repo = repo; }
+    public int run(int id) { return repo.find(id); }
+    public int viaLambda(List<Integer> ids) { return ids.stream().mapToInt(i -> repo.find(i)).sum(); }
+    public int never(int id) { return repo.find(id + 1); }
+    public Object anon() { return new Object() { public String toString() { return Helper.name(); } }; }
+    public static class Inner { public int twice(int x) { return Helper.twice(x); } }
+}""",
+    "demo/Helper.java": """package demo;
+public class Helper {
+    public static void boot() { }
+    public static int twice(int x) { return x * 2; }
+    public static String name() { return "n"; }
+}""",
+    "demo/Main.java": """package demo;
+import java.util.List;
+public class Main {
+    public static void main(String[] a) {
+        Service s = new Service(id -> id);
+        s.run(1);
+        s.viaLambda(List.of(1, 2));
+        s.anon().toString();
+        new Service.Inner().twice(3);
+        if (a.length > 5) { s.never(1); }
+    }
+}""",
+}
+
+
+def check_java_key_guards_and_agent(tmp: Path) -> list[str]:
+    import json
+    import shutil
+    import subprocess
+    from run import (CellNotMeasurable, ORACLE_BUILDERS, RUNTIME_ORACLE_LANGUAGES, _java_key,
+                     build_oracle_java, read_java_raw)
+    sys.path.insert(0, str(ROOT / "grader"))
+    import grade  # noqa: E402
+
+    failures = []
+
+    if ORACLE_BUILDERS.get("java") is not build_oracle_java:
+        failures.append("ORACLE_BUILDERS['java'] must route to build_oracle_java")
+    if "java" not in RUNTIME_ORACLE_LANGUAGES or "csharp" in RUNTIME_ORACLE_LANGUAGES:
+        failures.append("java is a runtime oracle (executed-only); csharp must never be in that set")
+
+    # Keys the agent writes must survive grade.method_key unchanged and stay attributable.
+    for good in ("demo.Service::run", "demo.Service/Inner::twice", "demo.Service::.ctor",
+                 "demo.Service::.cctor", "demo.Service/1::toString"):
+        if _java_key(good) != good or grade.method_key(good) != good:
+            failures.append(f"java key {good!r} must pass through _java_key and grade.method_key unchanged")
+        if not grade.normalize_caller(good)[1]:
+            failures.append(f"java key {good!r} must be attributable by grade.normalize_caller")
+    for bad in ("demo.Service.run", "demo.Service::<init>", "::run", "demo.Service::"):
+        try:
+            _java_key(bad)
+            failures.append(f"_java_key({bad!r}) must refuse a key grade.py cannot use")
+        except ValueError:
+            pass
+
+    # Config / cell guards.
+    try:
+        build_oracle_java({"name": "x/x", "language": "java"}, Path("."), "without-tests", Path("."))
+        failures.append("build_oracle_java('without-tests') must raise CellNotMeasurable")
+    except CellNotMeasurable:
+        pass
+    try:
+        build_oracle_java({"name": "x/x", "language": "java"}, Path("."), "with-tests", Path("."))
+        failures.append("build_oracle_java with missing java_* fields must raise SystemExit")
+    except SystemExit:
+        pass
+
+    # "Recorded nothing is an error" guards, on synthetic raw dirs.
+    def raw_dir(name: str, stats: dict | None, edges: list[str] | None) -> Path:
+        d = tmp / name
+        d.mkdir()
+        if stats is not None:
+            (d / "stats.1.json").write_text(json.dumps(stats), encoding="utf-8")
+        if edges is not None:
+            (d / "edges.1.tsv").write_text("\n".join(edges) + "\n", encoding="utf-8")
+        return d
+
+    ok_stats = {"classes_instrumented": 3, "classes_failed": 0, "sites": 5, "sites_hit": 2}
+    cases = [
+        ("no stats file (agent never ran)", raw_dir("j_nostats", None, ["a.B::c\ta.D::e\tcall"])),
+        ("zero classes instrumented", raw_dir("j_zero", {**ok_stats, "classes_instrumented": 0},
+                                              ["a.B::c\ta.D::e\tcall"])),
+        ("a class failed to instrument", raw_dir("j_failed", {**ok_stats, "classes_failed": 1},
+                                                 ["a.B::c\ta.D::e\tcall"])),
+        ("instrumented but zero edges", raw_dir("j_noedges", ok_stats, [])),
+        ("instrumented but no edge file", raw_dir("j_noedgefile", ok_stats, None)),
+    ]
+    for label, directory in cases:
+        try:
+            read_java_raw(directory, "x/x", tmp)
+            failures.append(f"read_java_raw must fail loudly: {label}")
+        except SystemExit:
+            pass
+
+    good = raw_dir("j_good", ok_stats, ["a.B::c\ta.D::e\tcall", "a.B::c\ta.D::e\tcall", "a.B::c\ta.D::f\tcallvirt"])
+    edges, totals = read_java_raw(good, "x/x", tmp)
+    if len(edges) != 2 or totals["unique_edges"] != 2:
+        failures.append(f"read_java_raw must dedupe identical rows: got {edges}")
+
+    # Real agent run on a tiny fixture (needs javac + java; skipped, loudly, without them).
+    if not (shutil.which("javac") and shutil.which("java") and shutil.which("jar")):
+        print("SKIP java agent fixture run: javac/java/jar not on PATH")
+        return failures
+    sys.path.insert(0, str(ROOT / "oracle" / "java"))
+    try:
+        import build as java_agent_build
+        jar = java_agent_build.build()
+    except Exception as why:  # noqa: BLE001 (offline first build: ASM cannot be fetched)
+        print(f"SKIP java agent fixture run: agent could not be built ({why})")
+        return failures
+    finally:
+        sys.path.remove(str(ROOT / "oracle" / "java"))
+
+    src = tmp / "jsrc"
+    classes = tmp / "jclasses"
+    out = tmp / "jout"
+    for rel, text in JAVA_FIXTURE.items():
+        f = src / rel
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_text(text, encoding="utf-8")
+    classes.mkdir()
+    built = subprocess.run(["javac", "-d", str(classes), *map(str, src.rglob("*.java"))],
+                           capture_output=True, text=True)
+    if built.returncode != 0:
+        failures.append(f"fixture did not compile: {built.stderr}")
+        return failures
+    ran = subprocess.run(["java", f"-javaagent:{jar}=out={out};prefix=demo", "-cp", str(classes), "demo.Main"],
+                         capture_output=True, text=True)
+    if ran.returncode != 0:
+        failures.append(f"fixture run failed: {ran.stderr}")
+        return failures
+    rows, totals = read_java_raw(out, "fixture", tmp)
+    got = {(a, b) for a, b, _ in rows}
+    expected = {
+        ("demo.Main::main", "demo.Service::.ctor"),          # constructor call
+        ("demo.Service::.ctor", "java.lang.Object::.ctor"),   # (must NOT appear: library callee)
+        ("demo.Main::main", "demo.Service::run"),
+        ("demo.Service::run", "demo.Repo::find"),             # interface method, never entered
+        ("demo.Service::viaLambda", "demo.Repo::find"),       # lambda body folded into enclosing method
+        ("demo.Service::.cctor", "demo.Helper::boot"),        # static initializer
+        ("demo.Service/Inner::twice", "demo.Helper::twice"),  # nested class spelling
+        ("demo.Service/1::toString", "demo.Helper::name"),    # anonymous class spelling
+        ("demo.Main::main", "demo.Service/Inner::twice"),
+    }
+    for edge in sorted(expected):
+        present = edge in got
+        if edge[1].startswith("java.") and present:
+            failures.append(f"library callee leaked into the key: {edge}")
+        elif not edge[1].startswith("java.") and not present:
+            failures.append(f"agent missed an executed edge: {edge}")
+    if ("demo.Service::never", "demo.Repo::find") in got or ("demo.Main::main", "demo.Service::never") in got:
+        failures.append("agent recorded a call that never executed (never() is behind a false branch)")
+    return failures
+
+
 def main() -> int:
     failures: list[str] = check_framework_selection()
     failures += check_oracle_builder_routing()
@@ -446,6 +613,7 @@ def main() -> int:
         failures += check_blocked_is_not_empty(tmp)
         failures += check_with_tests_refuses_a_fake_cell(tmp)
         failures += check_test_scope_guard(tmp)
+        failures += check_java_key_guards_and_agent(tmp)
 
     if failures:
         print("FAILED:")
