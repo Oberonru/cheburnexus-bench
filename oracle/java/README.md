@@ -47,9 +47,11 @@ shapes are read from the class bytes as they are loaded (ASM, no reflection). Ov
 apart by descriptor, then collapse in the key as before. Interface default and abstract methods
 resolve to the interface. Constructors are never inherited and keep their owner. If no project type
 declares the method (Spring Data `OwnerRepository::save`, declared in the library `CrudRepository`;
-or `Bag::size` where `Bag extends ArrayList`), the instruction owner is kept. This is a choice: the
-declaring type is a library type, which the key does not record, and the owner is the nearest
-project type. Methods declared in `Object` are emitted by javac with owner `java/lang/Object` and
+or `Bag::size` where `Bag extends ArrayList`), the declaring type is a library type: the edge is
+**dropped**, exactly as the C# oracle does (Cecil records the declaring type's reference, whose
+assembly is outside the corpus, so the edge falls into the grader's `external` cell). Earlier
+versions kept the instruction owner here, which was inconsistent with C#; an arm that sees the
+call as library-declared is now correct to omit it. Methods declared in `Object` are emitted by javac with owner `java/lang/Object` and
 are therefore never recorded. There is no override map (`overrides.json` is `{}`).
 
 Skipped on purpose: bridge and other synthetic methods (they would produce self-edges),

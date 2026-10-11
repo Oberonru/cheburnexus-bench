@@ -24,6 +24,7 @@ SUITES = [
     ("harness", "runner/test_runner.py", "assembly selection, cell split, determinism, blocked, refused cells"),
     ("arm:grep", "arms/grep/test_grep.py", "caller attribution, cell exclusion, constructors, candidate fan-out"),
     ("arm:repowise", "arms/repowise/test_repowise.py", "key reconstruction from their path-anchored ids, drop accounting"),
+    ("oracle:java", "oracle/java/test_oracle_java.py", "library-declared callee through a project type is dropped, project-declared resolves"),
     ("arm:cheburnexus", "arms/cheburnexus/test_cheburnexus.py", "key shape, anchors, refusal is not emptiness"),
     ("arm:cheburnexus-java", "arms/cheburnexus-java/test_cheburnexus_java.py", "type/ctor key spelling, stale jar and missing classpath refuse"),
 ]

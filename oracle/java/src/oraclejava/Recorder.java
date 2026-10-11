@@ -77,15 +77,15 @@ public final class Recorder {
      * Declaring type, the C# convention: the first project type, walking the superclass chain and
      * then the superinterfaces (depth first, in declaration order), that declares name+descriptor.
      * Constructors are not inherited, so they keep their owner. If no project type declares the
-     * method (Spring Data repository methods, Object::toString, library superclasses) the owner
-     * written into the instruction is kept.
+     * method (Spring Data repository methods, library superclasses) the declaring type is a library
+     * type, which is external exactly as in the C# oracle, and null is returned: the edge is dropped.
      */
     static String declaringOwner(String owner, String name, String desc) {
         if (name.equals("<init>")) {
             return owner;
         }
         String found = find(owner, name + desc, new HashSet<>());
-        return found != null ? found : owner;
+        return found;
     }
 
     private static String find(String type, String key, Set<String> seen) {
@@ -131,8 +131,11 @@ public final class Recorder {
             for (int i = 0; i < CALLER.size(); i++) {
                 if (HIT[i]) {
                     sitesHit++;
-                    String callee = Agent.typeKey(declaringOwner(OWNER.get(i), NAME.get(i), DESC.get(i)))
-                            + "::" + Agent.methodKey(NAME.get(i));
+                    String declaring = declaringOwner(OWNER.get(i), NAME.get(i), DESC.get(i));
+                    if (declaring == null) {
+                        continue;
+                    }
+                    String callee = Agent.typeKey(declaring) + "::" + Agent.methodKey(NAME.get(i));
                     edges.add(CALLER.get(i) + "\t" + callee + "\t" + OP.get(i));
                 }
             }

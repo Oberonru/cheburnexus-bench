@@ -628,8 +628,8 @@ def check_java_key_guards_and_agent(tmp: Path) -> list[str]:
     for wrong in ("demo.Pet::getName", "demo.Impl::hello", "demo.Both::label"):
         if ("demo.Main::main", wrong) in got:
             failures.append(f"callee kept the instruction owner instead of the declaring type: {wrong}")
-    if ("demo.Main::main", "demo.Bag::size") not in got:
-        failures.append("method declared only in a library superclass must keep the instruction owner (Bag::size, declared in ArrayList)")
+    if ("demo.Main::main", "demo.Bag::size") in got:
+        failures.append("method declared only in a library superclass is external (C# rule) and must be dropped (Bag::size, declared in ArrayList)")
     for edge in sorted(expected):
         present = edge in got
         if edge[1].startswith("java.") and present:
