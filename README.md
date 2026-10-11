@@ -137,6 +137,8 @@ Precision / recall, primary cell, best arm **bold**:
 | [vuejs/core](https://github.com/vuejs/core) (`packages/reactivity`) | TS | —&nbsp;/&nbsp;0.000 | —&nbsp;/&nbsp;0.000 | **0.989&nbsp;/&nbsp;0.352**<sup>ts</sup> | +tests | MIT |
 | [react-hook-form](https://github.com/react-hook-form/react-hook-form) v7.89.0 | TS | —&nbsp;/&nbsp;0.000 | —&nbsp;/&nbsp;0.000 | **0.997&nbsp;/&nbsp;0.105**<sup>ts</sup> | +tests | MIT |
 | [element-plus](https://github.com/element-plus/element-plus) 2.14.7 (`packages/components`, Vue SFC) | TS | —&nbsp;/&nbsp;0.000 | —&nbsp;/&nbsp;0.000 | **0.939&nbsp;/&nbsp;0.056**<sup>ts</sup> | +tests | MIT |
+| [spring-petclinic](https://github.com/spring-projects/spring-petclinic) | Java | 0.708&nbsp;/&nbsp;0.857<sup>j</sup> | 0.971&nbsp;/&nbsp;0.825<sup>j</sup> | **0.996&nbsp;/&nbsp;1.000**<sup>j</sup> | +tests | Apache&#8209;2.0 |
+| [RxJava](https://github.com/ReactiveX/RxJava) (`io.reactivex.rxjava4`) | Java | 0.008&nbsp;/&nbsp;0.879<sup>j,g</sup> | 0.462&nbsp;/&nbsp;0.591<sup>j</sup> | **0.994&nbsp;/&nbsp;1.000**<sup>j</sup> | +tests | Apache&#8209;2.0 |
 
 `−tests` = `without-tests` cell, `+tests` = `with-tests` cell. <sup>ts</sup> = the `cheburnexus-ts`
 arm (TypeScript engine; the five TypeScript rows were re-run on 2026-10-10; the oracles of zod, class-validator and
@@ -164,11 +166,27 @@ suite actually executed, and none of `repowise`'s callers land in that executed 
 `results/published/SUMMARY.md`. There is no `repowise` measurement for vuejs/core, react-hook-form
 or element-plus; their `—` / `0.000` cells are not a result, only the same placeholder.
 
-Java (spring-petclinic, with-tests only, executed-only grading like TypeScript): `cheburnexus-java` scores
-precision 0.689, recall 0.535 (162 of 303 key edges; first run 2026-10-11, JavaEngineJdt jar sha256:e292d0ae152c).
-The arm keeps the engine's declaring type as the callee; the key has the type javac wrote in the instruction. That
-difference alone is the largest loss (80 missed + 71 extra rows). `grep` emits 0 edges on Java (it reads C# only), and
-no `repowise` run exists. See `CORPUS_NOTES.md` for the breakdown.
+Java (spring-petclinic, RxJava; with-tests only, executed-only grading like TypeScript). <sup>j</sup> = the Java
+arms: `cheburnexus-java` (JavaEngineJdt, a local build, jar sha256:f9a101fef982; the Java engine is not a public
+release), and the Java sisters of the free arms, `grep-java` (pure Python, the same two passes and candidate fan-out
+as `grep`, re-spelled for Java syntax) and `repowise-java` (repowise 0.45.0 does support Java itself; same
+`repowise init --mode fast`, no LLM key, key rebuilt from the file's `package` and type nesting). The C# `grep` and
+`repowise` arms are not edited for Java; they would emit nothing there, which is a missing arm, not a result.
+Oracle sizes: petclinic 280 edges (79 classes instrumented, 1 test JVM), RxJava 99119 comparable edges (17542 classes,
+12 test JVMs, JDK 26). Arm time: petclinic 0.5 s / 5.6 s / 1.8 s (grep-java / repowise-java / cheburnexus-java),
+RxJava 160 s for repowise-java and 31 s for `cheburnexus-java`. Run 2026-10-11, bench commit after `9fb0bcc`.
+<sup>g</sup> = `grep-java` on RxJava was graded on its edges from callers the oracle saw execute, because the full
+output does not fit on disk: the candidate fan-out passed 4.7 GB of rows in under a minute, and 10.9 million unique
+(caller, callee) pairs survive the executed-caller filter alone (precision 0.008). The grader scores an arm as a set of
+(caller, callee) pairs and withholds edges of callers that never ran, so the numbers equal a full run; the side script
+only skipped writing the withheld part.
+
+How Java is wired: the oracle is a `-javaagent` (ASM 9.9.1, reads JDK 26 class files) that records executed call
+sites of project classes (`java_packages` in `corpus.json`); tests run through the checkout's own Gradle wrapper with
+an init script passed by `-I`, so the checkout is never edited; the JDK comes from the optional `java_home` field
+(exported as `JAVA_HOME`), and the compile classpath is printed by a second init script and handed to the Java engine
+arm. Maven projects are not supported. Library-declared callees are dropped from the key, as the C# oracle does with
+external ones. See `oracle/java/README.md` and `CORPUS_NOTES.md`.
 
 Oracle sizes (unique edges): class-validator 3270, zod 25770, vuejs/core 4520, react-hook-form
 24641 to 24647 (the count moves by a few edges between runs; precision and recall did not change),
@@ -418,6 +436,8 @@ corpus-patches/         the (documented) source patches a couple of pins needed 
 oracle/csharp/          the C# answer key: IL -> call edges -> source anchors (Mono.Cecil)
 oracle/typescript/      the TypeScript answer key: runtime shadow-stack instrumentation
 oracle/java/            the Java answer key: javaagent recording executed call sites (spring-petclinic)
+arms/grep-java/         the Java sister of the baseline grep arm (same rules, Java syntax)
+arms/repowise-java/     the Java sister of the repowise arm (repowise supports Java itself)
 arms/cheburnexus-java/  the Java engine arm (JavaEngineJdt); needs $JAVA_ENGINE_JDT_HOME and the corpus classpath (runner sets AA_JAVA_CLASSPATH)
 arms/ARCHITECTURE.md    the arm contract, live vs. replay, cells — read this before arms/<name>/
 arms/grep/               the baseline arm — simplest arm, read it as a template

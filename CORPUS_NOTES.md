@@ -238,7 +238,7 @@ NuGet package cache under `~/.nuget/packages`, not the corpus dir itself).
 - Oracle: `oracle/java` (javaagent, executed call sites only), 303 edges, with-tests cell only. See `oracle/java/README.md`.
 - Arm `cheburnexus-java` (JavaEngineJdt, 85-entry compile classpath), first run 2026-10-11, primary cell:
   240 arm edges (235 judged), 162 matched; precision 0.689, recall 0.535. Strict (no executed-caller filter): 0.675.
-  `grep` gives 0 edges (C# only). Engine saw 301 resolved project edges, 424 external, 804 unresolved-binding dropped.
+  The C# `grep` arm gives 0 edges on Java; the Java sisters `grep-java` and `repowise-java` were added on 2026-10-11 (see README, Results). Engine saw 301 resolved project edges, 424 external, 804 unresolved-binding dropped.
 - Misses (141 of 303): 80 callee owner differs (engine = declaring type, key = receiver's static type, e.g. `Pet::getName`
   vs `NamedEntity::getName`); 43 constructor edges (32 explicit `new X()` of classes without a declared constructor, 11
   implicit/explicit `super()` from a constructor); 13 Spring Data inherited calls (`OwnerRepository::save`, resolved
