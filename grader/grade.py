@@ -172,18 +172,55 @@ def split_nested(type_name: str) -> list[str]:
     return parts
 
 
+def _split_type_and_method(text: str) -> tuple[str, str] | None:
+    """Split `[ReturnType ]Type::Method[(...)]` with `::` and spaces read only OUTSIDE `<...>`.
+
+    A generic argument list may hold spaces (`Base<T, U>::Run`, as JDT and the Java engine print it)
+    and nested lists (`<K, List<V>>`); neither may end the type token. The type is the last
+    whitespace-delimited token at angle depth 0 before the first depth-0 `::`.
+    """
+    depth = 0
+    last_space = -1
+    sep = -1
+    for i, char in enumerate(text):
+        if char == "<":
+            depth += 1
+        elif char == ">":
+            depth = max(0, depth - 1)
+        elif depth == 0:
+            if char.isspace():
+                last_space = i
+            elif char == ":" and text.startswith("::", i):
+                sep = i
+                break
+    if sep < 0:
+        return _fallback_split(text)
+    type_name = text[last_space + 1:sep].strip()
+    method = text[sep + 2:].split("(", 1)[0].strip()
+    if not type_name or not method:
+        return None
+    return type_name, method
+
+
+def _fallback_split(text: str) -> tuple[str, str] | None:
+    match = _CECIL_FULLNAME.match(text)
+    if not match:
+        return None
+    return match.group("type").strip(), match.group("method").strip()
+
+
 def method_key(raw: str) -> str | None:
     """Canonical `Namespace.Type::Method`, or None when the string is not a method reference."""
-    match = _CECIL_FULLNAME.match(raw.strip())
-    if not match:
+    parsed = _split_type_and_method(raw.strip())
+    if parsed is None:
         return None
 
     # Nested types are `Outer/Inner`; each part decides for itself whether it is a mangled name.
     # The cut is made only OUTSIDE angle brackets: Cecil writes a nested type used as a generic
     # argument with the same slash (`ClientMessage`1<X/NetMessage>`), and that slash belongs to the
     # argument, which is stripped away whole — not to the nesting of the type being named.
-    type_name = "/".join(strip_generic_arguments(part) for part in split_nested(match.group("type").strip()))
-    method = strip_generic_arguments(match.group("method").strip())
+    type_name = "/".join(strip_generic_arguments(part) for part in split_nested(parsed[0]))
+    method = strip_generic_arguments(parsed[1])
 
     # `.ctor` and `.cctor` are NOT the same method. An instance constructor runs per object, a static
     # one runs once for the type, and merging them would let an arm score a hit on the wrong one.

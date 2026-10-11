@@ -211,6 +211,23 @@ def check_return_type_character_class() -> list[str]:
         ("modreq(...) clause on the return type",
          "System.Void modreq(System.Runtime.CompilerServices.IsExternalInit) App.Repo::Load()",
          "App.Repo::Load"),
+        ("generic args with a space after the comma",
+         "pkg.BaseTestConsumer<T, U>::assertFailure", "pkg.BaseTestConsumer::assertFailure"),
+        ("nested generic args with spaces",
+         "pkg.Map<K, List<V>>::put", "pkg.Map::put"),
+        ("nested type after generic owner",
+         "pkg.Outer<T, U>/Inner::run", "pkg.Outer/Inner::run"),
+        ("generic args with spaces in owner and nested part",
+         "pkg.Outer<K, List<V>>/Inner<A, B>::run", "pkg.Outer/Inner::run"),
+        ("generic args without spaces",
+         "pkg.Outer<T,U>/Inner::run", "pkg.Outer/Inner::run"),
+        ("generic args with spaces and parameters",
+         "pkg.Base<T, U>::run(java.util.List<T, U>, int)", "pkg.Base::run"),
+        ("C# arity and closed generic owner",
+         "System.Void App.Cache`1<System.String>::Get(System.Int32)", "App.Cache`1::Get"),
+        ("C# closure holder",
+         "System.Void App.Service/<>c__DisplayClass3_0::<Run>b__0()",
+         method_key("System.Void App.Service/<>c__DisplayClass3_0::<Run>b__0()")),
     ]
     failures = []
     for label, raw, expected in cases:
