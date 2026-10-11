@@ -164,6 +164,12 @@ suite actually executed, and none of `repowise`'s callers land in that executed 
 `results/published/SUMMARY.md`. There is no `repowise` measurement for vuejs/core, react-hook-form
 or element-plus; their `—` / `0.000` cells are not a result, only the same placeholder.
 
+Java (spring-petclinic, with-tests only, executed-only grading like TypeScript): `cheburnexus-java` scores
+precision 0.689, recall 0.535 (162 of 303 key edges; first run 2026-10-11, JavaEngineJdt jar sha256:e292d0ae152c).
+The arm keeps the engine's declaring type as the callee; the key has the type javac wrote in the instruction. That
+difference alone is the largest loss (80 missed + 71 extra rows). `grep` emits 0 edges on Java (it reads C# only), and
+no `repowise` run exists. See `CORPUS_NOTES.md` for the breakdown.
+
 Oracle sizes (unique edges): class-validator 3270, zod 25770, vuejs/core 4520, react-hook-form
 24641 to 24647 (the count moves by a few edges between runs; precision and recall did not change),
 element-plus 75063 (72078 of them in the primary cell). The Vitest oracle also instruments the `<script>` / `<script setup>`
@@ -411,6 +417,8 @@ CORPUS_NOTES.md        how each pin was verified to build cleanly
 corpus-patches/         the (documented) source patches a couple of pins needed to build at all
 oracle/csharp/          the C# answer key: IL -> call edges -> source anchors (Mono.Cecil)
 oracle/typescript/      the TypeScript answer key: runtime shadow-stack instrumentation
+oracle/java/            the Java answer key: javaagent recording executed call sites (spring-petclinic)
+arms/cheburnexus-java/  the Java engine arm (JavaEngineJdt); needs $JAVA_ENGINE_JDT_HOME and the corpus classpath (runner sets AA_JAVA_CLASSPATH)
 arms/ARCHITECTURE.md    the arm contract, live vs. replay, cells — read this before arms/<name>/
 arms/grep/               the baseline arm — simplest arm, read it as a template
 arms/repowise/           the competitor, pinned by version

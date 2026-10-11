@@ -232,3 +232,17 @@ NuGet package cache under `~/.nuget/packages`, not the corpus dir itself).
 - Misses before 52426f77 (about 1,119, now 57): event subscriptions (`+=` / `-=` to `add_` / `remove_`), delegate calls
   (`Invoke`), methods of a nested class inside a generic base; about 208 are in files outside the engine's
   compilation. The remaining 57 are not broken down yet.
+
+## 8. spring-projects/spring-petclinic - first Java project (pinned f182358d)
+
+- Oracle: `oracle/java` (javaagent, executed call sites only), 303 edges, with-tests cell only. See `oracle/java/README.md`.
+- Arm `cheburnexus-java` (JavaEngineJdt, 85-entry compile classpath), first run 2026-10-11, primary cell:
+  240 arm edges (235 judged), 162 matched; precision 0.689, recall 0.535. Strict (no executed-caller filter): 0.675.
+  `grep` gives 0 edges (C# only). Engine saw 301 resolved project edges, 424 external, 804 unresolved-binding dropped.
+- Misses (141 of 303): 80 callee owner differs (engine = declaring type, key = receiver's static type, e.g. `Pet::getName`
+  vs `NamedEntity::getName`); 43 constructor edges (32 explicit `new X()` of classes without a declared constructor, 11
+  implicit/explicit `super()` from a constructor); 13 Spring Data inherited calls (`OwnerRepository::save`, resolved
+  into library jars, dropped as external) plus a call in a test; 5 callers inside anonymous or nested test classes the
+  engine has no calls for.
+- Extra (78 of 240): 71 are the other half of the owner mismatch; 5 callers never executed; 2 calls not observed.
+- Nothing was tuned: the arm does not rewrite the callee owner, since the oracle has no override map.
