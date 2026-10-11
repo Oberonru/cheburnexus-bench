@@ -357,8 +357,36 @@ def check_cell_precedence(tmp: Path) -> list[str]:
     return failures
 
 
+def check_non_keys_and_global_qualifier() -> list[str]:
+    """Strings that are not method references must stay None; `global::` is an alias, not a separator;
+    a raw engine key `file::type::method` is refused rather than read as type=file."""
+    sys.path.insert(0, str(HERE))
+    from grade import method_key
+
+    out = []
+    for label, text in (
+            ("generic constraint", "where T : global::X.Y"),
+            ("generic constraint, plain", "where T : X.Y"),
+            ("raw engine key", "D:/p/src/Foo.java::pkg.Foo::bar(int)"),
+            ("raw engine key, constructor", "D:/p/src/Foo.java::pkg.Foo::<init>()"),
+            ("raw TS engine key, bracketed folder", "/p/app/(doc)/page.tsx::app/(doc).page::Page()"),
+            ("raw engine key, empty method", "/p/Foo.java::pkg.Foo::")):
+        if method_key(text) is not None:
+            out.append(f"{label}: {text!r} must not be a key, got {method_key(text)!r}")
+    for label, text, want in (
+            ("global:: in the return type", "global::X.Y App.Foo::Bar(int)", "App.Foo::Bar"),
+            ("global:: in parameters", "System.Void App.Foo::Bar(global::X.Y, global::Z)", "App.Foo::Bar"),
+            ("separator inside parameters", "App.Foo::Bar(A::B, C)", "App.Foo::Bar"),
+            ("spaced generics", "Base<T, U>::Run", "Base::Run"),
+            ("nested generic with Entry", "Map<K, List<V>>.Entry::get", "Map.Entry::get")):
+        if method_key(text) != want:
+            out.append(f"{label}: {text!r} -> {method_key(text)!r}, want {want!r}")
+    return out
+
+
 def main() -> int:
     failures: list[str] = check_key_agreement()
+    failures += check_non_keys_and_global_qualifier()
     failures += check_return_type_character_class()
 
     with tempfile.TemporaryDirectory() as tmp:

@@ -172,6 +172,23 @@ def split_nested(type_name: str) -> list[str]:
     return parts
 
 
+_GLOBAL_QUALIFIER = re.compile(r"(?<![^\s(<,])global::")
+_KEY_PREFIX = re.compile(r"[\w./!()<>`\[\],&*+ ]+\s")
+
+
+def _has_toplevel_separator(rest: str) -> bool:
+    """True when `::` occurs in `rest` outside round brackets (a parameter list may hold `::`)."""
+    depth = 0
+    for i, char in enumerate(rest):
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth = max(0, depth - 1)
+        elif depth == 0 and char == ":" and rest.startswith("::", i):
+            return True
+    return False
+
+
 def _split_type_and_method(text: str) -> tuple[str, str] | None:
     """Split `[ReturnType ]Type::Method[(...)]` with `::` and spaces read only OUTSIDE `<...>`.
 
@@ -179,6 +196,9 @@ def _split_type_and_method(text: str) -> tuple[str, str] | None:
     and nested lists (`<K, List<V>>`); neither may end the type token. The type is the last
     whitespace-delimited token at angle depth 0 before the first depth-0 `::`.
     """
+    # C# `global::` is an alias qualifier, not a type/method separator: in a return type or a
+    # constraint it must not be read as `global` + method.
+    text = _GLOBAL_QUALIFIER.sub("", text)
     depth = 0
     last_space = -1
     sep = -1
@@ -198,6 +218,15 @@ def _split_type_and_method(text: str) -> tuple[str, str] | None:
     type_name = text[last_space + 1:sep].strip()
     method = text[sep + 2:].split("(", 1)[0].strip()
     if not type_name or not method:
+        return None
+    # What stands before the type token must look like a return type (the old regex's prefix class).
+    # `where T : X.Y` is a generic constraint, not a method reference.
+    if last_space >= 0 and not _KEY_PREFIX.fullmatch(text[:last_space + 1]):
+        return None
+    # A second `::` outside the parameter list means a raw engine key
+    # `file::type::method(...)`: the first `::` cut the file path off as the "type". Not a key the grader can spell; None makes the
+    # caller report the row as unparsable instead of grading a garbage key.
+    if _has_toplevel_separator(text[sep + 2:]):
         return None
     return type_name, method
 

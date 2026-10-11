@@ -527,8 +527,8 @@
     "java_packages": [
       "io.reactivex.rxjava4"
     ],
-    "java_test_command": "gradlew -Porg.gradle.java.installations.paths=D:/DEV/Soft/jdk-26 -I {init_script} test --console=plain",
-    "java_classpath_command": "gradlew -q -Porg.gradle.java.installations.paths=D:/DEV/Soft/jdk-26 -I {classpath_init_script} {classpath_task}",
+    "java_test_command": "gradlew -Porg.gradle.java.installations.paths={java_home} -I {init_script} test --console=plain",
+    "java_classpath_command": "gradlew -q -Porg.gradle.java.installations.paths={java_home} -I {classpath_init_script} {classpath_task}",
     "note": "Second Java oracle corpus: large reactive library, full test suite. Same agent and init scripts as petclinic. java_home is an optional corpus field the runner exports as JAVA_HOME for this project's commands."
   }
 ]

@@ -124,7 +124,7 @@ public final class Agent {
                 if (className.contains("$$")) {
                     for (String p : prefixes) {
                         if (className.startsWith(p)) {
-                            Recorder.classesSkippedGenerated++;
+                            Recorder.classesSkippedGenerated.incrementAndGet();
                         }
                     }
                 }
@@ -176,13 +176,11 @@ public final class Agent {
                         };
                     }
                 }, 0);
-                Recorder.classesInstrumented++;
+                Recorder.classesInstrumented.incrementAndGet();
                 return writer.toByteArray();
             } catch (Throwable t) {
-                Recorder.classesFailed++;
-                if (Recorder.firstFailure == null) {
-                    Recorder.firstFailure = className + ": " + t;
-                }
+                Recorder.classesFailed.incrementAndGet();
+                Recorder.firstFailure.compareAndSet(null, className + ": " + t);
                 System.err.println("JAVA-ORACLE: failed to instrument " + className + ": " + t);
                 return null;
             }

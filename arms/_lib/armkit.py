@@ -379,3 +379,18 @@ def main(
     # that could not run at all fails, or a zero would be indistinguishable from a crash.
     print(f"{name}: {written} edges -> {args.out}", file=sys.stderr)
     return 0
+
+
+def java_binary(java_home: str | None) -> str:
+    """`java_home` (a corpus.json field) -> the `java` executable inside it, or plain `java` when
+    unset. A path that does not hold bin/java(.exe) stops the run with a readable message instead
+    of a bare FileNotFoundError from the first subprocess."""
+    if not java_home:
+        return "java"
+    home = Path(java_home)
+    for name in ("java.exe", "java"):
+        candidate = home / "bin" / name
+        if candidate.is_file():
+            return str(candidate)
+    raise SystemExit(f"java_home {java_home!r} has no bin/java or bin/java.exe -- fix the path in "
+                     f"corpus.json (or the JDK is not installed there)")

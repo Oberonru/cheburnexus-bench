@@ -11,6 +11,8 @@ import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
 import org.objectweb.asm.MethodVisitor;
@@ -35,10 +37,10 @@ public final class Recorder {
     private static final List<String> DESC = new ArrayList<>();
     private static final List<String> OP = new ArrayList<>();
 
-    static volatile int classesInstrumented;
-    static volatile int classesFailed;
-    static volatile int classesSkippedGenerated;
-    static volatile String firstFailure;
+    static final AtomicInteger classesInstrumented = new AtomicInteger();
+    static final AtomicInteger classesFailed = new AtomicInteger();
+    static final AtomicInteger classesSkippedGenerated = new AtomicInteger();
+    static final AtomicReference<String> firstFailure = new AtomicReference<>();
     static volatile Path outDir;
 
     private Recorder() {
@@ -149,7 +151,7 @@ public final class Recorder {
             Path stats = outDir.resolve("stats." + pid + ".json");
             Files.writeString(stats, "{\"classes_instrumented\":" + classesInstrumented
                     + ",\"classes_failed\":" + classesFailed
-                    + ",\"first_failure\":" + jsonString(firstFailure)
+                    + ",\"first_failure\":" + jsonString(firstFailure.get())
                     + ",\"classes_skipped_generated\":" + classesSkippedGenerated
                     + ",\"sites\":" + CALLER.size()
                     + ",\"sites_hit\":" + sitesHit

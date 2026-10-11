@@ -578,8 +578,13 @@ def check_java_key_guards_and_agent(tmp: Path) -> list[str]:
         if "major version 70" not in str(e):
             failures.append(f"abort message must carry first_failure: {e}")
     from run import java_home_env
-    if java_home_env({"java_home": "X"}) != {"JAVA_HOME": "X"} or java_home_env({}) != {}:
+    if java_home_env({}) != {}:
         failures.append("java_home_env wrong")
+
+    ok_null = raw_dir("j_null", {**ok_stats, "first_failure": None}, ["a.B::c\ta.D::e\tcall"])
+    _, totals_null = read_java_raw(ok_null, "x/x", tmp)
+    if "first_failure" in totals_null:
+        failures.append("first_failure=null must not be reported as a failure")
 
     good = raw_dir("j_good", ok_stats, ["a.B::c\ta.D::e\tcall", "a.B::c\ta.D::e\tcall", "a.B::c\ta.D::f\tcallvirt"])
     edges, totals = read_java_raw(good, "x/x", tmp)
@@ -653,6 +658,77 @@ def check_java_key_guards_and_agent(tmp: Path) -> list[str]:
     return failures
 
 
+def check_java_home(tmp: Path) -> list[str]:
+    """java_home: validated, substituted into commands, exported to the env, recorded in identity."""
+    import subprocess as sp
+    import run as run_mod
+
+    out = []
+    home = tmp / "jdk"
+    (home / "bin").mkdir(parents=True)
+    (home / "bin" / "java.exe").write_bytes(b"")
+    (home / "bin" / "java").write_bytes(b"")
+    entry = {"name": "x/x", "java_home": home.as_posix(), "java_packages": ["a"],
+             "java_test_command": "gradlew -Pp={java_home} test",
+             "java_classpath_command": "gradlew -Pp={java_home} {classpath_task}"}
+
+    try:
+        run_mod.java_home_env({"java_home": (tmp / "nope").as_posix()})
+        out.append("missing java_home must stop with SystemExit")
+    except SystemExit as exc:
+        if "java_home" not in str(exc):
+            out.append(f"missing java_home message unclear: {exc}")
+    if run_mod.java_home_env(entry) != {"JAVA_HOME": home.as_posix()}:
+        out.append("java_home_env value wrong")
+
+    cmd = run_mod._java_command("gradlew -Pp={java_home} test", tmp, home.as_posix())
+    if cmd[1:] != [f"-Pp={home.as_posix()}", "test"]:
+        out.append(f"{{java_home}} not substituted: {cmd}")
+    for bad, why in ((None, "no java_home"), ("C:" + chr(92) + "jdk", "backslash")):
+        try:
+            run_mod._java_command("gradlew -Pp={java_home}", tmp, bad)
+            out.append(f"{{java_home}} with {why} must be refused")
+        except SystemExit:
+            pass
+
+    real_run = sp.run
+    seen = []
+
+    class Stop(Exception):
+        pass
+
+    def fake_run(argv, *a, **kw):
+        seen.append((argv, kw.get("env")))
+        if argv and str(argv[0]).startswith(str(home)):
+            return sp.CompletedProcess(argv, 0, "", "openjdk fake 99")
+        if argv and argv[0] == "git":
+            return sp.CompletedProcess(argv, 0, "", "")
+        raise Stop()
+
+    run_mod.subprocess.run = fake_run
+    try:
+        ident = run_mod._java_oracle_identity(entry, tmp, "sha")
+        if ident["java"] != "openjdk fake 99" or ident["java_home"] != home.as_posix():
+            out.append(f"identity does not carry the JDK: {ident['java']!r} {ident['java_home']!r}")
+        seen.clear()
+        try:
+            run_mod.java_classpath(entry, tmp, "with-tests")
+        except Stop:
+            pass
+        if not seen or seen[-1][1].get("JAVA_HOME") != home.as_posix() or home.as_posix() not in " ".join(seen[-1][0]):
+            out.append(f"classpath command lacks JAVA_HOME env or substitution: {seen[-1:]}")
+        seen.clear()
+        try:
+            run_mod.build_oracle_java(entry, tmp, "with-tests", tmp / "o")
+        except Stop:
+            pass
+        if not seen or seen[-1][1].get("JAVA_HOME") != home.as_posix():
+            out.append("oracle test command lacks JAVA_HOME in env")
+    finally:
+        run_mod.subprocess.run = real_run
+    return out
+
+
 def main() -> int:
     failures: list[str] = check_framework_selection()
     failures += check_oracle_builder_routing()
@@ -666,6 +742,7 @@ def main() -> int:
         failures += check_with_tests_refuses_a_fake_cell(tmp)
         failures += check_test_scope_guard(tmp)
         failures += check_java_key_guards_and_agent(tmp)
+        failures += check_java_home(tmp)
 
     if failures:
         print("FAILED:")

@@ -137,6 +137,8 @@ def corpus_entry(repo_root: Path) -> dict:
     for entry in armkit._load_corpus_entries():
         if str(entry.get("name", "")).split("/")[-1] == repo_root.name:
             return entry
+    print(f"WARNING: no corpus.json entry matches folder {repo_root.name!r}; java_home is not applied, "
+          f"the system `java` is used", file=sys.stderr)
     return {}
 
 
@@ -145,8 +147,7 @@ def java_executable(repo_root: Path) -> str:
     explicit = os.environ.get(JAVA_ENV)
     if explicit:
         return explicit
-    home = corpus_entry(repo_root).get("java_home")
-    return str(Path(home) / "bin" / "java") if home else "java"
+    return armkit.java_binary(corpus_entry(repo_root).get("java_home"))
 
 
 def java_identity(java_exe: str) -> str:

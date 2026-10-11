@@ -160,9 +160,13 @@ def check_java_selection() -> list[str]:
     saved = os.environ.pop(arm.JAVA_ENV, None)
     real = arm.corpus_entry
     try:
-        arm.corpus_entry = lambda root: {"java_home": "/jdk/26"}
+        fake_home = Path(tempfile.mkdtemp()) / "jdk"
+        (fake_home / "bin").mkdir(parents=True)
+        (fake_home / "bin" / "java").write_bytes(b"")
+        (fake_home / "bin" / "java.exe").write_bytes(b"")
+        arm.corpus_entry = lambda root: {"java_home": str(fake_home)}
         got = arm.java_executable(Path("/x/proj"))
-        if got != str(Path("/jdk/26") / "bin" / "java"):
+        if Path(got).parent != fake_home / "bin":
             out.append(f"java_home not used: {got!r}")
         os.environ[arm.JAVA_ENV] = "/explicit/java"
         if arm.java_executable(Path("/x/proj")) != "/explicit/java":
@@ -180,6 +184,38 @@ def check_java_selection() -> list[str]:
 
 
 CHECKS.append(check_java_selection)
+
+
+def check_java_home_validation_and_missing_entry() -> list[str]:
+    import contextlib
+    import io
+
+    out = []
+    saved = os.environ.pop(arm.JAVA_ENV, None)
+    real = arm.corpus_entry
+    try:
+        arm.corpus_entry = lambda root: {"java_home": "/definitely/not/a/jdk"}
+        try:
+            arm.java_executable(Path("/x/proj"))
+            out.append("nonexistent java_home must stop with SystemExit")
+        except SystemExit as exc:
+            if "java_home" not in str(exc):
+                out.append(f"unclear message: {exc}")
+        # the real corpus_entry: an unknown folder warns on stderr and falls back to `java`
+        arm.corpus_entry = real
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            got = arm.java_executable(Path("/x/no-such-corpus-folder"))
+        if got != "java" or "no-such-corpus-folder" not in err.getvalue():
+            out.append(f"unknown folder: want `java` + stderr warning, got {got!r} / {err.getvalue()!r}")
+    finally:
+        arm.corpus_entry = real
+        if saved is not None:
+            os.environ[arm.JAVA_ENV] = saved
+    return out
+
+
+CHECKS.append(check_java_home_validation_and_missing_entry)
 
 
 def main() -> int:

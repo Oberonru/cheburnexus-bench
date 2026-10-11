@@ -404,15 +404,27 @@ def _java_key(raw: str) -> str:
 
 
 def java_home_env(entry: dict) -> dict[str, str]:
-    """Optional corpus field `java_home`: JDK for this project's commands (JAVA_HOME)."""
-    return {"JAVA_HOME": entry["java_home"]} if entry.get("java_home") else {}
+    """Optional corpus field `java_home`: JDK for this project's commands (JAVA_HOME). The path is
+    validated (armkit.java_binary), so a wrong one stops here with a clear message."""
+    if not entry.get("java_home"):
+        return {}
+    armkit.java_binary(entry["java_home"])
+    return {"JAVA_HOME": entry["java_home"]}
 
 
-def _java_command(template: str, checkout: Path) -> list[str]:
+def _java_command(template: str, checkout: Path, java_home: str | None = None) -> list[str]:
     """Split a corpus.json command and resolve a leading `gradlew`/`mvnw` to the checkout's own
     wrapper for this OS. `{init_script}` expands to oracle/java/test-agent.init.gradle and
-    `{classpath_init_script}` to classpath.init.gradle (forward slashes, which Gradle accepts)."""
+    `{classpath_init_script}` to classpath.init.gradle (forward slashes, which Gradle accepts);
+    `{java_home}` to the entry's java_home, which must be written with forward slashes (shlex in
+    POSIX mode would eat a backslash)."""
     import shlex
+    if "{java_home}" in template:
+        if not java_home:
+            raise SystemExit("command uses {java_home} but the corpus entry has no java_home")
+        if "\\" in java_home:
+            raise SystemExit(f"java_home {java_home!r} must use forward slashes")
+        template = template.replace("{java_home}", java_home)
     text = (template.replace("{init_script}", (ORACLE_JAVA_DIR / "test-agent.init.gradle").as_posix())
             .replace("{classpath_init_script}", (ORACLE_JAVA_DIR / "classpath.init.gradle").as_posix()))
     parts = shlex.split(text, posix=True)
@@ -434,7 +446,7 @@ def java_classpath(entry: dict, checkout: Path, cell: str) -> str:
     if not command:
         raise SystemExit(f"{entry['name']}: java entries need java_classpath_command in corpus.json")
     command = command.replace("{classpath_task}", JAVA_CLASSPATH_TASK[cell])
-    result = subprocess.run(_java_command(command, checkout), capture_output=True, text=True,
+    result = subprocess.run(_java_command(command, checkout, entry.get("java_home")), capture_output=True, text=True,
                             encoding="utf-8", errors="replace", cwd=str(checkout),
                             env={**os.environ, **java_home_env(entry)})
     lines = [ln.strip() for ln in result.stdout.splitlines() if ln.strip()]
@@ -456,7 +468,7 @@ def _java_oracle_identity(entry: dict, checkout: Path, agent_sha: str) -> dict:
         digest.update(f.read_bytes())
     head = run(["git", "rev-parse", "HEAD"], cwd=str(checkout)).stdout.strip()
     dirty = run(["git", "status", "--porcelain", "--untracked-files=no"], cwd=str(checkout)).stdout.strip()
-    java_exe = str(Path(entry["java_home"]) / "bin" / "java") if entry.get("java_home") else "java"
+    java_exe = armkit.java_binary(entry.get("java_home"))
     java_v = subprocess.run([java_exe, "-version"], capture_output=True, text=True).stderr.splitlines()[:1]
     return {
         "agent_jar_sha256": agent_sha,
@@ -549,7 +561,7 @@ def build_oracle_java(entry: dict, checkout: Path, cell: str, out_dir: Path) -> 
            **java_home_env(entry),
            "JAVA_ORACLE_AGENT": jar.as_posix(),
            "JAVA_ORACLE_ARGS": f"out={raw_dir.as_posix()};prefix={packages}"}
-    result = subprocess.run(_java_command(entry["java_test_command"], checkout), capture_output=True,
+    result = subprocess.run(_java_command(entry["java_test_command"], checkout, entry.get("java_home")), capture_output=True,
                             text=True, encoding="utf-8", errors="replace", cwd=str(checkout), env=env)
     (out_dir / "harness.stdout.txt").write_text(result.stdout, encoding="utf-8")
     (out_dir / "harness.stderr.txt").write_text(result.stderr, encoding="utf-8")

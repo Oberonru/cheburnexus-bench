@@ -7,6 +7,8 @@ a method declared in a project supertype resolves to that supertype.
 """
 from __future__ import annotations
 
+import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -48,6 +50,28 @@ def main() -> int:
             failures.append(f"library-declared method recorded on project type: {bad}")
     if "t.Base::own" not in callees:
         failures.append(f"project-declared inherited method not resolved to t.Base::own: {sorted(callees)}")
+    # first_failure goes into stats JSON by hand-written escaping: quote, backslash and control
+    # characters must still give valid JSON, and null must stay null.
+    nasty = "a/B: " + chr(34) + "q" + chr(34) + " b" + chr(92) + "s t" + chr(9) + "h" + chr(1) + "e"
+    with tempfile.TemporaryDirectory() as pd:
+        pd = Path(pd)
+        probe = pd / "src" / "oraclejava" / "Probe.java"
+        probe.parent.mkdir(parents=True)
+        probe.write_text(
+            "package oraclejava; public class Probe { public static void main(String[] a) {"
+            " System.out.println(Recorder.jsonString(a.length == 0 ? null : a[0])); } }", encoding="utf-8")
+        subprocess.run(["javac", "-cp", str(jar), "-d", str(pd / "cls"), str(probe)], check=True)
+        for text in (None, nasty):
+            cmd = ["java", "-cp", f"{pd / 'cls'}{os.pathsep}{jar}", "oraclejava.Probe"] + ([text] if text is not None else [])
+            got = subprocess.run(cmd, capture_output=True, text=True, check=True).stdout.strip()
+            try:
+                back = json.loads(got)
+            except ValueError:
+                failures.append(f"jsonString({text!r}) is not valid JSON: {got!r}")
+                continue
+            want = None if text is None else "".join(" " if ord(c) < 32 else c for c in text)
+            if back != want:
+                failures.append(f"jsonString round trip: {back!r} != {want!r}")
     for f in failures:
         print("FAIL", f)
     print(f"{len(failures)} failure(s)")
