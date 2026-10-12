@@ -121,24 +121,24 @@ CheburNexus engine can all three be run live end to end by anyone.
 
 Precision / recall, primary cell, best arm **bold**; the cheburnexus column is green:
 
-| repo | lang | grep | repowise | cheburnexus | cell | license |
-|---|---|---|---|---|---|---|
-| [serilog](https://github.com/serilog/serilog) | C# | 0.260&nbsp;/&nbsp;0.542 | 0.544&nbsp;/&nbsp;0.348 | $\color{#90ee90}{\textbf{0.998\ /\ 1.000}}$ | −tests | Apache&#8209;2.0 |
-| [serilog](https://github.com/serilog/serilog) | C# | 0.321&nbsp;/&nbsp;0.744 | 0.592&nbsp;/&nbsp;0.273 | $\color{#90ee90}{\textbf{0.995\ /\ 0.999}}$ | +tests | Apache&#8209;2.0 |
-| [Polly](https://github.com/App-vNext/Polly) | C# | 0.247&nbsp;/&nbsp;0.248 | 0.376&nbsp;/&nbsp;0.191 | $\color{#90ee90}{\textbf{0.997\ /\ 0.984}}$ | −tests | BSD&#8209;3&#8209;Clause |
-| [FluentValidation](https://github.com/FluentValidation/FluentValidation) | C# | 0.203&nbsp;/&nbsp;0.385 | 0.354&nbsp;/&nbsp;0.183 | $\color{#90ee90}{\textbf{0.988\ /\ 0.918}}$ | −tests | Apache&#8209;2.0 |
-| [MediatR](https://github.com/jbogard/MediatR) | C# | 0.253&nbsp;/&nbsp;0.400 | 0.622&nbsp;/&nbsp;0.224 | $\color{#90ee90}{\textbf{1.000\ /\ 0.920}}$ | −tests | RPL&#8209;1.5 |
-| [AutoMapper](https://github.com/AutoMapper/AutoMapper) | C# | 0.186&nbsp;/&nbsp;0.410 | 0.558&nbsp;/&nbsp;0.224 | $\color{#90ee90}{\textbf{0.957\ /\ 0.685}}$ | −tests | RPL&#8209;1.5 |
-| [Humanizer](https://github.com/Humanizr/Humanizer) | C# | 0.123&nbsp;/&nbsp;0.238 | 0.925&nbsp;/&nbsp;0.239 | $\color{#90ee90}{\textbf{0.998\ /\ 0.400}}$ | −tests | MIT |
-| [unitystation](https://github.com/unitystation/unitystation) | Unity&nbsp;C# | 0.068&nbsp;/&nbsp;0.739 | 0.831&nbsp;/&nbsp;0.481 | $\color{#90ee90}{\textbf{0.997\ /\ 0.999}^{\dagger}}$ | −tests | AGPL&#8209;3.0 |
-| [unitystation](https://github.com/unitystation/unitystation) | Unity&nbsp;C# | 0.068&nbsp;/&nbsp;0.739 | 0.830&nbsp;/&nbsp;0.479 | $\color{#90ee90}{\textbf{0.997\ /\ 0.999}^{\dagger}}$ | +tests | AGPL&#8209;3.0 |
-| [class-validator](https://github.com/typestack/class-validator) | TS | 0.217&nbsp;/&nbsp;0.094 | 0.378&nbsp;/&nbsp;0.093 | $\color{#90ee90}{\textbf{1.000\ /\ 0.566}^{ts}}$ | +tests | MIT |
-| [zod](https://github.com/colinhacks/zod) | TS | 0.072&nbsp;/&nbsp;0.037 | 0.323&nbsp;/&nbsp;0.040 | $\color{#90ee90}{\textbf{0.980\ /\ 0.578}^{ts}}$ | +tests | MIT |
-| [vuejs/core](https://github.com/vuejs/core) (`packages/reactivity`) | TS | 0.231&nbsp;/&nbsp;0.034 | 0.415&nbsp;/&nbsp;0.037 | $\color{#90ee90}{\textbf{0.989\ /\ 0.352}^{ts}}$ | +tests | MIT |
-| [react-hook-form](https://github.com/react-hook-form/react-hook-form) v7.89.0 | TS | 0.526&nbsp;/&nbsp;0.058 | 0.136&nbsp;/&nbsp;0.002 | $\color{#90ee90}{\textbf{0.997\ /\ 0.105}^{ts}}$ | +tests | MIT |
-| [element-plus](https://github.com/element-plus/element-plus) 2.14.7 (`packages/components`, Vue SFC) | TS | 0.113&nbsp;/&nbsp;0.010 | 0.415&nbsp;/&nbsp;0.008 | $\color{#90ee90}{\textbf{0.939\ /\ 0.056}^{ts}}$ | +tests | MIT |
-| [spring-petclinic](https://github.com/spring-projects/spring-petclinic) | Java | 0.708&nbsp;/&nbsp;0.857<sup>j</sup> | 0.971&nbsp;/&nbsp;0.825<sup>j</sup> | $\color{#90ee90}{\textbf{0.996\ /\ 1.000}^{j}}$ | +tests | Apache&#8209;2.0 |
-| [RxJava](https://github.com/ReactiveX/RxJava) (`io.reactivex.rxjava4`) | Java | 0.008&nbsp;/&nbsp;0.879<sup>j,g</sup> | 0.462&nbsp;/&nbsp;0.591<sup>j</sup> | $\color{#90ee90}{\textbf{0.994\ /\ 1.000}^{j}}$ | +tests | Apache&#8209;2.0 |
+| repo<br><sub>lang · cell · license</sub> | grep | repowise | cheburnexus |
+|---|---|---|---|
+| [serilog](https://github.com/serilog/serilog)<br><sub>C# · −tests · Apache-2.0</sub> | 0.260 / 0.542 | 0.544 / 0.348 | $\color{#90ee90}{\textbf{0.998 / 1.000}}$ |
+| [serilog](https://github.com/serilog/serilog)<br><sub>C# · +tests · Apache-2.0</sub> | 0.321 / 0.744 | 0.592 / 0.273 | $\color{#90ee90}{\textbf{0.995 / 0.999}}$ |
+| [Polly](https://github.com/App-vNext/Polly)<br><sub>C# · −tests · BSD-3-Clause</sub> | 0.247 / 0.248 | 0.376 / 0.191 | $\color{#90ee90}{\textbf{0.997 / 0.984}}$ |
+| [FluentValidation](https://github.com/FluentValidation/FluentValidation)<br><sub>C# · −tests · Apache-2.0</sub> | 0.203 / 0.385 | 0.354 / 0.183 | $\color{#90ee90}{\textbf{0.988 / 0.918}}$ |
+| [MediatR](https://github.com/jbogard/MediatR)<br><sub>C# · −tests · RPL-1.5</sub> | 0.253 / 0.400 | 0.622 / 0.224 | $\color{#90ee90}{\textbf{1.000 / 0.920}}$ |
+| [AutoMapper](https://github.com/AutoMapper/AutoMapper)<br><sub>C# · −tests · RPL-1.5</sub> | 0.186 / 0.410 | 0.558 / 0.224 | $\color{#90ee90}{\textbf{0.957 / 0.685}}$ |
+| [Humanizer](https://github.com/Humanizr/Humanizer)<br><sub>C# · −tests · MIT</sub> | 0.123 / 0.238 | 0.925 / 0.239 | $\color{#90ee90}{\textbf{0.998 / 0.400}}$ |
+| [unitystation](https://github.com/unitystation/unitystation)<br><sub>Unity C# · −tests · AGPL-3.0</sub> | 0.068 / 0.739 | 0.831 / 0.481 | $\color{#90ee90}{\textbf{0.997 / 0.999}^{\dagger}}$ |
+| [unitystation](https://github.com/unitystation/unitystation)<br><sub>Unity C# · +tests · AGPL-3.0</sub> | 0.068 / 0.739 | 0.830 / 0.479 | $\color{#90ee90}{\textbf{0.997 / 0.999}^{\dagger}}$ |
+| [class-validator](https://github.com/typestack/class-validator)<br><sub>TS · +tests · MIT</sub> | 0.217 / 0.094 | 0.378 / 0.093 | $\color{#90ee90}{\textbf{1.000 / 0.566}^{ts}}$ |
+| [zod](https://github.com/colinhacks/zod)<br><sub>TS · +tests · MIT</sub> | 0.072 / 0.037 | 0.323 / 0.040 | $\color{#90ee90}{\textbf{0.980 / 0.578}^{ts}}$ |
+| [vuejs/core](https://github.com/vuejs/core)<br><sub>(packages/reactivity) · TS · +tests · MIT</sub> | 0.231 / 0.034 | 0.415 / 0.037 | $\color{#90ee90}{\textbf{0.989 / 0.352}^{ts}}$ |
+| [react-hook-form](https://github.com/react-hook-form/react-hook-form)<br><sub>v7.89.0 · TS · +tests · MIT</sub> | 0.526 / 0.058 | 0.136 / 0.002 | $\color{#90ee90}{\textbf{0.997 / 0.105}^{ts}}$ |
+| [element-plus](https://github.com/element-plus/element-plus)<br><sub>2.14.7 (packages/components, Vue SFC) · TS · +tests · MIT</sub> | 0.113 / 0.010 | 0.415 / 0.008 | $\color{#90ee90}{\textbf{0.939 / 0.056}^{ts}}$ |
+| [spring-petclinic](https://github.com/spring-projects/spring-petclinic)<br><sub>Java · +tests · Apache-2.0</sub> | 0.708 / 0.857<sup>j</sup> | 0.971 / 0.825<sup>j</sup> | $\color{#90ee90}{\textbf{0.996 / 1.000}^{j}}$ |
+| [RxJava](https://github.com/ReactiveX/RxJava)<br><sub>(io.reactivex.rxjava4) · Java · +tests · Apache-2.0</sub> | 0.008 / 0.879<sup>j,g</sup> | 0.462 / 0.591<sup>j</sup> | $\color{#90ee90}{\textbf{0.994 / 1.000}^{j}}$ |
 
 `−tests` = `without-tests` cell, `+tests` = `with-tests` cell. <sup>ts</sup> = the `cheburnexus-ts`
 arm (TypeScript engine; the five TypeScript rows were re-run on 2026-10-10; the oracles of zod, class-validator and
