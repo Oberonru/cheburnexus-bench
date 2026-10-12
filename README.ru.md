@@ -134,11 +134,11 @@ flowchart LR
 | [Humanizer](https://github.com/Humanizr/Humanizer) | C# | 0.123&nbsp;/&nbsp;0.238 | 0.925&nbsp;/&nbsp;0.239 | $\color{#90ee90}{\textbf{0.998\ /\ 0.400}}$ | −tests | MIT |
 | [unitystation](https://github.com/unitystation/unitystation) | Unity&nbsp;C# | 0.068&nbsp;/&nbsp;0.739 | 0.831&nbsp;/&nbsp;0.481 | $\color{#90ee90}{\textbf{0.997\ /\ 0.999}^{\dagger}}$ | −tests | AGPL&#8209;3.0 |
 | [unitystation](https://github.com/unitystation/unitystation) | Unity&nbsp;C# | 0.068&nbsp;/&nbsp;0.739 | 0.830&nbsp;/&nbsp;0.479 | $\color{#90ee90}{\textbf{0.997\ /\ 0.999}^{\dagger}}$ | +tests | AGPL&#8209;3.0 |
-| [class-validator](https://github.com/typestack/class-validator) | TS | —&nbsp;/&nbsp;0.000 | —&nbsp;/&nbsp;0.000 | $\color{#90ee90}{\textbf{1.000\ /\ 0.566}^{ts}}$ | +tests | MIT |
-| [zod](https://github.com/colinhacks/zod) | TS | —&nbsp;/&nbsp;0.000 | —&nbsp;/&nbsp;0.000 | $\color{#90ee90}{\textbf{0.980\ /\ 0.578}^{ts}}$ | +tests | MIT |
-| [vuejs/core](https://github.com/vuejs/core) (`packages/reactivity`) | TS | —&nbsp;/&nbsp;0.000 | —&nbsp;/&nbsp;0.000 | $\color{#90ee90}{\textbf{0.989\ /\ 0.352}^{ts}}$ | +tests | MIT |
-| [react-hook-form](https://github.com/react-hook-form/react-hook-form) v7.89.0 | TS | —&nbsp;/&nbsp;0.000 | —&nbsp;/&nbsp;0.000 | $\color{#90ee90}{\textbf{0.997\ /\ 0.105}^{ts}}$ | +tests | MIT |
-| [element-plus](https://github.com/element-plus/element-plus) 2.14.7 (`packages/components`, Vue SFC) | TS | —&nbsp;/&nbsp;0.000 | —&nbsp;/&nbsp;0.000 | $\color{#90ee90}{\textbf{0.939\ /\ 0.056}^{ts}}$ | +tests | MIT |
+| [class-validator](https://github.com/typestack/class-validator) | TS | 0.217&nbsp;/&nbsp;0.094 | 0.378&nbsp;/&nbsp;0.093 | $\color{#90ee90}{\textbf{1.000\ /\ 0.566}^{ts}}$ | +tests | MIT |
+| [zod](https://github.com/colinhacks/zod) | TS | 0.072&nbsp;/&nbsp;0.037 | 0.323&nbsp;/&nbsp;0.040 | $\color{#90ee90}{\textbf{0.980\ /\ 0.578}^{ts}}$ | +tests | MIT |
+| [vuejs/core](https://github.com/vuejs/core) (`packages/reactivity`) | TS | 0.231&nbsp;/&nbsp;0.034 | 0.415&nbsp;/&nbsp;0.037 | $\color{#90ee90}{\textbf{0.989\ /\ 0.352}^{ts}}$ | +tests | MIT |
+| [react-hook-form](https://github.com/react-hook-form/react-hook-form) v7.89.0 | TS | 0.526&nbsp;/&nbsp;0.058 | 0.136&nbsp;/&nbsp;0.002 | $\color{#90ee90}{\textbf{0.997\ /\ 0.105}^{ts}}$ | +tests | MIT |
+| [element-plus](https://github.com/element-plus/element-plus) 2.14.7 (`packages/components`, Vue SFC) | TS | 0.113&nbsp;/&nbsp;0.010 | 0.415&nbsp;/&nbsp;0.008 | $\color{#90ee90}{\textbf{0.939\ /\ 0.056}^{ts}}$ | +tests | MIT |
 | [spring-petclinic](https://github.com/spring-projects/spring-petclinic) | Java | 0.708&nbsp;/&nbsp;0.857<sup>j</sup> | 0.971&nbsp;/&nbsp;0.825<sup>j</sup> | $\color{#90ee90}{\textbf{0.996\ /\ 1.000}^{j}}$ | +tests | Apache&#8209;2.0 |
 | [RxJava](https://github.com/ReactiveX/RxJava) (`io.reactivex.rxjava4`) | Java | 0.008&nbsp;/&nbsp;0.879<sup>j,g</sup> | 0.462&nbsp;/&nbsp;0.591<sup>j</sup> | $\color{#90ee90}{\textbf{0.994\ /\ 1.000}^{j}}$ | +tests | Apache&#8209;2.0 |
 
@@ -159,14 +159,12 @@ react-hook-form и element-plus точность и полнота те же; я
 > только пока реально выполняются тесты, так что осмысленной ячейки «без тестов» для него
 > попросту нет.
 
-`grep` и `repowise` в строках TypeScript оба показывают «— / 0.000», но по разным причинам, а не
-из-за одной общей ошибки: правила `grep` (`arms/grep/RULES.md`) сканируют только файлы `.cs`, так
-что на TypeScript он честно не находит ни одного ребра — по конструкции. `repowise` измеряли
-только на первых двух TypeScript-репозиториях (class-validator, zod): рёбра он там находит (18 на
-class-validator, 126 на zod), но TypeScript-оракул засчитывает только вызывающего, которого
-тестовый набор реально выполнил, а ни один вызывающий `repowise` в это множество не попадает —
-полный разбор в `results/published/SUMMARY.md`. Для vuejs/core, react-hook-form и element-plus
-измерения `repowise` нет; «— / 0.000» в их ячейках — не результат, а тот же знак-заполнитель.
+Ячейки `grep` и `repowise` в строках TypeScript — это два бесплатных парных плеча, `grep-ts` и
+`repowise-ts` (`arms/grep-ts`, `arms/repowise-ts`). `grep-ts` — плечо на регулярных выражениях, написанное
+за один проход и без подгонки: читает объявления и вызовы `name(` как текст и раздаёт каждый вызов всем
+объявлениям с таким именем. `repowise-ts` не видит анонимные замыкания, поэтому вызовов из них и внутри
+них у него нет. Оценка та же, что у `cheburnexus-ts`: только выполненное, против оракула времени
+выполнения. Сырые рёбра и опубликованные строки — в `results/published/{grep-ts,repowise-ts}/`.
 
 Java (spring-petclinic, RxJava; только `with-tests`, оценка только по выполненному, как у TypeScript). <sup>j</sup> — руки
 для Java: `cheburnexus-java` (JavaEngineJdt, локальная сборка, jar sha256:f9a101fef982; Java-движок — не публичный

@@ -69,7 +69,9 @@ resolution; `v1.8.1` has the fix. Full writeup (LLM-CheburNexus repo,
 
 - `vuejs/core`, `react-hook-form`, `element-plus` — not part of the 2026-09-25 batch. Their
   `cheburnexus-ts` rows in the table come from the 2026-10-10 TypeScript re-run (below); no
-  `grep` or `repowise` run exists for them (the `— / 0.000` cells are a placeholder, not a result).
+  `grep` or `repowise` C# arm run exists for them; their TypeScript `grep` / `repowise` cells come from the
+  free sister arms `grep-ts` (a regex arm written in one pass, no tuning) and `repowise-ts` (cannot see
+  anonymous closures), published under `results/published/{grep-ts,repowise-ts}/`.
 
 ## TypeScript re-run (2026-10-10)
 

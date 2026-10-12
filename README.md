@@ -132,11 +132,11 @@ Precision / recall, primary cell, best arm **bold**; the cheburnexus column is g
 | [Humanizer](https://github.com/Humanizr/Humanizer) | C# | 0.123&nbsp;/&nbsp;0.238 | 0.925&nbsp;/&nbsp;0.239 | $\color{#90ee90}{\textbf{0.998\ /\ 0.400}}$ | −tests | MIT |
 | [unitystation](https://github.com/unitystation/unitystation) | Unity&nbsp;C# | 0.068&nbsp;/&nbsp;0.739 | 0.831&nbsp;/&nbsp;0.481 | $\color{#90ee90}{\textbf{0.997\ /\ 0.999}^{\dagger}}$ | −tests | AGPL&#8209;3.0 |
 | [unitystation](https://github.com/unitystation/unitystation) | Unity&nbsp;C# | 0.068&nbsp;/&nbsp;0.739 | 0.830&nbsp;/&nbsp;0.479 | $\color{#90ee90}{\textbf{0.997\ /\ 0.999}^{\dagger}}$ | +tests | AGPL&#8209;3.0 |
-| [class-validator](https://github.com/typestack/class-validator) | TS | —&nbsp;/&nbsp;0.000 | —&nbsp;/&nbsp;0.000 | $\color{#90ee90}{\textbf{1.000\ /\ 0.566}^{ts}}$ | +tests | MIT |
-| [zod](https://github.com/colinhacks/zod) | TS | —&nbsp;/&nbsp;0.000 | —&nbsp;/&nbsp;0.000 | $\color{#90ee90}{\textbf{0.980\ /\ 0.578}^{ts}}$ | +tests | MIT |
-| [vuejs/core](https://github.com/vuejs/core) (`packages/reactivity`) | TS | —&nbsp;/&nbsp;0.000 | —&nbsp;/&nbsp;0.000 | $\color{#90ee90}{\textbf{0.989\ /\ 0.352}^{ts}}$ | +tests | MIT |
-| [react-hook-form](https://github.com/react-hook-form/react-hook-form) v7.89.0 | TS | —&nbsp;/&nbsp;0.000 | —&nbsp;/&nbsp;0.000 | $\color{#90ee90}{\textbf{0.997\ /\ 0.105}^{ts}}$ | +tests | MIT |
-| [element-plus](https://github.com/element-plus/element-plus) 2.14.7 (`packages/components`, Vue SFC) | TS | —&nbsp;/&nbsp;0.000 | —&nbsp;/&nbsp;0.000 | $\color{#90ee90}{\textbf{0.939\ /\ 0.056}^{ts}}$ | +tests | MIT |
+| [class-validator](https://github.com/typestack/class-validator) | TS | 0.217&nbsp;/&nbsp;0.094 | 0.378&nbsp;/&nbsp;0.093 | $\color{#90ee90}{\textbf{1.000\ /\ 0.566}^{ts}}$ | +tests | MIT |
+| [zod](https://github.com/colinhacks/zod) | TS | 0.072&nbsp;/&nbsp;0.037 | 0.323&nbsp;/&nbsp;0.040 | $\color{#90ee90}{\textbf{0.980\ /\ 0.578}^{ts}}$ | +tests | MIT |
+| [vuejs/core](https://github.com/vuejs/core) (`packages/reactivity`) | TS | 0.231&nbsp;/&nbsp;0.034 | 0.415&nbsp;/&nbsp;0.037 | $\color{#90ee90}{\textbf{0.989\ /\ 0.352}^{ts}}$ | +tests | MIT |
+| [react-hook-form](https://github.com/react-hook-form/react-hook-form) v7.89.0 | TS | 0.526&nbsp;/&nbsp;0.058 | 0.136&nbsp;/&nbsp;0.002 | $\color{#90ee90}{\textbf{0.997\ /\ 0.105}^{ts}}$ | +tests | MIT |
+| [element-plus](https://github.com/element-plus/element-plus) 2.14.7 (`packages/components`, Vue SFC) | TS | 0.113&nbsp;/&nbsp;0.010 | 0.415&nbsp;/&nbsp;0.008 | $\color{#90ee90}{\textbf{0.939\ /\ 0.056}^{ts}}$ | +tests | MIT |
 | [spring-petclinic](https://github.com/spring-projects/spring-petclinic) | Java | 0.708&nbsp;/&nbsp;0.857<sup>j</sup> | 0.971&nbsp;/&nbsp;0.825<sup>j</sup> | $\color{#90ee90}{\textbf{0.996\ /\ 1.000}^{j}}$ | +tests | Apache&#8209;2.0 |
 | [RxJava](https://github.com/ReactiveX/RxJava) (`io.reactivex.rxjava4`) | Java | 0.008&nbsp;/&nbsp;0.879<sup>j,g</sup> | 0.462&nbsp;/&nbsp;0.591<sup>j</sup> | $\color{#90ee90}{\textbf{0.994\ /\ 1.000}^{j}}$ | +tests | Apache&#8209;2.0 |
 
@@ -157,14 +157,12 @@ For unitystation, `grep`'s `edges.jsonl` is not committed (173 MB), only its res
 > run — there is no meaningful "without tests" reading for a key that only exists while tests
 > execute.
 
-`grep` and `repowise` both show `— / 0.000` on the TypeScript rows, for two different reasons,
-not one shared bug: `grep`'s rules (`arms/grep/RULES.md`) only scan `.cs` files, so it emits zero
-edges on TypeScript by construction — a real "genuinely found nothing" result. `repowise` was
-measured on the first two TypeScript repos only (class-validator, zod): it emitted edges there
-(18 on class-validator, 126 on zod), but the TypeScript oracle only credits a caller the test
-suite actually executed, and none of `repowise`'s callers land in that executed set — see
-`results/published/SUMMARY.md`. There is no `repowise` measurement for vuejs/core, react-hook-form
-or element-plus; their `—` / `0.000` cells are not a result, only the same placeholder.
+The TypeScript `grep` and `repowise` cells come from two free sister arms, `grep-ts` and `repowise-ts`
+(`arms/grep-ts`, `arms/repowise-ts`). `grep-ts` is a regex arm written in one pass, without tuning: it
+reads declarations and `name(` call sites as text and fans each call out to every declaration with that
+name. `repowise-ts` cannot see anonymous closures, so calls made from or inside them are missing. Both are
+graded the same way as `cheburnexus-ts`, executed-only against the runtime oracle. Raw output and the
+published rows are in `results/published/{grep-ts,repowise-ts}/`.
 
 Java (spring-petclinic, RxJava; with-tests only, executed-only grading like TypeScript). <sup>j</sup> = the Java
 arms: `cheburnexus-java` (JavaEngineJdt, a local build, jar sha256:f9a101fef982; the Java engine is not a public
