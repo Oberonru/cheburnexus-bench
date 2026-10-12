@@ -2,9 +2,7 @@
 """Regenerate assets/results-{light,dark}.svg from results/published/.
 
 Grouped horizontal bar chart of PRECISION, primary cell, for the C# repos plus
-both TypeScript repos (class-validator, zod) now that zod's cheburnexus-ts row
-is published too (the 2026-09-13 generic-interface regression is fixed, see
-results/published/SUMMARY.md).
+the five TypeScript repos (grep-ts / repowise-ts / cheburnexus-ts arms).
 
 No third-party dependencies on purpose — this repo's own quickstart promises
 "Python 3, standard library only", and a chart script is not an exception. Output
@@ -24,21 +22,29 @@ ROOT = Path(__file__).resolve().parent.parent
 PUBLISHED = ROOT / "results" / "published"
 ASSETS = ROOT / "assets"
 
-# (display label, repo dir name, cell, arm dir name for the "cheburnexus" column)
+# (display label, repo dir name, cell, language) -- the arm dir of each series follows the language.
 ROWS = [
-    ("serilog/serilog", "serilog", "without-tests", "cheburnexus"),
-    ("App-vNext/Polly", "Polly", "without-tests", "cheburnexus"),
-    ("FluentValidation", "FluentValidation", "without-tests", "cheburnexus"),
-    ("jbogard/MediatR", "MediatR", "without-tests", "cheburnexus"),
-    ("AutoMapper", "AutoMapper", "without-tests", "cheburnexus"),
-    ("Humanizr/Humanizer", "Humanizer", "without-tests", "cheburnexus"),
-    ("typestack/class-validator", "class-validator", "with-tests", "cheburnexus-ts"),
-    ("colinhacks/zod", "zod", "with-tests", "cheburnexus-ts"),
-    ("unitystation", "unitystation", "without-tests", "cheburnexus"),
+    ("serilog/serilog", "serilog", "without-tests", "cs"),
+    ("App-vNext/Polly", "Polly", "without-tests", "cs"),
+    ("FluentValidation", "FluentValidation", "without-tests", "cs"),
+    ("jbogard/MediatR", "MediatR", "without-tests", "cs"),
+    ("AutoMapper", "AutoMapper", "without-tests", "cs"),
+    ("Humanizr/Humanizer", "Humanizer", "without-tests", "cs"),
+    ("typestack/class-validator", "class-validator", "with-tests", "ts"),
+    ("colinhacks/zod", "zod", "with-tests", "ts"),
+    ("vuejs/core (reactivity)", "core", "with-tests", "ts"),
+    ("react-hook-form", "react-hook-form", "with-tests", "ts"),
+    ("element-plus", "element-plus", "with-tests", "ts"),
+    ("unitystation", "unitystation", "without-tests", "cs"),
 ]
+# Java rows (spring-petclinic, RxJava) are left out: no Java result.json is under results/published.
 
-# arm key in ROWS's last column varies per repo (cheburnexus vs cheburnexus-ts); grep/repowise
-# are the same dir name for every repo.
+# Published arm dir per series and language (C# arms keep their bare names; TypeScript ones carry -ts).
+ARM_DIRS = {
+    "cs": {"grep": "grep", "repowise": "repowise", "cheburnexus": "cheburnexus"},
+    "ts": {"grep": "grep-ts", "repowise": "repowise-ts", "cheburnexus": "cheburnexus-ts"},
+}
+
 SERIES = ["grep", "repowise", "cheburnexus"]  # display order, top to bottom within a group
 
 # Fixed categorical order — never cycled, per dataviz skill. Gray reads as "no signal / baseline"
@@ -62,10 +68,10 @@ def load_precision(repo: str, cell: str, arm: str) -> float | None:
 
 def gather() -> list[tuple[str, dict[str, float | None]]]:
     out = []
-    for label, repo, cell, cheb_arm in ROWS:
+    for label, repo, cell, lang in ROWS:
         values: dict[str, float | None] = {}
         for series in SERIES:
-            arm_dir = cheb_arm if series == "cheburnexus" else series
+            arm_dir = ARM_DIRS[lang][series]
             values[series] = load_precision(repo, cell, arm_dir)
         out.append((label, values))
     return out
