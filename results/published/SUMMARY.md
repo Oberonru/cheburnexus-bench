@@ -100,26 +100,19 @@ licence notes. Quick reference:
 | MediatR | without-tests | 0.253 / 0.400 | 0.622 / 0.224 | 1.000 / 0.920 |
 | AutoMapper | without-tests | 0.186 / 0.410 | 0.558 / 0.224 | 0.957 / 0.685 |
 | Humanizer | without-tests | 0.123 / 0.238 | 0.925 / 0.239 | 0.998 / 0.400 |
-| class-validator | with-tests | — / 0.000 | — / 0.000 | 1.000 / 0.566 |
-| zod | with-tests | — / 0.000 | — / 0.000 | 0.980 / 0.578 |
-| vuejs/core | with-tests | — / 0.000 | — / 0.000 | 0.989 / 0.352 |
-| react-hook-form | with-tests | — / 0.000 | — / 0.000 | 0.997 / 0.105 |
-| element-plus | with-tests | — / 0.000 | — / 0.000 | 0.939 / 0.056 |
+| class-validator | with-tests | 0.217 / 0.094 | 0.378 / 0.093 | 1.000 / 0.566 |
+| zod | with-tests | 0.072 / 0.037 | 0.323 / 0.040 | 0.980 / 0.578 |
+| vuejs/core | with-tests | 0.231 / 0.034 | 0.415 / 0.037 | 0.989 / 0.352 |
+| react-hook-form | with-tests | 0.526 / 0.058 | 0.136 / 0.002 | 0.997 / 0.105 |
+| element-plus | with-tests | 0.113 / 0.010 | 0.415 / 0.008 | 0.939 / 0.056 |
 | unitystation | without-tests | 0.068 / 0.739 | 0.831 / 0.481 | 0.997 / 0.999 (local engine build 52426f77) |
 | unitystation | with-tests | 0.068 / 0.739 | 0.830 / 0.479 | 0.997 / 0.999 (local engine build 52426f77) |
 
-`grep` and `repowise` show `— / 0.000` on the five TypeScript rows for different, genuine
-reasons, not a shared bug:
-
-- `grep`'s rules (`arms/grep/RULES.md`) only scan `.cs` files (`armkit.source_files`'s default
-  suffix) — it never reads a `.ts` source line, so it emits 0 edges on every TS repo by
-  construction. This is a real, reproducible "arm genuinely found nothing" result, not a crash.
-- `repowise` was measured on the first two TS repos only (class-validator, zod), where it does
-  emit edges (18 on class-validator, 126 on zod) — but the
-  TypeScript oracle is a runtime, executed-only shadow-stack key (see `README.md`'s
-  Limitations), and every one of `repowise`'s callers falls in the "no oracle evidence of
-  executing" bucket, so none land in the primary cell. `cheburnexus-ts`'s callers do match
-  executed callers, which is why only that column scores non-zero recall here.
+On the TypeScript rows the `grep` and `repowise` columns are the sister arms `grep-ts` and `repowise-ts`,
+graded executed-only like `cheburnexus-ts`. `grep-ts` is a regex arm written in one pass, without tuning
+(declarations and `name(` call sites as text, each call fanned out to every declaration with that name).
+`repowise-ts` cannot see anonymous closures. The C# `grep` arm (`arms/grep/RULES.md`) only scans `.cs`
+files and is not used here.
 
 ## Sizes
 
