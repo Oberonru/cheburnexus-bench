@@ -134,13 +134,13 @@ flowchart LR
 | [Humanizer](https://github.com/Humanizr/Humanizer)<br><sub>C# · −tests · MIT</sub> | 0.123 / 0.238 | 0.925 / 0.239 | $\color{#90ee90}{\textbf{0.998 / 0.400}}$ |
 | [unitystation](https://github.com/unitystation/unitystation)<br><sub>Unity C# · −tests · AGPL-3.0</sub> | 0.068 / 0.739 | 0.831 / 0.481 | $\color{#90ee90}{\textbf{0.997 / 0.999}^{\dagger}}$ |
 | [unitystation](https://github.com/unitystation/unitystation)<br><sub>Unity C# · +tests · AGPL-3.0</sub> | 0.068 / 0.739 | 0.830 / 0.479 | $\color{#90ee90}{\textbf{0.997 / 0.999}^{\dagger}}$ |
-| [class-validator](https://github.com/typestack/class-validator)<br><sub>TS · +tests · MIT</sub> | 0.217 / 0.094 | 0.378 / 0.093 | $\color{#90ee90}{\textbf{1.000 / 0.566}^{ts}}$ |
-| [zod](https://github.com/colinhacks/zod)<br><sub>TS · +tests · MIT</sub> | 0.072 / 0.037 | 0.323 / 0.040 | $\color{#90ee90}{\textbf{0.980 / 0.578}^{ts}}$ |
-| [vuejs/core](https://github.com/vuejs/core)<br><sub>(packages/reactivity) · TS · +tests · MIT</sub> | 0.231 / 0.034 | 0.415 / 0.037 | $\color{#90ee90}{\textbf{0.989 / 0.352}^{ts}}$ |
-| [react-hook-form](https://github.com/react-hook-form/react-hook-form)<br><sub>v7.89.0 · TS · +tests · MIT</sub> | 0.526 / 0.058 | 0.136 / 0.002 | $\color{#90ee90}{\textbf{0.997 / 0.105}^{ts}}$ |
-| [element-plus](https://github.com/element-plus/element-plus)<br><sub>2.14.7 (packages/components, Vue SFC) · TS · +tests · MIT</sub> | 0.113 / 0.010 | 0.415 / 0.008 | $\color{#90ee90}{\textbf{0.939 / 0.056}^{ts}}$ |
-| [spring-petclinic](https://github.com/spring-projects/spring-petclinic)<br><sub>Java · +tests · Apache-2.0</sub> | 0.708 / 0.857<sup>j</sup> | 0.971 / 0.825<sup>j</sup> | $\color{#90ee90}{\textbf{0.996 / 1.000}^{j}}$ |
-| [RxJava](https://github.com/ReactiveX/RxJava)<br><sub>(io.reactivex.rxjava4) · Java · +tests · Apache-2.0</sub> | 0.008 / 0.879<sup>j,g</sup> | 0.462 / 0.591<sup>j</sup> | $\color{#90ee90}{\textbf{0.994 / 1.000}^{j}}$ |
+| [class-validator](https://github.com/typestack/class-validator)<br><sub>TS · +tests · MIT</sub> | 0.217 / 0.094 | 0.378 / 0.093 | $\color{#90ee90}{\textbf{1.000 / 0.566}}$<sup>ts</sup> |
+| [zod](https://github.com/colinhacks/zod)<br><sub>TS · +tests · MIT</sub> | 0.072 / 0.037 | 0.323 / 0.040 | $\color{#90ee90}{\textbf{0.980 / 0.578}}$<sup>ts</sup> |
+| [vuejs/core](https://github.com/vuejs/core)<br><sub>(packages/reactivity) · TS · +tests · MIT</sub> | 0.231 / 0.034 | 0.415 / 0.037 | $\color{#90ee90}{\textbf{0.989 / 0.352}}$<sup>ts</sup> |
+| [react-hook-form](https://github.com/react-hook-form/react-hook-form)<br><sub>v7.89.0 · TS · +tests · MIT</sub> | 0.526 / 0.058 | 0.136 / 0.002 | $\color{#90ee90}{\textbf{0.997 / 0.105}}$<sup>ts</sup> |
+| [element-plus](https://github.com/element-plus/element-plus)<br><sub>2.14.7 (packages/components, Vue SFC) · TS · +tests · MIT</sub> | 0.113 / 0.010 | 0.415 / 0.008 | $\color{#90ee90}{\textbf{0.939 / 0.056}}$<sup>ts</sup> |
+| [spring-petclinic](https://github.com/spring-projects/spring-petclinic)<br><sub>Java · +tests · Apache-2.0</sub> | 0.708 / 0.857<sup>j</sup> | 0.971 / 0.825<sup>j</sup> | $\color{#90ee90}{\textbf{0.996 / 1.000}}$<sup>j</sup> |
+| [RxJava](https://github.com/ReactiveX/RxJava)<br><sub>(io.reactivex.rxjava4) · Java · +tests · Apache-2.0</sub> | 0.008 / 0.879<sup>j,g</sup> | 0.462 / 0.591<sup>j</sup> | $\color{#90ee90}{\textbf{0.994 / 1.000}}$<sup>j</sup> |
 
 `−tests` = ячейка `without-tests`, `+tests` = ячейка `with-tests`. <sup>ts</sup> = рука
 `cheburnexus-ts` (TypeScript-движок; пять строк TypeScript перепрогнаны 2026-10-10; оракулы zod,
