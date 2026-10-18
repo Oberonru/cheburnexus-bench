@@ -178,8 +178,8 @@ def _run_engine(engine_dir: Path, repo_root: Path, out_dir: Path, classpath: str
 
     if proc.returncode != 0:
         return {"ok": False, "reason": f"exit {proc.returncode}: {tail()}"}
-    paths = {n: out_dir / f"architecture{s}.json" for n, s in
-             (("arch", ""), ("calls", ".calls"), ("methods", ".methods"))}
+    paths = {n: armkit.index_file(out_dir, k) for n, k in
+             (("arch", "main"), ("calls", "calls"), ("methods", "methods"))}
     for p in paths.values():
         if not (p.is_file() and p.stat().st_mtime >= invoked_at - _MTIME_SLOP_SECONDS):
             return {"ok": False, "reason": f"exit 0 but {p.name} is missing or predates this run"}

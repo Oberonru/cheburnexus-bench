@@ -189,6 +189,27 @@ def check_translate_module_scope_unaffected() -> list[str]:
     return failures
 
 
+def check_index_file_new_then_old_name() -> list[str]:
+    """The arm reads main.cxi / {name}.cxi first and falls back to architecture*.json."""
+    import tempfile
+    import armkit
+    failures = []
+    with tempfile.TemporaryDirectory() as raw:
+        d = Path(raw)
+        for name, old in (("main", "architecture.json"), ("calls", "architecture.calls.json"),
+                          ("methods", "architecture.methods.json")):
+            new = "main.cxi" if name == "main" else f"{name}.cxi"
+            if armkit.index_file(d, name).name != new:
+                failures.append(f"{name}: empty folder should point at {new}")
+            (d / old).write_text("{}")
+            if armkit.index_file(d, name).name != old:
+                failures.append(f"{name}: only {old} present, should read it")
+            (d / new).write_text("{}")
+            if armkit.index_file(d, name).name != new:
+                failures.append(f"{name}: both present, the new name {new} must win")
+    return failures
+
+
 def main() -> int:
     failures = check_strip_type_param_suffix()
     failures += check_translate_strips_generic_owner()
@@ -196,6 +217,7 @@ def main() -> int:
     failures += check_translate_mismatched_owner_spelling()
     failures += check_methods_owner_normalization_collision()
     failures += check_translate_module_scope_unaffected()
+    failures += check_index_file_new_then_old_name()
 
     if failures:
         print("FAILED:")

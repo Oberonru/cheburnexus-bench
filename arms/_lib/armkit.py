@@ -394,3 +394,18 @@ def java_binary(java_home: str | None) -> str:
             return str(candidate)
     raise SystemExit(f"java_home {java_home!r} has no bin/java or bin/java.exe -- fix the path in "
                      f"corpus.json (or the JDK is not installed there)")
+
+
+# ── index file names ─────────────────────────────────────────────────────────────────────────────
+# The engines now write main.cxi / {name}.cxi (same JSON) instead of architecture.json /
+# architecture.{name}.json (shared-contract.json "index" block). Arms read the new name first, then
+# the old one, so a scratch folder or an older engine build still works.
+
+def index_file(directory: Path, name: str = "main") -> Path:
+    """Path of the index file `name` ("main", "calls", "methods", "calls-counts", "classdeps") in
+    `directory`: the new name if it exists, else the legacy one if it exists, else the new name."""
+    new = directory / ("main.cxi" if name == "main" else f"{name}.cxi")
+    if new.exists():
+        return new
+    old = directory / ("architecture.json" if name == "main" else f"architecture.{name}.json")
+    return old if old.exists() else new

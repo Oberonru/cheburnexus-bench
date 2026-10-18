@@ -500,7 +500,7 @@ def check_engine_identity_survives_an_unreadable_binary() -> list[str]:
 
 
 # ── defect #9 fixtures: a controllable fake engine + a throwaway repo ──────────────────────────
-# These four tests reproduce the harness defect found 2026-08-24: a stale architecture.calls.json
+# These four tests reproduce the harness defect found 2026-08-24: a stale calls.cxi
 # left in arms/cheburnexus/.work/<repo>/<cell>/<project>/ from a PREVIOUS run was silently reported
 # as THIS run's result when the engine refused (exit 2, wrote nothing) or exited 0 without writing
 # anything. _invoke() checked only arch.is_file() — never the exit code, never the file's age
@@ -512,7 +512,7 @@ def check_engine_identity_survives_an_unreadable_binary() -> list[str]:
 # each of the three situations that mattered:
 #   "RefuseRestore"    — exit 2, writes nothing, stderr is a real (non-entitlement) refusal message
 #   "ExitZeroNoOutput"  — exit 0, writes nothing (a clean run that simply produced no sidecar)
-#   "Good"              — exit 0, writes a genuine architecture.json + architecture.calls.json
+#   "Good"              — exit 0, writes a genuine main.cxi + calls.cxi
 _FAKE_ENGINE_SOURCE = '''#!/usr/bin/env python3
 import json
 import pathlib
@@ -537,11 +537,26 @@ if "RefuseRestore" in target:
 if "ExitZeroNoOutput" in target:
     sys.exit(0)
 
+if "LegacyNames" in target:
+    # an engine built before the rename: ignores the new --output name, writes architecture*.json
+    legacy = out_path.with_name("architecture.json")
+    legacy.write_text(json.dumps({
+        "Files": [{"Namespace": "App", "Types": [{"Name": "Widget", "Methods": []}]}]
+    }))
+    out_path.with_name("architecture.calls.json").write_text(json.dumps({
+        "Data": {
+            "src/LegacyNames/Widget.cs::App.Widget::Run": {
+                "Calls": [{"Target": "src/LegacyNames/Widget.cs::App.Widget::Helper()", "Line": 10}]
+            }
+        }
+    }))
+    sys.exit(0)
+
 if "Good" in target:
     out_path.write_text(json.dumps({
         "Files": [{"Namespace": "App", "Types": [{"Name": "Widget", "Methods": []}]}]
     }))
-    out_path.with_name("architecture.calls.json").write_text(json.dumps({
+    out_path.with_name("calls.cxi").write_text(json.dumps({
         "Data": {
             "src/Good/Widget.cs::App.Widget::Run": {
                 "Calls": [{"Target": "src/Good/Widget.cs::App.Widget::Helper()", "Line": 10}]
@@ -608,7 +623,7 @@ _STALE_COUNTS = json.dumps({"Data": {}})
 
 def check_stale_artifact_with_nonzero_exit_is_not_reported() -> list[str]:
     """Defect #9, mode 1: the engine exits non-zero and writes nothing, but a stale
-    architecture.calls.json from three days ago is still sitting in the scratch directory. A fixed
+    calls.cxi from three days ago is still sitting in the scratch directory. A fixed
     arm must not read it — it must report the cell as blocked, not as a set of (stale) edges."""
     failures = []
     with tempfile.TemporaryDirectory() as raw:
@@ -616,7 +631,7 @@ def check_stale_artifact_with_nonzero_exit_is_not_reported() -> list[str]:
         engine = _write_fake_engine(tmp)
         repo = _make_fake_repo(tmp, ["RefuseRestore"])
         _plant_stale_artifacts(repo, "without-tests", "RefuseRestore",
-                               {"architecture.json": _STALE_ARCH, "architecture.calls.json": _STALE_CALLS})
+                               {"main.cxi": _STALE_ARCH, "calls.cxi": _STALE_CALLS})
         out = tmp / "out.jsonl"
         result = _run_arm_cli(repo, "without-tests", out, engine)
         if result.returncode != armkit.EXIT_BLOCKED:
@@ -640,7 +655,7 @@ def check_freshness_catches_exit_zero_with_no_output() -> list[str]:
         engine = _write_fake_engine(tmp)
         repo = _make_fake_repo(tmp, ["ExitZeroNoOutput"])
         _plant_stale_artifacts(repo, "without-tests", "ExitZeroNoOutput",
-                               {"architecture.json": _STALE_ARCH, "architecture.calls.json": _STALE_CALLS})
+                               {"main.cxi": _STALE_ARCH, "calls.cxi": _STALE_CALLS})
         out = tmp / "out.jsonl"
         result = _run_arm_cli(repo, "without-tests", out, engine)
         if result.returncode != armkit.EXIT_BLOCKED:
@@ -666,7 +681,7 @@ def check_non_entitlement_refusal_is_not_mislabelled() -> list[str]:
         engine = _write_fake_engine(tmp)
         repo = _make_fake_repo(tmp, ["RefuseRestore"])
         _plant_stale_artifacts(repo, "without-tests", "RefuseRestore",
-                               {"architecture.json": _STALE_ARCH, "architecture.calls-counts.json": _STALE_COUNTS})
+                               {"main.cxi": _STALE_ARCH, "calls-counts.cxi": _STALE_COUNTS})
         out = tmp / "out.jsonl"
         result = _run_arm_cli(repo, "without-tests", out, engine)
         combined = result.stdout + result.stderr
@@ -680,6 +695,24 @@ def check_non_entitlement_refusal_is_not_mislabelled() -> list[str]:
                 f"stderr: {result.stderr[-800:]!r}")
         if out.exists():
             failures.append("a refused project produced edges.jsonl anyway")
+    return failures
+
+
+def check_old_index_names_are_still_read() -> list[str]:
+    """An engine build from before the rename writes architecture.json / architecture.calls.json
+    (not main.cxi / calls.cxi). The arm must read them the same way."""
+    failures = []
+    with tempfile.TemporaryDirectory() as raw:
+        tmp = Path(raw)
+        engine = _write_fake_engine(tmp)
+        repo = _make_fake_repo(tmp, ["LegacyNames"])
+        out = tmp / "out.jsonl"
+        result = _run_arm_cli(repo, "without-tests", out, engine)
+        if result.returncode != 0:
+            return [f"old-name engine output was not read: exit {result.returncode}, "
+                    f"stderr {result.stderr[-500:]!r}"]
+        if not out.exists() or "Helper" not in out.read_text(encoding="utf-8"):
+            failures.append("old-name run produced no Helper edge in the output")
     return failures
 
 
@@ -956,7 +989,7 @@ if not alpha_dir.is_dir():
 out_path.write_text(json.dumps({
     "Files": [{"Path": "src/Alpha/A.cs", "Namespace": "App", "Types": [{"Name": "Alpha", "Methods": []}]}]
 }))
-out_path.with_name("architecture.calls.json").write_text(json.dumps({
+out_path.with_name("calls.cxi").write_text(json.dumps({
     "Data": {
         "src/Alpha/A.cs::App.Alpha::Run": {
             "Calls": [{"Target": "src/Alpha/A.cs::App.Alpha::Helper()", "Line": 7}]
@@ -967,7 +1000,7 @@ sys.exit(0)
 '''
 
 
-# Same shape as _COMBINED_FAKE_ENGINE_SOURCE, plus an architecture.classdeps.json sidecar —
+# Same shape as _COMBINED_FAKE_ENGINE_SOURCE, plus an classdeps.cxi sidecar —
 # proving the arm reads the inherits/implements axis, not just calls.json.
 _COMBINED_FAKE_ENGINE_WITH_CLASSDEPS_SOURCE = '''#!/usr/bin/env python3
 import json
@@ -995,14 +1028,14 @@ out_path.write_text(json.dumps({
          "Types": [{"Name": "IWidget", "sl": 3, "Methods": []}]},
     ]
 }))
-out_path.with_name("architecture.calls.json").write_text(json.dumps({
+out_path.with_name("calls.cxi").write_text(json.dumps({
     "Data": {
         "src/Alpha/A.cs::App.Alpha::Run": {
             "Calls": [{"Target": "src/Alpha/A.cs::App.Alpha::Helper()", "Line": 7}]
         }
     }
 }))
-out_path.with_name("architecture.classdeps.json").write_text(json.dumps({
+out_path.with_name("classdeps.cxi").write_text(json.dumps({
     "Data": {
         "Edges": [
             {"Source": "App.Alpha", "Target": "App.IWidget", "Kind": "implements",
@@ -1108,8 +1141,8 @@ out_path.write_text(json.dumps({
          "Types": [{"Name": "IWidget", "sl": 3, "Methods": []}]},
     ]
 }))
-out_path.with_name("architecture.calls.json").write_text(json.dumps({"Data": {}}))
-out_path.with_name("architecture.classdeps.json").write_text(json.dumps({
+out_path.with_name("calls.cxi").write_text(json.dumps({"Data": {}}))
+out_path.with_name("classdeps.cxi").write_text(json.dumps({
     "Data": {
         "Edges": [
             {"Source": "App.Alpha", "Target": "App.IWidget", "Kind": "implements",
@@ -1293,6 +1326,7 @@ def main() -> int:
     failures += check_stale_artifact_with_nonzero_exit_is_not_reported()
     failures += check_freshness_catches_exit_zero_with_no_output()
     failures += check_non_entitlement_refusal_is_not_mislabelled()
+    failures += check_old_index_names_are_still_read()
     failures += check_partial_project_coverage_fails_the_cell_loudly()
     failures += check_synthetic_solution_lists_exactly_in_scope_projects()
     failures += check_synthetic_solution_forces_classic_sln_on_sdk9_plus()

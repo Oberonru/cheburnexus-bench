@@ -98,8 +98,8 @@ def looks_like_named_arrow_field(src_line: str | None) -> tuple[bool, str]:
 
 
 def load_arm_all_nodes(work_dir: Path, checkout_root: Path) -> tuple[set[str], set[str], dict]:
-    arch_path = work_dir / "architecture.json"
-    methods_path = work_dir / "architecture.methods.json"
+    arch_path = ts_run.armkit.index_file(work_dir, "main")
+    methods_path = ts_run.armkit.index_file(work_dir, "methods")
     arch = json.loads(arch_path.read_text(encoding="utf-8"))
     methods_env = json.loads(methods_path.read_text(encoding="utf-8"))
     methods_data = methods_env.get("Data") or {}

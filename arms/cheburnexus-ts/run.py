@@ -328,7 +328,6 @@ def _reset_work_dir(out_dir: Path) -> None:
 def _run_engine(engine_dir: Path, repo_root: Path, out_dir: Path) -> dict:
     _reset_work_dir(out_dir)
     main_js = engine_dir / "dist" / "core" / "main.js"
-    arch = out_dir / "architecture.json"
     invoked_at = time.time()
     try:
         proc = subprocess.run(
@@ -353,16 +352,17 @@ def _run_engine(engine_dir: Path, repo_root: Path, out_dir: Path) -> dict:
 
     if proc.returncode != 0:
         return {"ok": False, "reason": f"exit {proc.returncode}: {_tail_reason()}"}
+    arch = armkit.index_file(out_dir, "main")
     if not _fresh(arch):
-        reason = (f"exit 0, but architecture.json predates this invocation — stale artifact, "
+        reason = (f"exit 0, but {arch.name} predates this invocation — stale artifact, "
                    f"treating as absent" if arch.is_file() else f"exit 0: {_tail_reason()}")
         return {"ok": False, "reason": reason}
 
-    calls = out_dir / "architecture.calls.json"
-    methods = out_dir / "architecture.methods.json"
+    calls = armkit.index_file(out_dir, "calls")
+    methods = armkit.index_file(out_dir, "methods")
     if not (_fresh(calls) and _fresh(methods)):
-        return {"ok": False, "reason": "exit 0 but architecture.calls.json/architecture.methods.json "
-                                        "missing or stale"}
+        return {"ok": False, "reason": "exit 0 but the calls/methods index files (calls.cxi/methods.cxi, "
+                                        "or the old architecture.*.json) are missing or stale"}
     return {"ok": True, "arch": arch, "calls": calls, "methods": methods}
 
 

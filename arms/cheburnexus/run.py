@@ -172,8 +172,8 @@ def withheld_graph_reason(engine: Path) -> str:
     """
     return (
         "the engine analyzed this project (exit 0) but emitted only "
-        "architecture.calls-counts.json (aggregate counts, no caller identity) — no "
-        "architecture.calls.json. That is the shape the engine produces when it resolves this "
+        "calls-counts.cxi (aggregate counts, no caller identity) — no "
+        "calls.cxi. That is the shape the engine produces when it resolves this "
         "machine to the Free tier (the semantic call graph is Pro-gated — see NOTES.md); the "
         "engine's own output does not state a reason, so this arm does not claim one. Two causes "
         "produce it and only inspection can tell them apart: no valid passport on this machine, OR "
@@ -848,7 +848,7 @@ def _invoke(engine: Path, args: list[str], out_dir: Path, tag: str) -> dict:
     _reset_work_dir() was skipped, defeated by a partial write, or a future refactor drops it — the
     mtime of anything read back, which must be no older than the moment THIS invocation started.
     """
-    arch = out_dir / "architecture.json"
+    arch = out_dir / "main.cxi"
     invoked_at = time.time()
     try:
         proc = subprocess.run(
@@ -875,6 +875,7 @@ def _invoke(engine: Path, args: list[str], out_dir: Path, tag: str) -> dict:
         return {"ok": False, "reason": f"exit {proc.returncode}: {_tail_reason()}",
                 "returncode": proc.returncode, "stderr": proc.stderr}
 
+    arch = armkit.index_file(out_dir, "main")  # an older engine ignoring the name may still write the old one
     if not _fresh(arch):
         if arch.is_file():
             reason = (f"exit 0, but {arch.name} predates this invocation by more than "
@@ -884,12 +885,12 @@ def _invoke(engine: Path, args: list[str], out_dir: Path, tag: str) -> dict:
             reason = f"exit 0: {_tail_reason()}"
         return {"ok": False, "reason": reason, "returncode": proc.returncode, "stderr": proc.stderr}
 
-    calls = out_dir / "architecture.calls.json"
-    counts = out_dir / "architecture.calls-counts.json"
+    calls = armkit.index_file(out_dir, "calls")
+    counts = armkit.index_file(out_dir, "calls-counts")
     # inherits/implements is a SYNTACTIC fact (ClassDepsSidecarBuilder.cs), built in any mode — unlike
     # calls.json it is never withheld by the entitlement wall, so it can be present even when "calls"
     # above is None (Free tier, or a --project fallback with no semantic pass).
-    classdeps = out_dir / "architecture.classdeps.json"
+    classdeps = armkit.index_file(out_dir, "classdeps")
     return {
         "ok": True,
         "arch": arch,

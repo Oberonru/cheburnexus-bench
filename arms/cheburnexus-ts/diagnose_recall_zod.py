@@ -151,8 +151,8 @@ def load_arm_all_nodes(work_dir: Path, checkout_root: Path) -> tuple[set[str], s
     drops (no owner fqn, no methods-sidecar line, etc.) is simply absent from the result --
     counted in the returned drop-stats dict, never guessed into existence.
     """
-    arch_path = work_dir / "architecture.json"
-    methods_path = work_dir / "architecture.methods.json"
+    arch_path = ts_run.armkit.index_file(work_dir, "main")
+    methods_path = ts_run.armkit.index_file(work_dir, "methods")
     arch = json.loads(arch_path.read_text(encoding="utf-8"))
     methods_env = json.loads(methods_path.read_text(encoding="utf-8"))
     methods_data = methods_env.get("Data") or {}
